@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% import "partials/icons.html" as icon %}
+{% block title %}Check your inbox{% endblock %}
+{% block body %}
+<div class="app">
+  <form class="gate" method="post" action="/verify">
+
+    <div class="brand">
+      <div class="mark">{{ icon.house(28, 1.8) }}</div>
+      <span>CAMPUS MARKET</span>
+    </div>
+
+    <h1>Check your inbox</h1>
+    <p class="lead">We sent a 6-digit code to <strong>{{ pending.email }}</strong></p>
+
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+    <span class="cap">6-digit code</span>
+    <div class="code" id="code">
+      {% for n in range(1, 7) %}
+        <input aria-label="Digit {{ n }}" name="d{{ n }}" inputmode="numeric" maxlength="1"
+               autocomplete="one-time-code"{% if n == 1 %} autofocus{% endif %}>
+      {% endfor %}
+    </div>
+
+    <div class="again">
+      <span>Nothing yet?</span>
+      <button class="link" type="submit" formaction="/verify/resend" formnovalidate>Send it again</button>
+    </div>
+
+    <div class="grow"></div>
+
+    <button class="btn" type="submit">Continue</button>
+    <p class="note">Only <strong>novasbe.pt</strong> addresses can join. Your e-mail is never shown to other students.</p>
+
+  </form>
+</div>
+{% endblock %}

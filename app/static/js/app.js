@@ -1,0 +1,89 @@
+/* The little bits of behaviour the pages need. Nothing more. */
+
+// The six code boxes jump along as you type, and a pasted code fills them all.
+(function code() {
+  const box = document.getElementById("code");
+  if (!box) return;
+  const inputs = Array.from(box.querySelectorAll("input"));
+
+  inputs.forEach((input, i) => {
+    input.addEventListener("input", () => {
+      input.value = input.value.replace(/\D/g, "").slice(0, 1);
+      if (input.value && i < inputs.length - 1) inputs[i + 1].focus();
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Backspace" && !input.value && i > 0) inputs[i - 1].focus();
+    });
+    input.addEventListener("paste", (e) => {
+      const digits = (e.clipboardData.getData("text") || "").replace(/\D/g, "");
+      if (!digits) return;
+      e.preventDefault();
+      inputs.forEach((f, n) => { f.value = digits[n] || ""; });
+      inputs[Math.min(digits.length, inputs.length - 1)].focus();
+    });
+  });
+})();
+
+// A chat opens at the newest message, not at the oldest.
+(function thread() {
+  const thread = document.getElementById("thread");
+  if (!thread) return;
+  window.scrollTo(0, document.body.scrollHeight);
+})();
+
+// The new entry sheet shows what you picked, so you see it before you publish.
+(function preview() {
+  const field = document.getElementById("photos");
+  if (!field) return;
+  const slots = Array.from(document.querySelectorAll("[data-slot]"));
+  field.addEventListener("change", () => {
+    const files = Array.from(field.files || []);
+    slots.forEach((slot, i) => {
+      slot.innerHTML = "";
+      if (!files[i]) return;
+      const img = document.createElement("img");
+      img.src = URL.createObjectURL(files[i]);
+      img.alt = "";
+      slot.appendChild(img);
+    });
+  });
+})();
+
+// The course list is long, so it filters while you type and keeps a count.
+(function courses() {
+  const field = document.getElementById("filter");
+  const list = document.getElementById("list");
+  if (!field || !list) return;
+
+  const rows = Array.from(list.querySelectorAll(".pick"));
+  const nothing = document.getElementById("nothing");
+  const picked = document.getElementById("picked");
+
+  function count() {
+    const n = rows.filter((r) => r.querySelector("input").checked).length;
+    picked.textContent = n === 1 ? "1 picked" : n + " picked";
+  }
+
+  function lastLine() {
+    const visible = rows.filter((r) => !r.hidden);
+    rows.forEach((r) => r.classList.remove("last"));
+    if (visible.length) visible[visible.length - 1].classList.add("last");
+  }
+
+  field.addEventListener("input", () => {
+    const q = field.value.trim().toLowerCase();
+    let shown = 0;
+    rows.forEach((row) => {
+      const hit = !q || row.dataset.text.includes(q);
+      row.hidden = !hit;
+      if (hit) shown += 1;
+    });
+    list.hidden = shown === 0;
+    nothing.hidden = shown !== 0;
+    lastLine();
+  });
+
+  list.addEventListener("change", count);
+  count();
+  lastLine();
+})();

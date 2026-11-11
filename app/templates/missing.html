@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Not here{% endblock %}
+{% block body %}
+<div class="app app--tabs">
+  <div class="screen">
+    <div class="empty">
+      <b>Not here</b>
+      <p>This entry is gone, or it was never yours to see.</p>
+      <a class="link" href="/housing">Back to Housing</a>
+    </div>
+  </div>
+  {% include "partials/tabbar.html" %}
+</div>
+{% endblock %}

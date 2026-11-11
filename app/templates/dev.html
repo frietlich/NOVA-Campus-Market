@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% import "partials/icons.html" as icon %}
+{% block title %}Development login{% endblock %}
+{% block body %}
+<div class="app">
+  <div class="gate">
+
+    <div class="brand">
+      <div class="mark">{{ icon.house(28, 1.8) }}</div>
+      <span>CAMPUS MARKET</span>
+    </div>
+
+    <h1>Development login</h1>
+    <p class="lead">Be any of the fake students, with no e-mail. This page goes away once the real
+      login works.</p>
+
+    <div style="height: 22px"></div>
+
+    <div class="rows">
+      {% for u in users %}
+        {% if not loop.first %}<div class="divider"></div>{% endif %}
+        <form method="post" action="/dev">
+          <input type="hidden" name="user_id" value="{{ u.id }}">
+          <button class="row" type="submit"
+                  style="width: 100%; border: none; background: none; text-align: left; cursor: pointer">
+            <div class="avatar avatar--md">{{ u.name | initials }}</div>
+            <div class="row-body">
+              <span class="row-name">{{ u.name }}</span>
+              <span class="row-meta">{{ u.course }}</span>
+            </div>
+          </button>
+        </form>
+      {% endfor %}
+    </div>
+
+    <div class="grow"></div>
+    <p class="note"><a class="link link--quiet" href="/signup">Use the real sign up instead</a></p>
+
+  </div>
+</div>
+{% endblock %}

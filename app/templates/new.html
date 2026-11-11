@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% import "partials/icons.html" as icon %}
+{% block title %}New entry{% endblock %}
+{% block body %}
+<div class="app">
+  <form class="form" method="post" action="/new" enctype="multipart/form-data">
+    <input type="hidden" name="kind" value="{{ tab.kind }}">
+
+    <div class="sheet-head">
+      <span class="side"><a class="link link--plain" href="{{ tab.path }}">Cancel</a></span>
+      <span class="mid">New entry</span>
+      <span class="side"></span>
+    </div>
+
+    <span class="pill" style="align-self: flex-start; margin-top: 6px; display: inline-flex; align-items: center; gap: 7px; font-size: 13px; padding: 7px 12px">
+      {{ icon.of_kind(tab.kind, 15, 1.8) }} {{ tab.label }}
+    </span>
+
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+    <span class="label">Photos</span>
+    <div class="pics">
+      <label class="pic-add" for="photos">
+        {{ icon.plus(20, 1.8) }}
+        Add
+      </label>
+      <input class="sr" id="photos" name="photos" type="file" accept="image/*" multiple>
+      <div class="pic" data-slot>{{ icon.picture(20, 1.6) }}</div>
+      <div class="pic" data-slot>{{ icon.picture(20, 1.6) }}</div>
+    </div>
+
+    {% if tab.kind == 'group' %}
+      <label class="label" for="course_id">Course</label>
+      <select class="input" id="course_id" name="course_id" required>
+        {% for c in my_courses %}
+          <option value="{{ c.id }}">{{ c.name }} · {{ c.code }}</option>
+        {% endfor %}
+      </select>
+      <p class="note" style="text-align: left; margin: 6px 2px 0">
+        Only your own courses are in here.
+        <a class="link link--quiet" href="/courses?back=/new%3Fkind%3Dgroup">Change them</a>
+      </p>
+    {% endif %}
+
+    <label class="label" for="title">Title</label>
+    <input class="input" id="title" name="title" type="text" required
+           placeholder="{% if tab.kind == 'housing' %}Room in a 3-bed flat{% elif tab.kind == 'ticket' %}Student night, Urban Beach{% elif tab.kind == 'item' %}iPad Air, 11 inch{% else %}Econometrics, final project{% endif %}">
+
+    <div class="pair">
+      <div>
+        <label class="label" for="price">{% if tab.kind == 'housing' %}Rent per month{% else %}Price{% endif %}</label>
+        <div class="prefixed">
+          <span>€</span>
+          <input id="price" name="price" type="text" inputmode="decimal" placeholder="0">
+        </div>
+      </div>
+      <div>
+        {% if tab.kind == 'ticket' %}
+          <label class="label" for="event_date">Date</label>
+          <input class="input" id="event_date" name="event_date" type="date">
+        {% elif tab.kind == 'group' %}
+          <label class="label" for="spots">Spots free</label>
+          <input class="input" id="spots" name="spots" type="number" min="1" max="20" value="1">
+        {% else %}
+          <label class="label" for="info_short">Short line</label>
+          <input class="input" id="info_short" name="info" type="text"
+                 placeholder="{% if tab.kind == 'housing' %}from 1 Feb{% else %}Good condition{% endif %}">
+        {% endif %}
+      </div>
+    </div>
+
+    {% if tab.kind in ('ticket', 'group') %}
+      <label class="label" for="info">Short line</label>
+      <input class="input" id="info" name="info" type="text"
+             placeholder="{% if tab.kind == 'ticket' %}2 available · face value €20{% else %}Group of four · hand in 28 Nov{% endif %}">
+    {% endif %}
+
+    <label class="label" for="description">Description</label>
+    <textarea class="textarea" id="description" name="description" rows="3"
+              placeholder="What should the other person know?"></textarea>
+
+    <div style="height: 24px"></div>
+
+    <button class="btn" type="submit">Publish</button>
+    <p class="note" style="padding-bottom: calc(var(--foot) + 20px)">Visible to verified Nova students only.</p>
+
+  </form>
+</div>
+{% endblock %}

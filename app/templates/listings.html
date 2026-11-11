@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% import "partials/icons.html" as icon %}
+{% block title %}{{ tab.label }}{% endblock %}
+{% block body %}
+<div class="app app--tabs">
+  <div class="screen">
+
+    <div class="head">
+      <h1>{{ tab.label }}</h1>
+      <div class="head-actions">
+        <a class="avatar" href="/profile" aria-label="Your profile">{{ me.name | initials }}</a>
+        <a class="plus" href="/new?kind={{ tab.kind }}" aria-label="New {{ tab.label }} entry">{{ icon.plus() }}</a>
+      </div>
+    </div>
+
+    <form class="search" method="get" action="{{ tab.path }}" role="search">
+      {{ icon.search() }}
+      <label class="sr" for="q">Search {{ tab.label }}</label>
+      <input id="q" name="q" type="search" value="{{ q }}" placeholder="{{ tab.placeholder }}">
+      {% if tab.kind == 'group' and scope == 'all' %}
+        <input type="hidden" name="scope" value="all">
+      {% endif %}
+    </form>
+
+    {% if tab.kind == 'group' %}
+      <div class="segment">
+        <a href="/groups{% if q %}?q={{ q }}{% endif %}"
+           aria-current="{{ 'true' if scope != 'all' else 'false' }}">My courses</a>
+        <a href="/groups?scope=all{% if q %}&q={{ q }}{% endif %}"
+           aria-current="{{ 'true' if scope == 'all' else 'false' }}">All courses</a>
+      </div>
+    {% endif %}
+
+    {% if listings %}
+      <div class="list">
+        {% for l in listings %}
+          <a class="card" href="/listing/{{ l.id }}">
+
+            {% if l.type == 'ticket' %}
+              {% set d = event_badge(l.event_date) %}
+              <div class="tile">
+                {% if d %}
+                  <span class="cap">{{ d.weekday }}</span>
+                  <span class="big">{{ d.day }}</span>
+                  <span class="cap">{{ d.month }}</span>
+                {% else %}
+                  {{ icon.ticket(22) }}
+                {% endif %}
+              </div>
+            {% elif l.type == 'group' %}
+              <div class="tile">
+                <span class="big">{{ l.spots or 1 }}</span>
+                <span class="cap">{{ 'SPOT' if (l.spots or 1) == 1 else 'SPOTS' }}</span>
+              </div>
+            {% else %}
+              <div class="thumb">
+                {% if l.photo %}
+                  <img src="/static/uploads/{{ l.photo }}" alt="">
+                {% else %}
+                  {{ icon.picture(22) }}
+                {% endif %}
+              </div>
+            {% endif %}
+
+            <div class="card-body">
+              <div class="card-top">
+                <span class="card-title">{{ l.title }}</span>
+                {% if l.price is not none %}<span class="card-price">{{ l.price | money }}</span>{% endif %}
+              </div>
+              {% if l.course_name %}
+                <span class="course-line truncate">{{ l.course_name }}</span>
+              {% endif %}
+              <span class="card-info">{{ l.info }}</span>
+              <span class="card-owner">{{ l.owner_name }} · {{ l.owner_course }}</span>
+            </div>
+
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty">
+        {{ icon.of_kind(tab.kind, 34, 1.4) }}
+        {% if tab.kind == 'group' and not my_courses %}
+          <b>Tell us your courses</b>
+          <p>There are hundreds of courses. Pick the ones you are taking and this tab
+            shows only those.</p>
+          <a class="btn" href="/courses?back=/groups"
+             style="width: auto; padding: 0 22px; margin-top: 8px">Pick my courses</a>
+          <a class="link link--quiet" href="/groups?scope=all">Look at all courses</a>
+        {% elif q %}
+          <b>Nothing found</b>
+          <p>No open entry in {{ tab.label }} matches that.</p>
+        {% elif tab.kind == 'group' and scope != 'all' %}
+          <b>Nothing in your courses</b>
+          <p>No group is looking for anyone in the courses you are taking.</p>
+          <a class="link" href="/groups?scope=all">Look at all courses</a>
+        {% else %}
+          <b>Nothing here yet</b>
+          <p>Be the first to put something up in {{ tab.label }}.</p>
+        {% endif %}
+      </div>
+    {% endif %}
+
+  </div>
+  {% include "partials/tabbar.html" %}
+</div>
+{% endblock %}

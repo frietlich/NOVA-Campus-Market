@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% import "partials/icons.html" as icon %}
+{% block title %}Profile{% endblock %}
+{% block body %}
+<div class="app app--tabs">
+  <div class="screen">
+
+    <div class="head" style="margin-left: -10px">
+      <div style="display: flex; align-items: center; gap: 4px">
+        <a class="icon-btn" href="/housing" aria-label="Back to Housing">{{ icon.back() }}</a>
+        <span style="font-size: 17px; font-weight: 600">Profile</span>
+      </div>
+      <form method="post" action="/logout">
+        <button class="link" type="submit">Sign out</button>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="panel-top">
+        <div class="avatar avatar--lg">{{ me.name | initials }}</div>
+        <div class="panel-id">
+          <b>{{ me.name }}</b>
+          <span class="course">{{ me.course or 'Nova SBE' }}</span>
+          <span class="verified">{{ icon.check(14) }} Nova address verified</span>
+        </div>
+      </div>
+      <div class="stats">
+        <div class="stat"><b>{{ mine | length }}</b><span>entries</span></div>
+        <div class="stat"><b>{{ chat_count }}</b><span>chats</span></div>
+        <div class="stat"><b>{{ me.created_at | month }}</b><span>joined</span></div>
+      </div>
+    </div>
+
+    <span class="section">MY COURSES</span>
+
+    <div class="rows">
+      {% for c in my_courses %}
+        <div class="row">
+          <div class="row-body">
+            <span class="row-name truncate">{{ c.name }}</span>
+            <span class="row-meta">{{ c.code }} · {{ c.programme }}</span>
+          </div>
+        </div>
+        <div class="divider" style="margin-left: 14px"></div>
+      {% endfor %}
+      <a class="row" href="/courses?back=/profile">
+        <div class="row-body">
+          <span class="row-name" style="color: var(--accent)">
+            {% if my_courses %}Change my courses{% else %}Pick my courses{% endif %}
+          </span>
+          {% if not my_courses %}
+            <span class="row-meta">Groups shows every course until you do</span>
+          {% endif %}
+        </div>
+      </a>
+    </div>
+
+    <span class="section">MY ENTRIES</span>
+
+    {% if mine %}
+      <div class="rows">
+        {% for l in mine %}
+          {% if not loop.first %}<div class="divider divider--tight"></div>{% endif %}
+          <a class="row" href="/listing/{{ l.id }}">
+            <div class="mini">
+              {% if l.photo %}<img src="/static/uploads/{{ l.photo }}" alt="">{% else %}{{ icon.of_kind(l.type, 19, 1.7) }}{% endif %}
+            </div>
+            <div class="row-body">
+              <span class="row-name truncate">{{ l.title }}</span>
+              <span class="row-meta">{{ l.views }} views{% if l.price is not none %} · {{ l.price | money }}{% endif %}</span>
+            </div>
+            <span class="badge {{ '' if l.status == 'open' else 'badge--off' }}">{{ 'Open' if l.status == 'open' else 'Closed' }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty">
+        <b>Nothing up yet</b>
+        <p>Whatever you put up shows here, open or closed.</p>
+      </div>
+    {% endif %}
+
+  </div>
+  {% include "partials/tabbar.html" %}
+</div>
+{% endblock %}

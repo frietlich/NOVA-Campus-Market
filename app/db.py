@@ -1,0 +1,437 @@
+"""The only file that talks to the database.
+
+Every other file calls a function from here. Nobody else writes SQL.
+If you need something the app cannot do yet, add a function here first.
+"""
+
+import os
+import random
+import sqlite3
+from datetime import datetime, timezone
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.environ.get("CAMPUS_DB", os.path.join(os.path.dirname(HERE), "campus.db"))
+SCHEMA_PATH = os.path.join(HERE, "schema.sql")
+
+TYPES = ("housing", "ticket", "item", "group")
+EMAIL_DOMAIN = "@novasbe.pt"
+
+
+# ---------------------------------------------------------------- connection
+
+def connect():
+    """Open the database. Rows come back so you can say row["title"]."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
+def setup():
+    """Create the tables if they are not there yet. Safe to call every start."""
+    with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
+        schema = f.read()
+    conn = connect()
+    conn.executescript(schema)
+    conn.commit()
+    conn.close()
+
+
+def now():
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+# --------------------------------------------------------------------- users
+
+def is_nova_email(email):
+    """True only for a Nova address. This is the whole door policy."""
+    return bool(email) and email.strip().lower().endswith(EMAIL_DOMAIN)
+
+
+def get_user(user_id):
+    conn = connect()
+    row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return row
+
+
+def get_user_by_email(email):
+    conn = connect()
+    row = conn.execute(
+        "SELECT * FROM users WHERE email = ?", (email.strip().lower(),)
+    ).fetchone()
+    conn.close()
+    return row
+
+
+def all_users():
+    conn = connect()
+    rows = conn.execute("SELECT * FROM users ORDER BY name").fetchall()
+    conn.close()
+    return rows
+
+
+def create_user(email, name, course=""):
+    conn = connect()
+    cur = conn.execute(
+        "INSERT INTO users (email, name, course, verified, created_at)"
+        " VALUES (?, ?, ?, 0, ?)",
+        (email.strip().lower(), name, course, now()),
+    )
+    conn.commit()
+    new_id = cur.lastrowid
+    conn.close()
+    return new_id
+
+
+def new_code(user_id):
+    """Make a fresh 6 digit code, store it, give it back so we can send it."""
+    code = "".join(str(random.randint(0, 9)) for _ in range(6))
+    conn = connect()
+    conn.execute("UPDATE users SET code = ? WHERE id = ?", (code, user_id))
+    conn.commit()
+    conn.close()
+    return code
+
+
+def check_code(user_id, code):
+    """True only if the code matches. A right code also marks the user verified."""
+    user = get_user(user_id)
+    if user is None or not user["code"]:
+        return False
+    if str(code).strip() != user["code"]:
+        return False
+    conn = connect()
+    conn.execute(
+        "UPDATE users SET verified = 1, code = NULL WHERE id = ?", (user_id,)
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+# ------------------------------------------------------------------ listings
+
+def _listing_sql(where, order="l.created_at DESC"):
+    return (
+        "SELECT l.*, u.name AS owner_name, u.course AS owner_course,"
+        "       c.name AS course_name, c.code AS course_code,"
+        "       (SELECT filename FROM photos p WHERE p.listing_id = l.id"
+        "        ORDER BY p.position, p.id LIMIT 1) AS photo"
+        "  FROM listings l JOIN users u ON u.id = l.owner_id"
+        "  LEFT JOIN courses c ON c.id = l.course_id"
+        f" WHERE {where} ORDER BY {order}"
+    )
+
+
+def listings_of_type(kind, search="", only_for=None):
+    """Open listings in one tab.
+
+    Search looks in the title, the grey line and the course name. Give
+    only_for a user id and you get back just the entries whose course that
+    student is taking. That is what keeps the Groups tab short.
+    """
+    where = "l.type = ? AND l.status = 'open'"
+    args = [kind]
+
+    if only_for is not None:
+        where += (" AND l.course_id IN (SELECT course_id FROM enrolments"
+                  " WHERE user_id = ?)")
+        args.append(only_for)
+
+    if search.strip():
+        where += (" AND (l.title LIKE ? OR l.info LIKE ? OR l.description LIKE ?"
+                  " OR c.name LIKE ? OR c.code LIKE ?)")
+        args += [f"%{search.strip()}%"] * 5
+
+    conn = connect()
+    rows = conn.execute(_listing_sql(where), tuple(args)).fetchall()
+    conn.close()
+    return rows
+
+
+def get_listing(listing_id):
+    conn = connect()
+    row = conn.execute(_listing_sql("l.id = ?"), (listing_id,)).fetchone()
+    conn.close()
+    return row
+
+
+def listings_of_user(user_id):
+    conn = connect()
+    rows = conn.execute(
+        _listing_sql("l.owner_id = ?",
+                     order="CASE WHEN l.status = 'open' THEN 0 ELSE 1 END,"
+                           " l.created_at DESC"),
+        (user_id,)
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def create_listing(owner_id, kind, title, description="", price=None, info="",
+                   event_date=None, spots=None, course_id=None):
+    if kind not in TYPES:
+        raise ValueError(f"unknown type {kind}")
+    conn = connect()
+    cur = conn.execute(
+        "INSERT INTO listings (owner_id, type, title, description, price, info,"
+        " event_date, spots, course_id, status, views, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', 0, ?)",
+        (owner_id, kind, title, description, price, info, event_date, spots,
+         course_id, now()),
+    )
+    conn.commit()
+    new_id = cur.lastrowid
+    conn.close()
+    return new_id
+
+
+def close_listing(listing_id, owner_id):
+    """Only the owner can close. Returns True if something actually changed."""
+    conn = connect()
+    cur = conn.execute(
+        "UPDATE listings SET status = 'closed' WHERE id = ? AND owner_id = ?",
+        (listing_id, owner_id),
+    )
+    conn.commit()
+    changed = cur.rowcount > 0
+    conn.close()
+    return changed
+
+
+def reopen_listing(listing_id, owner_id):
+    conn = connect()
+    cur = conn.execute(
+        "UPDATE listings SET status = 'open' WHERE id = ? AND owner_id = ?",
+        (listing_id, owner_id),
+    )
+    conn.commit()
+    changed = cur.rowcount > 0
+    conn.close()
+    return changed
+
+
+def count_view(listing_id):
+    conn = connect()
+    conn.execute("UPDATE listings SET views = views + 1 WHERE id = ?", (listing_id,))
+    conn.commit()
+    conn.close()
+
+
+# ------------------------------------------------------------------- courses
+
+def all_courses():
+    conn = connect()
+    rows = conn.execute(
+        "SELECT * FROM courses ORDER BY programme, name"
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def get_course(course_id):
+    conn = connect()
+    row = conn.execute("SELECT * FROM courses WHERE id = ?", (course_id,)).fetchone()
+    conn.close()
+    return row
+
+
+def create_course(code, name, programme=""):
+    """Add a course nobody put in the list yet. Gives back the id either way."""
+    code = code.strip().upper()
+    name = name.strip()
+    if not code or not name:
+        return None
+    conn = connect()
+    row = conn.execute("SELECT id FROM courses WHERE code = ?", (code,)).fetchone()
+    if row is not None:
+        conn.close()
+        return row["id"]
+    cur = conn.execute(
+        "INSERT INTO courses (code, name, programme) VALUES (?, ?, ?)",
+        (code, name, programme.strip()),
+    )
+    conn.commit()
+    new_id = cur.lastrowid
+    conn.close()
+    return new_id
+
+
+def courses_of(user_id):
+    """The courses one student is taking."""
+    conn = connect()
+    rows = conn.execute(
+        "SELECT c.* FROM courses c"
+        "  JOIN enrolments e ON e.course_id = c.id"
+        " WHERE e.user_id = ? ORDER BY c.name",
+        (user_id,),
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def set_enrolments(user_id, course_ids):
+    """Replace the whole list in one go. The picker page sends all of it."""
+    conn = connect()
+    conn.execute("DELETE FROM enrolments WHERE user_id = ?", (user_id,))
+    for course_id in set(int(c) for c in course_ids):
+        conn.execute(
+            "INSERT OR IGNORE INTO enrolments (user_id, course_id) VALUES (?, ?)",
+            (user_id, course_id),
+        )
+    conn.commit()
+    conn.close()
+
+
+def enrol(user_id, course_id):
+    conn = connect()
+    conn.execute(
+        "INSERT OR IGNORE INTO enrolments (user_id, course_id) VALUES (?, ?)",
+        (user_id, course_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+# -------------------------------------------------------------------- photos
+
+def add_photo(listing_id, filename, position=0):
+    conn = connect()
+    conn.execute(
+        "INSERT INTO photos (listing_id, filename, position) VALUES (?, ?, ?)",
+        (listing_id, filename, position),
+    )
+    conn.commit()
+    conn.close()
+
+
+def photos_of(listing_id):
+    conn = connect()
+    rows = conn.execute(
+        "SELECT * FROM photos WHERE listing_id = ? ORDER BY position, id",
+        (listing_id,),
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+# ------------------------------------------------------------- conversations
+
+def open_conversation(listing_id, starter_id):
+    """Find the conversation between this student and this listing, or start one.
+
+    Several students can write about the same listing. Each pair gets its own
+    conversation and nobody sees anyone else's.
+    """
+    conn = connect()
+    row = conn.execute(
+        "SELECT * FROM conversations WHERE listing_id = ? AND starter_id = ?",
+        (listing_id, starter_id),
+    ).fetchone()
+    if row is None:
+        cur = conn.execute(
+            "INSERT INTO conversations (listing_id, starter_id, created_at)"
+            " VALUES (?, ?, ?)",
+            (listing_id, starter_id, now()),
+        )
+        conn.commit()
+        conv_id = cur.lastrowid
+    else:
+        conv_id = row["id"]
+    conn.close()
+    return conv_id
+
+
+def get_conversation(conv_id):
+    conn = connect()
+    row = conn.execute(
+        "SELECT c.*, l.title, l.price, l.type, l.owner_id"
+        "  FROM conversations c JOIN listings l ON l.id = c.listing_id"
+        " WHERE c.id = ?",
+        (conv_id,),
+    ).fetchone()
+    conn.close()
+    return row
+
+
+def can_see_conversation(conv, user_id):
+    """Only the two people in it. This is what keeps chats private."""
+    return conv is not None and user_id in (conv["starter_id"], conv["owner_id"])
+
+
+def conversations_of(user_id):
+    """Every conversation this student is in, newest message first."""
+    conn = connect()
+    rows = conn.execute(
+        "SELECT c.id, c.listing_id, c.starter_id, l.title, l.owner_id,"
+        "       CASE WHEN l.owner_id = ? THEN c.starter_id ELSE l.owner_id END AS other_id,"
+        "       (SELECT name FROM users u WHERE u.id ="
+        "           CASE WHEN l.owner_id = ? THEN c.starter_id ELSE l.owner_id END"
+        "       ) AS other_name,"
+        "       (SELECT body FROM messages m WHERE m.conversation_id = c.id"
+        "        ORDER BY m.id DESC LIMIT 1) AS last_body,"
+        "       (SELECT created_at FROM messages m WHERE m.conversation_id = c.id"
+        "        ORDER BY m.id DESC LIMIT 1) AS last_at,"
+        "       (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id"
+        "        AND m.sender_id <> ? AND m.read_at IS NULL) AS unread"
+        "  FROM conversations c JOIN listings l ON l.id = c.listing_id"
+        " WHERE c.starter_id = ? OR l.owner_id = ?"
+        " ORDER BY last_at DESC, c.id DESC",
+        (user_id, user_id, user_id, user_id, user_id),
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+# ------------------------------------------------------------------ messages
+
+def messages_of(conv_id):
+    conn = connect()
+    rows = conn.execute(
+        "SELECT * FROM messages WHERE conversation_id = ? ORDER BY id",
+        (conv_id,),
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def send_message(conv_id, sender_id, body):
+    body = body.strip()
+    if not body:
+        return None
+    conn = connect()
+    cur = conn.execute(
+        "INSERT INTO messages (conversation_id, sender_id, body, created_at)"
+        " VALUES (?, ?, ?, ?)",
+        (conv_id, sender_id, body, now()),
+    )
+    conn.commit()
+    new_id = cur.lastrowid
+    conn.close()
+    return new_id
+
+
+def mark_read(conv_id, reader_id):
+    conn = connect()
+    conn.execute(
+        "UPDATE messages SET read_at = ?"
+        " WHERE conversation_id = ? AND sender_id <> ? AND read_at IS NULL",
+        (now(), conv_id, reader_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def unread_total(user_id):
+    conn = connect()
+    row = conn.execute(
+        "SELECT COUNT(*) AS n FROM messages m"
+        "  JOIN conversations c ON c.id = m.conversation_id"
+        "  JOIN listings l ON l.id = c.listing_id"
+        " WHERE m.sender_id <> ? AND m.read_at IS NULL"
+        "   AND (c.starter_id = ? OR l.owner_id = ?)",
+        (user_id, user_id, user_id),
+    ).fetchone()
+    conn.close()
+    return row["n"]

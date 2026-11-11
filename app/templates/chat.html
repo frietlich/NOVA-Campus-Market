@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% import "partials/icons.html" as icon %}
+{% block title %}{{ other.name }}{% endblock %}
+{% block body %}
+<div class="app chat-page">
+
+  <div class="chat-head">
+    <a class="icon-btn" href="/chats" aria-label="Back to the chats">{{ icon.back() }}</a>
+    <div class="avatar avatar--sm">{{ other.name | initials }}</div>
+    <div class="who">
+      <b>{{ other.name }}</b>
+      <span class="truncate">
+        <a href="/listing/{{ conv.listing_id }}">{{ conv.title }}{% if conv.price is not none %} · {{ conv.price | money }}{% endif %}</a>
+      </span>
+    </div>
+  </div>
+
+  <div class="thread" id="thread">
+    {% if messages %}
+      <span class="day">{{ messages[0].created_at | when }}</span>
+      {% for m in messages %}
+        <div class="bubble {{ 'bubble--me' if m.sender_id == me.id else 'bubble--them' }}">{{ m.body }}</div>
+      {% endfor %}
+      {% if messages[-1].sender_id == me.id and messages[-1].read_at %}
+        <span class="stamp">Read {{ messages[-1].read_at | when }}</span>
+      {% endif %}
+    {% else %}
+      <div class="empty">
+        <b>Say something</b>
+        <p>This is between you and {{ other.name }}. Nobody else sees it.</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <form class="composer" method="post" action="/chat/{{ conv.id }}">
+    <label class="sr" for="body">Message</label>
+    <input id="body" name="body" type="text" placeholder="Message" autocomplete="off">
+    <button class="send" type="submit" aria-label="Send message">{{ icon.send() }}</button>
+  </form>
+
+</div>
+{% endblock %}

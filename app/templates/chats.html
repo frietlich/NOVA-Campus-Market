@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% import "partials/icons.html" as icon %}
+{% block title %}Chats{% endblock %}
+{% block body %}
+<div class="app app--tabs">
+  <div class="screen">
+
+    <div class="head">
+      <h1>Chats</h1>
+      <a class="avatar" href="/profile" aria-label="Your profile">{{ me.name | initials }}</a>
+    </div>
+
+    {% if conversations %}
+      <div class="rows">
+        {% for c in conversations %}
+          {% if not loop.first %}<div class="divider"></div>{% endif %}
+          <a class="row" href="/chat/{{ c.id }}">
+            <div class="avatar avatar--md">{{ c.other_name | initials }}</div>
+            <div class="row-body">
+              <div class="row-top">
+                <span class="row-name truncate">{{ c.other_name }}</span>
+                <span class="row-time">{{ c.last_at | when }}</span>
+              </div>
+              <span class="row-sub truncate">{{ c.title }}</span>
+              <span class="row-last truncate">{{ c.last_body or 'No messages yet' }}</span>
+            </div>
+            {% if c.unread %}<span class="dot" aria-label="Unread"></span>{% endif %}
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty">
+        {{ icon.chat(34, 1.4) }}
+        <b>No chats yet</b>
+        <p>Open an entry and write to whoever put it up. The conversation lands here.</p>
+      </div>
+    {% endif %}
+
+  </div>
+  {% include "partials/tabbar.html" %}
+</div>
+{% endblock %}

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% import "partials/icons.html" as icon %}
+{% block title %}{{ listing.title }}{% endblock %}
+{% block body %}
+<div class="app detail">
+
+  <div class="hero">
+    {% if photos %}
+      <img src="/static/uploads/{{ photos[0].filename }}" alt="">
+    {% else %}
+      {{ icon.picture(40, 1.4) }}
+    {% endif %}
+    <a class="back" href="{{ tab.path }}" aria-label="Back to {{ tab.label }}">{{ icon.back() }}</a>
+    {% if photos | length > 1 %}
+      <span class="count">1 / {{ photos | length }}</span>
+    {% endif %}
+  </div>
+
+  <div class="detail-body">
+
+    <h1>{{ listing.title }}</h1>
+    <p class="sub">
+      {%- if listing.price is not none -%}
+        {{ listing.price | money }}{% if listing.type == 'housing' %} per month{% endif %}
+      {%- else -%}
+        Free
+      {%- endif -%}
+    </p>
+
+    <div class="pills">
+      {% if listing.event_date %}<span class="pill">{{ pretty_date(listing.event_date) }}</span>{% endif %}
+      {% if listing.spots %}<span class="pill">{{ listing.spots }} {{ 'spot' if listing.spots == 1 else 'spots' }} left</span>{% endif %}
+      {% for part in listing.info.split('·') %}
+        {% if part.strip() %}<span class="pill">{{ part.strip() }}</span>{% endif %}
+      {% endfor %}
+      {% if listing.status == 'closed' %}<span class="pill">Closed</span>{% endif %}
+    </div>
+
+    {% if listing.description %}<p class="text">{{ listing.description }}</p>{% endif %}
+
+    <div class="rule"></div>
+
+    <div class="owner">
+      <div class="avatar avatar--md">{{ listing.owner_name | initials }}</div>
+      <div class="owner-body">
+        <span class="owner-name">{{ listing.owner_name }}</span>
+        <span class="owner-course">{{ listing.owner_course }}</span>
+      </div>
+      <span class="verified">{{ icon.check() }} Verified</span>
+    </div>
+
+    <p class="posted">Posted {{ listing.created_at | ago }} · {{ listing.views }} students viewed this</p>
+
+  </div>
+
+  <div class="actionbar">
+    {% if listing.price is not none %}
+      <div class="price-block">
+        <span class="big">{{ listing.price | money }}</span>
+        <span class="small">{% if listing.type == 'housing' %}per month{% else %}total{% endif %}</span>
+      </div>
+    {% endif %}
+
+    {% if listing.owner_id == me.id %}
+      {% if listing.status == 'open' %}
+        <form method="post" action="/listing/{{ listing.id }}/close">
+          <button class="btn btn--quiet" type="submit">Close this entry</button>
+        </form>
+      {% else %}
+        <form method="post" action="/listing/{{ listing.id }}/reopen">
+          <button class="btn" type="submit">Put it back up</button>
+        </form>
+      {% endif %}
+    {% elif listing.status == 'closed' %}
+      <button class="btn btn--quiet" type="button" disabled>This one is gone</button>
+    {% else %}
+      <form method="post" action="/listing/{{ listing.id }}/chat">
+        <button class="btn" type="submit">Message {{ listing.owner_name.split(' ')[0] }}</button>
+      </form>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

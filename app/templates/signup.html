@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% import "partials/icons.html" as icon %}
+{% block title %}Join{% endblock %}
+{% block body %}
+<div class="app">
+  <form class="gate" method="post" action="/signup">
+
+    <div class="brand">
+      <div class="mark">{{ icon.house(28, 1.8) }}</div>
+      <span>CAMPUS MARKET</span>
+    </div>
+
+    <h1>Nova students only</h1>
+    <p class="lead">Put in your Nova address. We send you a 6-digit code and you are in.</p>
+
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+    <span class="cap">Nova e-mail</span>
+    <input class="input" name="email" type="email" inputmode="email" autocapitalize="none"
+           autocomplete="email" placeholder="20241234@novasbe.pt" value="{{ email or '' }}" required>
+
+    <span class="cap" style="margin-top: 18px">Your name</span>
+    <input class="input" name="name" type="text" placeholder="Marco C." value="{{ name or '' }}">
+
+    <div class="grow"></div>
+
+    <button class="btn" type="submit">Send me the code</button>
+    <p class="note">Only <strong>novasbe.pt</strong> addresses can join. Your e-mail is never shown to other students.</p>
+    <p class="note"><a class="link link--quiet" href="/dev">Development login</a></p>
+
+  </form>
+</div>
+{% endblock %}
