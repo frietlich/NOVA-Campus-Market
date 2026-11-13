@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "partials/icons.html" as icon %}
+{% import "partials/avatar.html" as av %}
 {% block title %}{{ listing.title }}{% endblock %}
 {% block body %}
 <div class="app detail">
@@ -41,10 +42,10 @@
     <div class="rule"></div>
 
     <div class="owner">
-      <div class="avatar avatar--md">{{ listing.owner_name | initials }}</div>
+      {{ av.avatar(listing.owner_name, listing.owner_photo, "md") }}
       <div class="owner-body">
         <span class="owner-name">{{ listing.owner_name }}</span>
-        <span class="owner-course">{{ listing.owner_course }}</span>
+        <span class="owner-course">{{ listing.owner_programme | programme(listing.owner_cems) }}</span>
       </div>
       <span class="verified">{{ icon.check() }} Verified</span>
     </div>

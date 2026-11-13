@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "partials/icons.html" as icon %}
+{% import "partials/avatar.html" as av %}
 {% block title %}Chats{% endblock %}
 {% block body %}
 <div class="app app--tabs">
@@ -7,7 +8,7 @@
 
     <div class="head">
       <h1>Chats</h1>
-      <a class="avatar" href="/profile" aria-label="Your profile">{{ me.name | initials }}</a>
+      <a href="/profile" aria-label="Your profile">{{ av.avatar(me.name, me.photo) }}</a>
     </div>
 
     {% if conversations %}
@@ -15,7 +16,7 @@
         {% for c in conversations %}
           {% if not loop.first %}<div class="divider"></div>{% endif %}
           <a class="row" href="/chat/{{ c.id }}">
-            <div class="avatar avatar--md">{{ c.other_name | initials }}</div>
+            {{ av.avatar(c.other_name, c.other_photo, "md") }}
             <div class="row-body">
               <div class="row-top">
                 <span class="row-name truncate">{{ c.other_name }}</span>

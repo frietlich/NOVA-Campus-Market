@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% import "partials/icons.html" as icon %}
+{% block title %}Set a new password{% endblock %}
+{% block body %}
+<div class="app">
+  <form class="gate" method="post" action="/forgot/reset">
+
+    <div class="brand">
+      <div class="mark">{{ icon.house(28, 1.8) }}</div>
+      <span>CAMPUS MARKET</span>
+    </div>
+
+    <h1>Set a new password</h1>
+    <p class="lead">We sent a 6-digit code to <strong>{{ pending.email }}</strong></p>
+
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+    <span class="cap">6-digit code</span>
+    <div class="code" id="code">
+      {% for n in range(1, 7) %}
+        <input aria-label="Digit {{ n }}" name="d{{ n }}" inputmode="numeric"
+               maxlength="1" autocomplete="one-time-code"{% if n == 1 %} autofocus{% endif %}>
+      {% endfor %}
+    </div>
+
+    <span class="cap" style="margin-top: 22px">New password</span>
+    <input class="input" name="password" type="password" required
+           autocomplete="new-password" maxlength="30">
+
+    <span class="cap" style="margin-top: 18px">Repeat the new password</span>
+    <input class="input" name="password2" type="password" required
+           autocomplete="new-password" maxlength="30">
+
+    <p class="note" style="text-align: left; margin: 10px 2px 0">{{ PASSWORD_RULES }}</p>
+
+    <div class="grow"></div>
+
+    <button class="btn" type="submit">Save and log in</button>
+    <p class="note"><a class="link link--quiet" href="/login">Back to log in</a></p>
+
+  </form>
+</div>
+{% endblock %}

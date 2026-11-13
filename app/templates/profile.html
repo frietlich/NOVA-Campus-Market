@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "partials/icons.html" as icon %}
+{% import "partials/avatar.html" as av %}
 {% block title %}Profile{% endblock %}
 {% block body %}
 <div class="app app--tabs">
@@ -10,17 +11,15 @@
         <a class="icon-btn" href="/housing" aria-label="Back to Housing">{{ icon.back() }}</a>
         <span style="font-size: 17px; font-weight: 600">Profile</span>
       </div>
-      <form method="post" action="/logout">
-        <button class="link" type="submit">Sign out</button>
-      </form>
+      <a class="link" href="/profile/edit">Edit</a>
     </div>
 
     <div class="panel">
       <div class="panel-top">
-        <div class="avatar avatar--lg">{{ me.name | initials }}</div>
+        {{ av.avatar(me.name, me.photo, "lg") }}
         <div class="panel-id">
           <b>{{ me.name }}</b>
-          <span class="course">{{ me.course or 'Nova SBE' }}</span>
+          <span class="course">{{ me.programme | programme(me.cems) or 'No programme yet' }}</span>
           <span class="verified">{{ icon.check(14) }} Nova address verified</span>
         </div>
       </div>
@@ -79,6 +78,11 @@
         <p>Whatever you put up shows here, open or closed.</p>
       </div>
     {% endif %}
+
+    <form method="post" action="/logout" style="margin-top: 26px">
+      <button class="link link--danger" type="submit"
+              style="width: 100%; justify-content: center">Sign out</button>
+    </form>
 
   </div>
   {% include "partials/tabbar.html" %}

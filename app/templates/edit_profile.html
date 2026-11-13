@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% import "partials/icons.html" as icon %}
+{% import "partials/avatar.html" as av %}
+{% block title %}Edit profile{% endblock %}
+{% block body %}
+<div class="app">
+  <form class="form" method="post" action="/profile/edit" enctype="multipart/form-data">
+
+    <div class="sheet-head">
+      <span class="side"><a class="link link--plain" href="/profile">Cancel</a></span>
+      <span class="mid">Edit profile</span>
+      <span class="side side--right"><button class="link" type="submit">Save</button></span>
+    </div>
+
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+    <div class="photo-pick">
+      <label for="photo" class="photo-slot" id="photo-slot">
+        {{ av.avatar(me.name, me.photo, "xl") }}
+      </label>
+      <input class="sr" id="photo" name="photo" type="file" accept="image/*">
+      <label class="link" for="photo">Change photo</label>
+    </div>
+
+    <label class="label" for="name">Name</label>
+    <input class="input" id="name" name="name" type="text" required maxlength="60"
+           value="{{ form_name if form_name is not none else me.name }}">
+    <p class="note" style="text-align: left; margin: 6px 2px 0">
+      Other students see this on your entries and in chats.
+    </p>
+
+    <label class="label" for="programme">Programme</label>
+    <select class="input" id="programme" name="programme" required>
+      {% if not current %}
+        <option value="" selected disabled>Pick your programme</option>
+      {% endif %}
+      {% for group, names in PROGRAMME_GROUPS %}
+        <optgroup label="{{ group }}">
+          {% for n in names %}
+            <option value="{{ n }}" {% if n == current %}selected{% endif %}>{{ n }}</option>
+          {% endfor %}
+        </optgroup>
+      {% endfor %}
+    </select>
+
+    {# CEMS is a double degree, so it needs the master you do it with. #}
+    <div id="cems-base" data-cems="{{ CEMS }}" {% if current != CEMS %}hidden{% endif %}>
+      <label class="label" for="cems_programme">Your master alongside CEMS</label>
+      <select class="input" id="cems_programme" name="cems_programme">
+        <option value="" {% if not (me.cems and me.programme) %}selected{% endif %}
+                disabled>Pick your programme</option>
+        {% for n in masters %}
+          <option value="{{ n }}" {% if n == me.programme and me.cems %}selected{% endif %}>{{ n }}</option>
+        {% endfor %}
+      </select>
+      <p class="note" style="text-align: left; margin: 6px 2px 0">
+        CEMS MIM always goes on top of a master, so we need that one too.
+      </p>
+    </div>
+
+    <label class="label" for="email">Nova e-mail</label>
+    <input class="input" id="email" type="email" value="{{ me.email }}" disabled>
+    <p class="note" style="text-align: left; margin: 6px 2px 0">
+      This is how you sign in, so it cannot be changed.
+    </p>
+
+    <span class="section" style="margin: 26px 0 8px 2px">PASSWORD</span>
+    <a class="row rows" href="/profile/password" style="padding: 14px">
+      <div class="row-body">
+        <span class="row-name" style="color: var(--accent)">Change password</span>
+      </div>
+    </a>
+
+    <div style="height: 28px"></div>
+
+    <button class="btn" type="submit">Save</button>
+    <p class="note" style="padding-bottom: calc(var(--foot) + 20px)">
+      Visible to verified Nova students only.
+    </p>
+
+  </form>
+</div>
+{% endblock %}

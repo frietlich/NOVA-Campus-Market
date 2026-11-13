@@ -1,12 +1,13 @@
 {% extends "base.html" %}
 {% import "partials/icons.html" as icon %}
+{% import "partials/avatar.html" as av %}
 {% block title %}{{ other.name }}{% endblock %}
 {% block body %}
 <div class="app chat-page">
 
   <div class="chat-head">
     <a class="icon-btn" href="/chats" aria-label="Back to the chats">{{ icon.back() }}</a>
-    <div class="avatar avatar--sm">{{ other.name | initials }}</div>
+    {{ av.avatar(other.name, other.photo, "sm") }}
     <div class="who">
       <b>{{ other.name }}</b>
       <span class="truncate">

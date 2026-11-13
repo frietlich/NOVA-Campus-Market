@@ -5,7 +5,11 @@ CREATE TABLE IF NOT EXISTS users (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     email      TEXT    NOT NULL UNIQUE,          -- always ends in @novasbe.pt
     name       TEXT    NOT NULL,                 -- shown as "Mariana S."
-    course     TEXT    NOT NULL DEFAULT '',
+    programme  TEXT    NOT NULL DEFAULT '',      -- one of the names in programmes.py
+    cems       INTEGER NOT NULL DEFAULT 0,       -- the CEMS double degree, on top
+    photo      TEXT,                             -- a file in static/uploads, or NULL
+    password   TEXT,                             -- the salted hash, never the
+                                                 -- password itself
     verified   INTEGER NOT NULL DEFAULT 0,       -- 0 until the e-mail code was right
     code       TEXT,                             -- the 6 digits we last sent
     created_at TEXT    NOT NULL

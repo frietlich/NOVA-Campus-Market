@@ -103,6 +103,10 @@ img { display: block; max-width: 100%; }
 .avatar--lg { width: 60px; height: 60px; font-size: 21px; }
 .avatar--md { width: 44px; height: 44px; font-size: 15px; }
 .avatar--sm { width: 34px; height: 34px; font-size: 13px; }
+.avatar--xl { width: 96px; height: 96px; font-size: 32px; }
+
+.avatar { overflow: hidden; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
 
 .plus {
   width: 44px; height: 44px; flex: none;
@@ -341,6 +345,11 @@ img { display: block; max-width: 100%; }
 
 .link--plain { font-weight: 400; }
 .link--quiet { color: var(--muted); font-weight: 400; }
+.link--danger { color: #C0392B; }
+
+@media (prefers-color-scheme: dark) {
+  .link--danger { color: #FF6B5A; }
+}
 
 .grab {
   width: 36px; height: 5px; border-radius: 999px;
@@ -438,6 +447,19 @@ img { display: block; max-width: 100%; }
   color: #B3271B;
   font-size: 13px; font-weight: 600;
 }
+
+/* ------------------------------------------------------------ the picture */
+
+.photo-pick {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  margin-top: 18px;
+}
+
+.photo-slot { cursor: pointer; display: block; position: relative; }
+
+.photo-slot .avatar { border: 1px solid var(--line); }
+
+.photo-pick .link { cursor: pointer; }
 
 /* --------------------------------------------------------------- the pics */
 
@@ -784,6 +806,12 @@ img { display: block; max-width: 100%; }
   text-transform: none;
   font-weight: 600;
   color: var(--accent);
+}
+
+.scroller {
+  max-height: 300px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .empty-filter {

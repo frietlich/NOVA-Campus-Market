@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% import "partials/icons.html" as icon %}
+{% block title %}Campus Market{% endblock %}
+{% block body %}
+<div class="app">
+  <div class="gate">
+
+    <div class="grow"></div>
+
+    <div class="brand">
+      <div class="mark">{{ icon.house(28, 1.8) }}</div>
+      <span>CAMPUS MARKET</span>
+    </div>
+
+    <h1 style="margin-top: 28px; text-align: center">Nova students only</h1>
+    <p class="lead" style="text-align: center">
+      Rooms, tickets, things for sale and a spot in a group project. All of it
+      from students you share a campus with.
+    </p>
+
+    <div class="grow"></div>
+
+    <a class="btn" href="/join">Create an account</a>
+    <a class="btn btn--quiet" href="/login" style="margin-top: 10px">Log in</a>
+
+    <p class="note">
+      You need a <strong>novasbe.pt</strong> address.
+      <a class="link link--quiet" href="/dev">Development login</a>
+    </p>
+
+  </div>
+</div>
+{% endblock %}

@@ -9,69 +9,74 @@ import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
-from . import db
+from . import db, passwords
 
-ME = "20241234@novasbe.pt"          # the student you are logged in as
+ME = "58412@novasbe.pt"             # the student you are logged in as
 
+# Everyone in the demo has this one, so you can try the real login with any
+# of them. Fake students, fake password, it never leaves this file.
+DEMO_PASSWORD = "Nova2026!"
+
+# E-mail, name, programme, and whether they also do the CEMS double degree.
 STUDENTS = [
-    (ME,                       "Marco C.",   "MSc Finance"),
-    ("mariana.s@novasbe.pt",   "Mariana S.", "MSc Finance"),
-    ("tiago.r@novasbe.pt",     "Tiago R.",   "MSc Management"),
-    ("clara.v@novasbe.pt",     "Clara V.",   "MSc Finance"),
-    ("sofia.m@novasbe.pt",     "Sofia M.",   "MSc Business Analytics"),
-    ("andre.c@novasbe.pt",     "André C.",   "Alumni"),
-    ("lena.k@novasbe.pt",      "Lena K.",    "MSc Finance"),
-    ("ines.b@novasbe.pt",      "Inês B.",    "MSc Management"),
-    ("joao.p@novasbe.pt",      "João P.",    "MSc Finance"),
-    ("noah.b@novasbe.pt",      "Noah B.",    "Erasmus"),
+    (ME,                      "Marco C.",    "Master in Finance",             0),
+    ("61037@novasbe.pt",      "Mariana S.",  "Master in Finance",             0),
+    ("59226@novasbe.pt",      "Tiago R.",    "Master in Management",          0),
+    ("60884@novasbe.pt",      "Clara V.",    "Master in Finance",             0),
+    ("57193@novasbe.pt",      "Sofia M.",    "Master in Business Analytics",  0),
+    ("48305@novasbe.pt",      "André C.",    "Alumni",                        0),
+    ("61572@novasbe.pt",      "Lena K.",     "Master in Finance",             0),
+    ("59940@novasbe.pt",      "Inês B.",     "Master in Management",          1),
+    ("60118@novasbe.pt",      "João P.",     "Master in Finance",             0),
+    ("62287@novasbe.pt",      "Noah B.",     "Exchange",                      0),
 ]
 
 # Every course on offer. Invented, but the sort of list a school really has,
 # long enough that the Groups tab is useless without the filter.
 COURSES = [
-    ("FIN2101", "Corporate Finance",            "MSc Finance"),
-    ("FIN2102", "Investments",                  "MSc Finance"),
-    ("FIN2103", "Derivatives",                  "MSc Finance"),
-    ("FIN2104", "Financial Modelling",          "MSc Finance"),
-    ("FIN2105", "Fixed Income",                 "MSc Finance"),
-    ("FIN2106", "Risk Management",              "MSc Finance"),
-    ("FIN2107", "Private Equity",               "MSc Finance"),
-    ("FIN2108", "Behavioural Finance",          "MSc Finance"),
-    ("FIN2109", "Financial Statement Analysis", "MSc Finance"),
-    ("FIN2110", "Mergers and Acquisitions",     "MSc Finance"),
-    ("FIN2111", "Econometrics I",               "MSc Finance"),
-    ("FIN2112", "Econometrics II",              "MSc Finance"),
+    ("FIN2101", "Corporate Finance",            "Master in Finance"),
+    ("FIN2102", "Investments",                  "Master in Finance"),
+    ("FIN2103", "Derivatives",                  "Master in Finance"),
+    ("FIN2104", "Financial Modelling",          "Master in Finance"),
+    ("FIN2105", "Fixed Income",                 "Master in Finance"),
+    ("FIN2106", "Risk Management",              "Master in Finance"),
+    ("FIN2107", "Private Equity",               "Master in Finance"),
+    ("FIN2108", "Behavioural Finance",          "Master in Finance"),
+    ("FIN2109", "Financial Statement Analysis", "Master in Finance"),
+    ("FIN2110", "Mergers and Acquisitions",     "Master in Finance"),
+    ("FIN2111", "Econometrics I",               "Master in Finance"),
+    ("FIN2112", "Econometrics II",              "Master in Finance"),
 
-    ("MGT3201", "Strategy",                     "MSc Management"),
-    ("MGT3202", "Organisational Behaviour",     "MSc Management"),
-    ("MGT3203", "Operations Management",        "MSc Management"),
-    ("MGT3204", "Marketing Management",         "MSc Management"),
-    ("MGT3205", "Leadership",                   "MSc Management"),
-    ("MGT3206", "Business Law",                 "MSc Management"),
-    ("MGT3207", "Negotiation",                  "MSc Management"),
-    ("MGT3208", "Entrepreneurship",             "MSc Management"),
-    ("MGT3209", "Supply Chain Management",      "MSc Management"),
-    ("MGT3210", "Project Management",           "MSc Management"),
+    ("MGT3201", "Strategy",                     "Master in Management"),
+    ("MGT3202", "Organisational Behaviour",     "Master in Management"),
+    ("MGT3203", "Operations Management",        "Master in Management"),
+    ("MGT3204", "Marketing Management",         "Master in Management"),
+    ("MGT3205", "Leadership",                   "Master in Management"),
+    ("MGT3206", "Business Law",                 "Master in Management"),
+    ("MGT3207", "Negotiation",                  "Master in Management"),
+    ("MGT3208", "Entrepreneurship",             "Master in Management"),
+    ("MGT3209", "Supply Chain Management",      "Master in Management"),
+    ("MGT3210", "Project Management",           "Master in Management"),
 
-    ("BAN4301", "Machine Learning",             "MSc Business Analytics"),
-    ("BAN4302", "Data Visualisation",           "MSc Business Analytics"),
-    ("BAN4303", "Statistics for Business",      "MSc Business Analytics"),
-    ("BAN4304", "Database Systems",             "MSc Business Analytics"),
-    ("BAN4305", "Introduction to Programming",  "MSc Business Analytics"),
-    ("BAN4306", "Big Data Tools",               "MSc Business Analytics"),
-    ("BAN4307", "Forecasting",                  "MSc Business Analytics"),
-    ("BAN4308", "Optimisation",                 "MSc Business Analytics"),
-    ("BAN4309", "Text Analytics",               "MSc Business Analytics"),
-    ("BAN4310", "Deep Learning",                "MSc Business Analytics"),
+    ("BAN4301", "Machine Learning",             "Master in Business Analytics"),
+    ("BAN4302", "Data Visualisation",           "Master in Business Analytics"),
+    ("BAN4303", "Statistics for Business",      "Master in Business Analytics"),
+    ("BAN4304", "Database Systems",             "Master in Business Analytics"),
+    ("BAN4305", "Introduction to Programming",  "Master in Business Analytics"),
+    ("BAN4306", "Big Data Tools",               "Master in Business Analytics"),
+    ("BAN4307", "Forecasting",                  "Master in Business Analytics"),
+    ("BAN4308", "Optimisation",                 "Master in Business Analytics"),
+    ("BAN4309", "Text Analytics",               "Master in Business Analytics"),
+    ("BAN4310", "Deep Learning",                "Master in Business Analytics"),
 
-    ("ECO5401", "Microeconomics",               "MSc Economics"),
-    ("ECO5402", "Macroeconomics",               "MSc Economics"),
-    ("ECO5403", "Development Economics",        "MSc Economics"),
-    ("ECO5404", "Labour Economics",             "MSc Economics"),
-    ("ECO5405", "International Trade",          "MSc Economics"),
-    ("ECO5406", "Public Finance",               "MSc Economics"),
-    ("ECO5407", "Game Theory",                  "MSc Economics"),
-    ("ECO5408", "Monetary Economics",           "MSc Economics"),
+    ("ECO5401", "Microeconomics",               "Master in Economics"),
+    ("ECO5402", "Macroeconomics",               "Master in Economics"),
+    ("ECO5403", "Development Economics",        "Master in Economics"),
+    ("ECO5404", "Labour Economics",             "Master in Economics"),
+    ("ECO5405", "International Trade",          "Master in Economics"),
+    ("ECO5406", "Public Finance",               "Master in Economics"),
+    ("ECO5407", "Game Theory",                  "Master in Economics"),
+    ("ECO5408", "Monetary Economics",           "Master in Economics"),
 
     ("GEN1501", "Business Ethics",              "Open to all"),
     ("GEN1502", "Sustainability",               "Open to all"),
@@ -206,12 +211,16 @@ def main():
         )
         course_id[code] = cur.lastrowid
 
+    # One hash for everyone, worked out once instead of ten times, because
+    # the calculation is slow on purpose.
+    demo_hash = passwords.hash_password(DEMO_PASSWORD)
+
     ids = {}
-    for i, (email, name, course) in enumerate(STUDENTS):
+    for i, (email, name, programme, cems) in enumerate(STUDENTS):
         cur = conn.execute(
-            "INSERT INTO users (email, name, course, verified, created_at)"
-            " VALUES (?, ?, ?, 1, ?)",
-            (email, name, course, stamp(60 - i)),
+            "INSERT INTO users (email, name, programme, cems, password, verified,"
+            " created_at) VALUES (?, ?, ?, ?, ?, 1, ?)",
+            (email, name, programme, cems, demo_hash, stamp(60 - i)),
         )
         ids[name] = cur.lastrowid
 
@@ -307,7 +316,7 @@ def main():
     print(f"{len(STUDENTS)} students, {len(COURSES)} courses, "
           f"{len(HOUSING) + len(TICKETS) + len(MARKET) + len(GROUPS) + 1} entries, "
           f"5 conversations")
-    print(f"you are {ME}")
+    print(f"you are {ME}, and every demo student's password is {DEMO_PASSWORD}")
 
 
 if __name__ == "__main__":

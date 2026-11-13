@@ -1,0 +1,12 @@
+{# The picture of a person. One block, used everywhere, so a profile photo
+   shows up in all six places at once. No photo means the initials. #}
+
+{% macro avatar(name, photo=None, size='md') %}
+<span class="avatar avatar--{{ size }}">
+  {%- if photo -%}
+    <img src="/static/uploads/{{ photo }}" alt="">
+  {%- else -%}
+    {{ name | initials }}
+  {%- endif -%}
+</span>
+{% endmacro %}

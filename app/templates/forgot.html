@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% import "partials/icons.html" as icon %}
+{% block title %}Forgot your password{% endblock %}
+{% block body %}
+<div class="app">
+  <form class="gate" method="post" action="/forgot">
+
+    <div class="brand">
+      <div class="mark">{{ icon.house(28, 1.8) }}</div>
+      <span>CAMPUS MARKET</span>
+    </div>
+
+    <h1>Forgot your password</h1>
+    <p class="lead">Put in your Nova address and we send you a 6-digit code to
+      set a new one.</p>
+
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+    <span class="cap">Nova e-mail</span>
+    <input class="input" name="email" type="email" required inputmode="email"
+           autocapitalize="none" autocomplete="email"
+           placeholder="58412@novasbe.pt" value="{{ email or '' }}">
+
+    <div class="grow"></div>
+
+    <button class="btn" type="submit">Send me the code</button>
+    <p class="note"><a class="link link--quiet" href="/login">Back to log in</a></p>
+
+  </form>
+</div>
+{% endblock %}

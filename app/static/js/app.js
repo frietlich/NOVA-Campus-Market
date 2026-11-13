@@ -87,3 +87,31 @@
   count();
   lastLine();
 })();
+
+// On the edit page, picking CEMS asks which master it sits on top of, and a
+// chosen picture is shown straight away.
+(function editProfile() {
+  const programme = document.getElementById("programme");
+  const base = document.getElementById("cems-base");
+  if (programme && base) {
+    const cems = base.dataset.cems || "CEMS Master in Management";
+    const sync = () => { base.hidden = programme.value !== cems; };
+    programme.addEventListener("change", sync);
+    sync();
+  }
+
+  const photo = document.getElementById("photo");
+  const slot = document.getElementById("photo-slot");
+  if (photo && slot) {
+    photo.addEventListener("change", () => {
+      const file = (photo.files || [])[0];
+      if (!file) return;
+      const img = document.createElement("img");
+      img.src = URL.createObjectURL(file);
+      img.alt = "";
+      const box = slot.querySelector(".avatar");
+      box.textContent = "";
+      box.appendChild(img);
+    });
+  }
+})();

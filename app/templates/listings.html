@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "partials/icons.html" as icon %}
+{% import "partials/avatar.html" as av %}
 {% block title %}{{ tab.label }}{% endblock %}
 {% block body %}
 <div class="app app--tabs">
@@ -8,7 +9,7 @@
     <div class="head">
       <h1>{{ tab.label }}</h1>
       <div class="head-actions">
-        <a class="avatar" href="/profile" aria-label="Your profile">{{ me.name | initials }}</a>
+        <a href="/profile" aria-label="Your profile">{{ av.avatar(me.name, me.photo) }}</a>
         <a class="plus" href="/new?kind={{ tab.kind }}" aria-label="New {{ tab.label }} entry">{{ icon.plus() }}</a>
       </div>
     </div>
@@ -71,7 +72,7 @@
                 <span class="course-line truncate">{{ l.course_name }}</span>
               {% endif %}
               <span class="card-info">{{ l.info }}</span>
-              <span class="card-owner">{{ l.owner_name }} · {{ l.owner_course }}</span>
+              <span class="card-owner truncate">{{ l.owner_name }} · {{ l.owner_programme | short }}</span>
             </div>
 
           </a>

@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import db
+from . import db, passwords, programmes
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 UPLOADS = os.path.join(HERE, "static", "uploads")
@@ -123,14 +123,38 @@ def pretty_date(iso_date):
     return datetime.strptime(iso_date, "%Y-%m-%d").strftime("%-d %b %Y")
 
 
+def programme_label(name, cems=False):
+    """Master in Management · CEMS, for a profile line."""
+    return programmes.label(name, bool(cems))
+
+
 templates.env.filters["initials"] = initials
+templates.env.filters["short"] = programmes.short
+templates.env.filters["programme"] = programme_label
 templates.env.filters["money"] = money
 templates.env.filters["when"] = when
 templates.env.filters["month"] = month
 templates.env.filters["ago"] = ago
 templates.env.globals["event_badge"] = event_badge
 templates.env.globals["pretty_date"] = pretty_date
+def asset(path):
+    """static/css/app.css?v=1763... so the browser never serves an old file.
+
+    The number is the time the file was last saved. Change the file, the
+    number changes, the browser fetches it again.
+    """
+    try:
+        stamp = int(os.path.getmtime(os.path.join(HERE, "static", path)))
+    except OSError:
+        stamp = 0
+    return f"/static/{path}?v={stamp}"
+
+
+templates.env.globals["asset"] = asset
 templates.env.globals["TABS"] = TABS
+templates.env.globals["PROGRAMME_GROUPS"] = programmes.GROUPS
+templates.env.globals["CEMS"] = programmes.CEMS
+templates.env.globals["PASSWORD_RULES"] = passwords.RULES
 
 
 def page(request, template, **values):
@@ -160,28 +184,96 @@ def favicon():
 
 @app.get("/")
 def home(request: Request):
-    return go("/housing" if me_or_none(request) else "/signup")
+    return go("/housing" if me_or_none(request) else "/start")
 
 
-@app.get("/signup")
-def signup_form(request: Request, error: str = ""):
-    return page(request, "signup.html", error=error)
+@app.get("/start")
+def start_page(request: Request):
+    if me_or_none(request):
+        return go("/housing")
+    return page(request, "start.html")
 
 
-@app.post("/signup")
-def signup(request: Request, email: str = Form(""), name: str = Form("")):
+# ------------------------------------------------------------- creating one
+
+def join_page(request, form, error="", picked=()):
+    return page(request, "join.html", f=form, error=error,
+                masters=programmes.MASTER, courses=db.all_courses(),
+                picked=set(picked))
+
+
+@app.get("/join")
+def join_form(request: Request):
+    if me_or_none(request):
+        return go("/housing")
+    return join_page(request, {"name": "", "email": "", "programme": "",
+                               "cems_programme": ""})
+
+
+@app.post("/join")
+async def join(request: Request,
+               name: str = Form(""),
+               programme: str = Form(""),
+               cems_programme: str = Form(""),
+               email: str = Form(""),
+               password: str = Form(""),
+               password2: str = Form(""),
+               photo: UploadFile = File(default=None)):
     email = email.strip().lower()
+    form = {"name": name, "email": email, "programme": programme,
+            "cems_programme": cems_programme}
+
+    # The ticked courses. They come as a list, so they are read from the form
+    # itself rather than as one named argument.
+    body = await request.form()
+    picked = [v for v in body.getlist("course_id") if str(v).isdigit()]
+
+    def fail(message):
+        return join_page(request, form, message, picked)
+
+    if not name.strip():
+        return fail("Please put in your name.")
+
+    # CEMS is never the programme itself, so the form has to say which master
+    # it sits on top of.
+    cems = programme == programmes.CEMS
+    chosen = cems_programme if cems else programme
+    if cems and not chosen:
+        return fail("CEMS MIM only comes with a master. Please pick yours.")
+    if not programmes.is_valid(chosen) or (cems and chosen not in programmes.MASTER):
+        return fail("Please pick a programme from the list.")
+
     if not db.is_nova_email(email):
-        return page(request, "signup.html",
-                    error="Only a novasbe.pt address can join.", email=email, name=name)
-    user = db.get_user_by_email(email)
-    if user is None:
-        if not name.strip():
-            return page(request, "signup.html",
-                        error="Please put in your name as well.", email=email)
-        user_id = db.create_user(email, name.strip())
+        return fail("Only a novasbe.pt address can join.")
+
+    if password != password2:
+        return fail("The two passwords are not the same.")
+    wrong = passwords.problem(password)
+    if wrong:
+        return fail(wrong)
+
+    if photo is not None and photo.filename and not is_picture(photo):
+        return fail("That file is not a picture. Use a jpg, png or heic.")
+
+    existing = db.get_user_by_email(email)
+    if existing is not None and existing["verified"]:
+        return fail("That address already has an account. Log in instead.")
+
+    hashed = passwords.hash_password(password)
+    if existing is None:
+        user_id = db.create_user(email, name.strip(), chosen, hashed, cems)
     else:
-        user_id = user["id"]
+        # Somebody started before and never put the code in. Take the new
+        # details and send a fresh code.
+        user_id = existing["id"]
+        db.update_profile(user_id, name, chosen, cems, None)
+        db.set_password(user_id, hashed)
+
+    saved = await save_image(photo)
+    if saved:
+        db.update_profile(user_id, name, chosen, cems, saved)
+
+    db.set_enrolments(user_id, picked)
 
     code = db.new_code(user_id)
     # Person 2 replaces this print with a real e-mail. Until then the code is
@@ -195,7 +287,7 @@ def signup(request: Request, email: str = Form(""), name: str = Form("")):
 def verify_form(request: Request, error: str = ""):
     user_id = request.session.get("pending_id")
     if not user_id:
-        return go("/signup")
+        return go("/start")
     return page(request, "verify.html", pending=db.get_user(user_id), error=error)
 
 
@@ -204,13 +296,17 @@ def verify(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = F
            d4: str = Form(""), d5: str = Form(""), d6: str = Form("")):
     user_id = request.session.get("pending_id")
     if not user_id:
-        return go("/signup")
+        return go("/start")
     code = "".join([d1, d2, d3, d4, d5, d6]).strip()
     if not db.check_code(user_id, code):
         return page(request, "verify.html", pending=db.get_user(user_id),
                     error="That code is not right. Try again.")
     request.session.pop("pending_id", None)
     request.session["user_id"] = user_id
+    # Whoever skipped the courses on the way in gets asked once now, so that
+    # Groups is already theirs the first time they open it.
+    if not db.courses_of(user_id):
+        return go("/courses?back=/housing")
     return go("/housing")
 
 
@@ -218,11 +314,105 @@ def verify(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = F
 def resend(request: Request):
     user_id = request.session.get("pending_id")
     if not user_id:
-        return go("/signup")
+        return go("/start")
     code = db.new_code(user_id)
     print(f"\n  new code is {code}\n", flush=True)
     return go("/verify")
 
+
+# ------------------------------------------------------------- coming back
+
+@app.get("/login")
+def login_form(request: Request):
+    if me_or_none(request):
+        return go("/housing")
+    return page(request, "login.html")
+
+
+@app.post("/login")
+def login(request: Request, email: str = Form(""), password: str = Form("")):
+    user = db.get_user_by_email(email)
+
+    # The same answer whether the address is unknown or the password is wrong,
+    # so nobody can use this page to find out who has an account.
+    if user is None or not passwords.verify_password(user["password"], password):
+        return page(request, "login.html", email=email,
+                    error="That e-mail and password do not go together.")
+
+    if not user["verified"]:
+        code = db.new_code(user["id"])
+        print(f"\n  code for {user['email']} is {code}\n", flush=True)
+        request.session["pending_id"] = user["id"]
+        return go("/verify")
+
+    request.session.clear()
+    request.session["user_id"] = user["id"]
+    return go("/housing")
+
+
+@app.post("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return go("/start")
+
+
+# ---------------------------------------------------------- a new password
+
+@app.get("/forgot")
+def forgot_form(request: Request):
+    return page(request, "forgot.html")
+
+
+@app.post("/forgot")
+def forgot(request: Request, email: str = Form("")):
+    email = email.strip().lower()
+    user = db.get_user_by_email(email)
+    if user is None:
+        # Again the same answer either way, so this page tells nobody which
+        # addresses exist. The code simply never arrives.
+        return page(request, "forgot.html", email=email,
+                    error="If that address has an account, the code is on its way.")
+    code = db.new_code(user["id"])
+    print(f"\n  reset code for {email} is {code}\n", flush=True)
+    request.session["reset_id"] = user["id"]
+    return go("/forgot/reset")
+
+
+@app.get("/forgot/reset")
+def reset_form(request: Request):
+    user_id = request.session.get("reset_id")
+    if not user_id:
+        return go("/forgot")
+    return page(request, "reset.html", pending=db.get_user(user_id))
+
+
+@app.post("/forgot/reset")
+def reset(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = Form(""),
+          d4: str = Form(""), d5: str = Form(""), d6: str = Form(""),
+          password: str = Form(""), password2: str = Form("")):
+    user_id = request.session.get("reset_id")
+    if not user_id:
+        return go("/forgot")
+    user = db.get_user(user_id)
+
+    def fail(message):
+        return page(request, "reset.html", pending=user, error=message)
+
+    if password != password2:
+        return fail("The two passwords are not the same.")
+    wrong = passwords.problem(password)
+    if wrong:
+        return fail(wrong)
+    if not db.check_code(user_id, "".join([d1, d2, d3, d4, d5, d6]).strip()):
+        return fail("That code is not right. Try again.")
+
+    db.set_password(user_id, passwords.hash_password(password))
+    request.session.pop("reset_id", None)
+    request.session["user_id"] = user_id
+    return go("/housing")
+
+
+# ---------------------------------------------------------------------- dev
 
 @app.get("/dev")
 def dev_form(request: Request):
@@ -237,18 +427,12 @@ def dev_login(request: Request, user_id: int = Form(...)):
     return go("/housing")
 
 
-@app.post("/logout")
-def logout(request: Request):
-    request.session.clear()
-    return go("/signup")
-
-
 # --------------------------------------------------------------- the four tabs
 
 def tab_page(request, kind, q, scope="mine"):
     me = me_or_none(request)
     if me is None:
-        return go("/signup")
+        return go("/start")
     tab = BY_KIND[kind]
 
     # Groups is the only tab that is narrowed to your own courses, because it
@@ -288,13 +472,13 @@ def courses_form(request: Request, back: str = "/profile"):
     """Pick the courses you are taking. This is what makes Groups short."""
     me = me_or_none(request)
     if me is None:
-        return go("/signup")
+        return go("/start")
     chosen = {c["id"] for c in db.courses_of(me["id"])}
 
     # Your own programme first, because that is where your courses are.
     mine_first = sorted(
         db.all_courses(),
-        key=lambda c: (c["programme"] != (me["course"] or ""), c["programme"], c["name"]),
+        key=lambda c: (c["programme"] != (me["programme"] or ""), c["programme"], c["name"]),
     )
     return page(request, "courses.html", courses=mine_first, chosen=chosen,
                 back=back, me=me)
@@ -304,7 +488,7 @@ def courses_form(request: Request, back: str = "/profile"):
 async def courses_save(request: Request):
     me = me_or_none(request)
     if me is None:
-        return go("/signup")
+        return go("/start")
     form = await request.form()
     picked = [v for v in form.getlist("course_id") if str(v).isdigit()]
     db.set_enrolments(me["id"], picked)
@@ -318,7 +502,7 @@ def courses_add(request: Request, code: str = Form(""), name: str = Form(""),
     """Add a course that is not on the list, and join it straight away."""
     me = me_or_none(request)
     if me is None:
-        return go("/signup")
+        return go("/start")
     new_id = db.create_course(code, name)
     if new_id:
         db.enrol(me["id"], new_id)
@@ -331,7 +515,7 @@ def courses_add(request: Request, code: str = Form(""), name: str = Form(""),
 def listing_detail(request: Request, listing_id: int):
     me = me_or_none(request)
     if me is None:
-        return go("/signup")
+        return go("/start")
     row = db.get_listing(listing_id)
     if row is None:
         return page(request, "missing.html", active="")
@@ -346,7 +530,7 @@ def listing_detail(request: Request, listing_id: int):
 def listing_close(request: Request, listing_id: int):
     me = me_or_none(request)
     if me is None:
-        return go("/signup")
+        return go("/start")
     db.close_listing(listing_id, me["id"])
     return go("/profile")
 
@@ -355,7 +539,7 @@ def listing_close(request: Request, listing_id: int):
 def listing_reopen(request: Request, listing_id: int):
     me = me_or_none(request)
     if me is None:
-        return go("/signup")
+        return go("/start")
     db.reopen_listing(listing_id, me["id"])
     return go("/profile")
 
@@ -364,7 +548,7 @@ def listing_reopen(request: Request, listing_id: int):
 def listing_chat(request: Request, listing_id: int):
     me = me_or_none(request)
     if me is None:
-        return go("/signup")
+        return go("/start")
     row = db.get_listing(listing_id)
     if row is None or row["owner_id"] == me["id"]:
         return go(f"/listing/{listing_id}")
@@ -378,7 +562,7 @@ def listing_chat(request: Request, listing_id: int):
 def new_form(request: Request, kind: str = "housing", error: str = ""):
     me = me_or_none(request)
     if me is None:
-        return go("/signup")
+        return go("/start")
     if kind not in BY_KIND:
         kind = "housing"
     mine = db.courses_of(me["id"]) if kind == "group" else []
@@ -402,7 +586,7 @@ async def new_listing(request: Request,
                       photos: List[UploadFile] = File(default=[])):
     me = me_or_none(request)
     if me is None:
-        return go("/signup")
+        return go("/start")
     if kind not in BY_KIND:
         kind = "housing"
 
@@ -445,13 +629,34 @@ async def new_listing(request: Request,
     return go(f"/listing/{listing_id}")
 
 
+PICTURE_TYPES = (".jpg", ".jpeg", ".png", ".webp", ".heic")
+
+
+def is_picture(upload):
+    """True when a file was given and it looks like a picture we accept."""
+    if not upload or not upload.filename:
+        return False
+    return os.path.splitext(upload.filename)[1].lower() in PICTURE_TYPES
+
+
+async def save_image(upload):
+    """Write one uploaded picture to the uploads folder. Gives back its name."""
+    if not is_picture(upload):
+        return None
+    ext = os.path.splitext(upload.filename)[1].lower()
+    name = f"{uuid.uuid4().hex}{ext}"
+    with open(os.path.join(UPLOADS, name), "wb") as out:
+        out.write(await upload.read())
+    return name
+
+
 # -------------------------------------------------------------------- chats
 
 @app.get("/chats")
 def chats(request: Request):
     me = me_or_none(request)
     if me is None:
-        return go("/signup")
+        return go("/start")
     return page(request, "chats.html", conversations=db.conversations_of(me["id"]),
                 active="chats", me=me)
 
@@ -460,7 +665,7 @@ def chats(request: Request):
 def chat(request: Request, conv_id: int):
     me = me_or_none(request)
     if me is None:
-        return go("/signup")
+        return go("/start")
     conv = db.get_conversation(conv_id)
     if not db.can_see_conversation(conv, me["id"]):
         return page(request, "missing.html", active="chats")
@@ -474,7 +679,7 @@ def chat(request: Request, conv_id: int):
 def chat_send(request: Request, conv_id: int, body: str = Form("")):
     me = me_or_none(request)
     if me is None:
-        return go("/signup")
+        return go("/start")
     conv = db.get_conversation(conv_id)
     if not db.can_see_conversation(conv, me["id"]):
         return page(request, "missing.html", active="chats")
@@ -484,11 +689,100 @@ def chat_send(request: Request, conv_id: int, body: str = Form("")):
 
 # ------------------------------------------------------------------ profile
 
+def edit_page(request, me, error="", form_name=None, current=None):
+    return page(request, "edit_profile.html", me=me, error=error,
+                form_name=form_name,
+                current=current if current is not None else (
+                    programmes.CEMS if me["cems"] else me["programme"]),
+                masters=programmes.MASTER)
+
+
+@app.get("/profile/edit")
+def profile_edit_form(request: Request):
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    return edit_page(request, me)
+
+
+@app.post("/profile/edit")
+async def profile_edit(request: Request,
+                       name: str = Form(""),
+                       programme: str = Form(""),
+                       cems_programme: str = Form(""),
+                       photo: UploadFile = File(default=None)):
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+
+    if not name.strip():
+        return edit_page(request, me, "Your name cannot be empty.",
+                         form_name=name, current=programme)
+
+    # CEMS is never the programme itself. It is a yes next to a real master,
+    # so the form has to say which master it sits on top of.
+    cems = programme == programmes.CEMS
+    chosen = cems_programme if cems else programme
+
+    if cems and not chosen:
+        return edit_page(request, me,
+                         "CEMS MIM only comes with a master. Please pick yours.",
+                         form_name=name, current=programme)
+
+    if not programmes.is_valid(chosen) or (cems and chosen not in programmes.MASTER):
+        return edit_page(request, me, "Please pick a programme from the list.",
+                         form_name=name, current=programme)
+
+    # A file was picked but it is not a picture we can show. Say so instead of
+    # quietly keeping the old one.
+    if photo is not None and photo.filename and not is_picture(photo):
+        return edit_page(request, me,
+                         "That file is not a picture. Use a jpg, png or heic.",
+                         form_name=name, current=programme)
+
+    db.update_profile(me["id"], name, chosen, cems, await save_image(photo))
+    return go("/profile")
+
+
+@app.get("/profile/password")
+def password_form(request: Request):
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    return page(request, "password.html", me=me)
+
+
+@app.post("/profile/password")
+def password_change(request: Request, current: str = Form(""),
+                    password: str = Form(""), password2: str = Form("")):
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+
+    def fail(message):
+        return page(request, "password.html", me=me, error=message)
+
+    # The one you have now, so nobody who picks up an unlocked phone can
+    # lock the owner out.
+    if not passwords.verify_password(me["password"], current):
+        return fail("That is not your current password.")
+    if password != password2:
+        return fail("The two new passwords are not the same.")
+    if password == current:
+        return fail("That is the password you already have.")
+    wrong = passwords.problem(password)
+    if wrong:
+        return fail(wrong)
+
+    db.set_password(me["id"], passwords.hash_password(password))
+    return go("/profile")
+
+
 @app.get("/profile")
 def profile(request: Request):
     me = me_or_none(request)
     if me is None:
-        return go("/signup")
+        return go("/start")
     mine = db.listings_of_user(me["id"])
     return page(request, "profile.html", mine=mine,
                 my_courses=db.courses_of(me["id"]),

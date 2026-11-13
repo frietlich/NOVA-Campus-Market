@@ -71,17 +71,44 @@ def all_users():
     return rows
 
 
-def create_user(email, name, course=""):
+def create_user(email, name, programme="", password=None, cems=False):
+    """password is already hashed by passwords.py. Nothing else goes in here."""
     conn = connect()
     cur = conn.execute(
-        "INSERT INTO users (email, name, course, verified, created_at)"
-        " VALUES (?, ?, ?, 0, ?)",
-        (email.strip().lower(), name, course, now()),
+        "INSERT INTO users (email, name, programme, cems, password, verified,"
+        " created_at) VALUES (?, ?, ?, ?, ?, 0, ?)",
+        (email.strip().lower(), name, programme, 1 if cems else 0, password, now()),
     )
     conn.commit()
     new_id = cur.lastrowid
     conn.close()
     return new_id
+
+
+def update_profile(user_id, name, programme, cems=False, photo=None):
+    """Save what the edit page sends. photo of None leaves the picture alone."""
+    conn = connect()
+    if photo is None:
+        conn.execute(
+            "UPDATE users SET name = ?, programme = ?, cems = ? WHERE id = ?",
+            (name.strip(), programme, 1 if cems else 0, user_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE users SET name = ?, programme = ?, cems = ?, photo = ?"
+            " WHERE id = ?",
+            (name.strip(), programme, 1 if cems else 0, photo, user_id),
+        )
+    conn.commit()
+    conn.close()
+
+
+def set_password(user_id, hashed):
+    """Store a new password. It arrives hashed, never as what was typed."""
+    conn = connect()
+    conn.execute("UPDATE users SET password = ? WHERE id = ?", (hashed, user_id))
+    conn.commit()
+    conn.close()
 
 
 def new_code(user_id):
@@ -114,7 +141,8 @@ def check_code(user_id, code):
 
 def _listing_sql(where, order="l.created_at DESC"):
     return (
-        "SELECT l.*, u.name AS owner_name, u.course AS owner_course,"
+        "SELECT l.*, u.name AS owner_name, u.programme AS owner_programme,"
+        "       u.cems AS owner_cems, u.photo AS owner_photo,"
         "       c.name AS course_name, c.code AS course_code,"
         "       (SELECT filename FROM photos p WHERE p.listing_id = l.id"
         "        ORDER BY p.position, p.id LIMIT 1) AS photo"
@@ -369,6 +397,9 @@ def conversations_of(user_id):
         "       (SELECT name FROM users u WHERE u.id ="
         "           CASE WHEN l.owner_id = ? THEN c.starter_id ELSE l.owner_id END"
         "       ) AS other_name,"
+        "       (SELECT photo FROM users u WHERE u.id ="
+        "           CASE WHEN l.owner_id = ? THEN c.starter_id ELSE l.owner_id END"
+        "       ) AS other_photo,"
         "       (SELECT body FROM messages m WHERE m.conversation_id = c.id"
         "        ORDER BY m.id DESC LIMIT 1) AS last_body,"
         "       (SELECT created_at FROM messages m WHERE m.conversation_id = c.id"
@@ -378,7 +409,7 @@ def conversations_of(user_id):
         "  FROM conversations c JOIN listings l ON l.id = c.listing_id"
         " WHERE c.starter_id = ? OR l.owner_id = ?"
         " ORDER BY last_at DESC, c.id DESC",
-        (user_id, user_id, user_id, user_id, user_id),
+        (user_id, user_id, user_id, user_id, user_id, user_id),
     ).fetchall()
     conn.close()
     return rows
