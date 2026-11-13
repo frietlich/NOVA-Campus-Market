@@ -1,0 +1,59 @@
+{# One entry in a list. The left square changes with the kind, the text does not. #}
+{% import "partials/icons.html" as icon %}
+
+{% macro card(l, extra=0) %}
+{# Tickets and things for sale always say what they cost, and Free is a price
+   like any other. A group spot has no price at all, so it says nothing. #}
+<a class="card" href="/listing/{{ l.id }}">
+
+  {% if l.type == 'ticket' %}
+    <div class="tile">
+      {% if l.event_time %}
+        <span class="time">{{ l.event_time }}</span>
+      {% else %}
+        {{ icon.ticket(22) }}
+      {% endif %}
+    </div>
+  {% elif l.type == 'group' %}
+    <div class="tile">
+      <span class="big">{{ l.quantity or 1 }}</span>
+      <span class="cap">{{ 'SPOT' if (l.quantity or 1) == 1 else 'SPOTS' }}</span>
+    </div>
+  {% else %}
+    <div class="thumb">
+      {% if l.photo %}<img src="/static/uploads/{{ l.photo }}" alt="">
+      {% else %}{{ icon.picture(22) }}{% endif %}
+    </div>
+  {% endif %}
+
+  <div class="card-body">
+    <div class="card-top">
+      <span class="card-title">{{ l.title }}</span>
+      {% if l.price is not none %}
+        <span class="card-price">{% if extra %}<span class="from">from</span> {% endif %}{{ l.price | money }}</span>
+      {% elif l.type in ('ticket', 'item') %}
+        <span class="card-price">Free</span>
+      {% endif %}
+    </div>
+
+    {% if l.type == 'ticket' %}
+      <span class="card-info truncate">
+        {{ l.place or 'Place not given' }}
+        {%- if l.quantity %} · {{ l.quantity }} left{% endif -%}
+      </span>
+      <span class="card-owner truncate">
+        {%- if extra -%}
+          {{ extra + 1 }} students selling
+        {%- else -%}
+          {{ l.owner_name }}
+        {%- endif -%}
+      </span>
+    {% else %}
+      {% if l.course_name %}<span class="course-line truncate">{{ l.course_name }}</span>{% endif %}
+      <span class="card-info">{{ l.info }}</span>
+      <span class="card-owner truncate">{{ l.owner_name }} · {{ l.owner_programme | short }}</span>
+    {% endif %}
+  </div>
+
+</a>
+{% endmacro %}

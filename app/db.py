@@ -152,7 +152,12 @@ def _listing_sql(where, order="l.created_at DESC"):
     )
 
 
-def listings_of_type(kind, search="", only_for=None):
+ORDER_FOR = {
+    "ticket": "l.event_date, l.event_time, l.price, l.id",
+}
+
+
+def listings_of_type(kind, search="", only_for=None, category=None):
     """Open listings in one tab.
 
     Search looks in the title, the grey line and the course name. Give
@@ -161,6 +166,10 @@ def listings_of_type(kind, search="", only_for=None):
     """
     where = "l.type = ? AND l.status = 'open'"
     args = [kind]
+
+    if category:
+        where += " AND l.category = ?"
+        args.append(category)
 
     if only_for is not None:
         where += (" AND l.course_id IN (SELECT course_id FROM enrolments"
@@ -173,7 +182,8 @@ def listings_of_type(kind, search="", only_for=None):
         args += [f"%{search.strip()}%"] * 5
 
     conn = connect()
-    rows = conn.execute(_listing_sql(where), tuple(args)).fetchall()
+    order = ORDER_FOR.get(kind, "l.created_at DESC")
+    rows = conn.execute(_listing_sql(where, order), tuple(args)).fetchall()
     conn.close()
     return rows
 
@@ -198,16 +208,18 @@ def listings_of_user(user_id):
 
 
 def create_listing(owner_id, kind, title, description="", price=None, info="",
-                   event_date=None, spots=None, course_id=None):
+                   category=None, event_date=None, event_time=None, place=None,
+                   quantity=None, course_id=None):
     if kind not in TYPES:
         raise ValueError(f"unknown type {kind}")
     conn = connect()
     cur = conn.execute(
         "INSERT INTO listings (owner_id, type, title, description, price, info,"
-        " event_date, spots, course_id, status, views, created_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', 0, ?)",
-        (owner_id, kind, title, description, price, info, event_date, spots,
-         course_id, now()),
+        " category, event_date, event_time, place, quantity, course_id,"
+        " status, views, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', 0, ?)",
+        (owner_id, kind, title, description, price, info, category, event_date,
+         event_time, place, quantity, course_id, now()),
     )
     conn.commit()
     new_id = cur.lastrowid

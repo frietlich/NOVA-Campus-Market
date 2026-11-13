@@ -3,6 +3,8 @@
 
 :root {
   --accent: #0A66E8;
+  --accent-soft: rgba(10, 102, 232, 0.09);
+  --perf: rgba(0, 0, 0, 0.16);   /* the tear line on a ticket */
   --bg: #F4F4F6;
   --card: #FFFFFF;
   --ink: #0B0B0F;
@@ -587,6 +589,109 @@ img { display: block; max-width: 100%; }
   z-index: 5;
 }
 
+/* A ticket has no photo, so the top of the page is a coloured block with a
+   paper stub on it. The bite marks and the dotted line are what make the eye
+   read it as a ticket. */
+.ticket-head {
+  background: var(--accent);
+  padding: var(--top) 16px 46px;
+}
+
+.ticket-back {
+  width: 44px; height: 44px;
+  border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  color: #0B0B0F;
+}
+
+/* STUB_SPLIT is where the perforation sits. The two notches are centred on
+   the same number, so the line and the bite marks always line up. */
+.stub {
+  --split: 96px;
+  --split-right: 46px;
+  position: relative;
+  display: flex;
+  margin-top: 22px;
+  background: var(--card);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.stub-day {
+  width: var(--split); flex: none;
+  padding: 16px 8px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  border-right: 2px dashed var(--perf);
+  color: var(--ink);
+}
+
+.stub-day span {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px; letter-spacing: 2px;
+  color: var(--muted);
+}
+
+.stub-day b {
+  font-size: 42px; font-weight: 700; line-height: 1.1; letter-spacing: -1.2px;
+}
+
+.notch {
+  position: absolute;
+  left: calc(var(--split) - 9px);
+  width: 18px; height: 18px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.notch--top { top: -9px; }
+.notch--bottom { bottom: -9px; }
+.notch--right { left: auto; right: calc(var(--split-right) - 9px); }
+
+.stub-no {
+  width: var(--split-right); flex: none;
+  border-left: 2px dashed var(--perf);
+  display: flex; align-items: center; justify-content: center;
+}
+
+.stub-no span {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px; letter-spacing: 2px;
+  color: var(--muted);
+}
+
+.stub-main {
+  flex: 1; min-width: 0;
+  padding: 15px 16px;
+  display: flex; flex-direction: column; gap: 12px;
+  color: var(--ink);
+}
+
+.stub-fields { display: flex; gap: 22px; }
+
+/* Small printed label, value underneath. The same way a real ticket sets
+   out what it is for. */
+.field { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+
+.field span {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 10px; letter-spacing: 1.4px;
+  color: var(--faint);
+}
+
+.field b { font-size: 26px; font-weight: 700; letter-spacing: -0.6px; line-height: 1.15; }
+
+.field--wide b {
+  font-size: 17px; letter-spacing: -0.2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.pill--on { background: var(--accent-soft); color: var(--accent); }
+
 .detail-body {
   position: relative;
   margin-top: -20px;
@@ -755,6 +860,67 @@ img { display: block; max-width: 100%; }
   font-size: 11px; font-weight: 600; letter-spacing: 0.7px; color: var(--muted);
 }
 
+/* -------------------------------------------------------------- the chips */
+
+.chips {
+  display: flex;
+  gap: 6px;
+  flex: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 -16px;
+  padding: 0 16px 2px;
+}
+
+.chips::-webkit-scrollbar { display: none; }
+
+.chip {
+  flex: none;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: var(--tint);
+  font-size: 13px; font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.chip--on { background: var(--accent); color: #FFFFFF; }
+
+/* ------------------------------------------------------------- the by day */
+
+.day-block { display: flex; flex-direction: column; }
+
+.day-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bg);
+  margin: 10px 0 8px;
+  padding: 8px 0 8px 2px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  text-transform: none;
+  color: var(--ink);
+}
+
+.more {
+  align-self: flex-start;
+  margin: 8px 0 2px 2px;
+  min-height: 36px;
+  display: inline-flex; align-items: center;
+  font-size: 14px; font-weight: 600;
+  color: var(--accent);
+}
+
+.card-price .from {
+  font-size: 11px; font-weight: 600; color: var(--muted);
+}
+
+.tile .time {
+  font-size: 15px; font-weight: 700; letter-spacing: -0.2px;
+}
+
 /* -------------------------------------------------------------- the scope */
 
 .segment {
@@ -849,6 +1015,8 @@ img { display: block; max-width: 100%; }
     --hair: rgba(255, 255, 255, 0.07);
     --tint: rgba(255, 255, 255, 0.07);
     --accent: #4E97FF;
+    --accent-soft: rgba(78, 151, 255, 0.16);
+    --perf: rgba(255, 255, 255, 0.22);
   }
 
   .tabbar, .chat-head, .composer { background: rgba(18, 18, 22, 0.78); box-shadow: none; }

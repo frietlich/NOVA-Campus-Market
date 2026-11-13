@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import db, passwords, programmes
+from . import categories, db, passwords, programmes
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 UPLOADS = os.path.join(HERE, "static", "uploads")
@@ -117,6 +117,19 @@ def event_badge(iso_date):
             "month": d.strftime("%b").upper()}
 
 
+def day_label(iso_date):
+    """FRIDAY 20 NOV for a heading, and TODAY or TOMORROW when it is close."""
+    if not iso_date:
+        return "NO DATE"
+    d = datetime.strptime(iso_date, "%Y-%m-%d").date()
+    today = datetime.now().astimezone().date()
+    if d == today:
+        return "Today"
+    if (d - today).days == 1:
+        return "Tomorrow"
+    return d.strftime("%A %-d %B")
+
+
 def pretty_date(iso_date):
     if not iso_date:
         return ""
@@ -136,6 +149,8 @@ templates.env.filters["when"] = when
 templates.env.filters["month"] = month
 templates.env.filters["ago"] = ago
 templates.env.globals["event_badge"] = event_badge
+templates.env.filters["day_label"] = day_label
+templates.env.filters["category"] = categories.label
 templates.env.globals["pretty_date"] = pretty_date
 def asset(path):
     """static/css/app.css?v=1763... so the browser never serves an old file.
@@ -155,6 +170,54 @@ templates.env.globals["TABS"] = TABS
 templates.env.globals["PROGRAMME_GROUPS"] = programmes.GROUPS
 templates.env.globals["CEMS"] = programmes.CEMS
 templates.env.globals["PASSWORD_RULES"] = passwords.RULES
+templates.env.globals["TICKET_CATEGORIES"] = categories.TICKET
+
+
+PER_DAY = 4
+
+
+def by_day(rows, open_day=None):
+    """Turn a flat list of tickets into one block per day.
+
+    Two tickets are the same event when they are at the same time and the
+    same place, whatever their owners called them. The short view then shows
+    one card per event, so a party with forty tickets cannot push the rest of
+    the day off the screen.
+    """
+    days = []
+    for row in rows:
+        date = row["event_date"] or ""
+        if not days or days[-1]["date"] != date:
+            days.append({"date": date, "all": []})
+        days[-1]["all"].append(row)
+
+    for day in days:
+        events, seen = [], {}
+        for row in day["all"]:
+            key = (row["event_time"] or "", (row["place"] or "").strip().lower())
+            if key in seen:
+                seen[key]["extra"] += 1
+            else:
+                card = {"listing": row, "extra": 0}
+                seen[key] = card
+                events.append(card)
+
+        day["total"] = len(day["all"])
+        day["open"] = day["date"] == open_day
+        one_each = [{"listing": r, "extra": 0} for r in day["all"]]
+
+        if day["open"]:
+            day["cards"] = one_each
+        elif len(events) == 1:
+            # Only one event that day, so there is nothing for it to push off
+            # the screen. Show the tickets themselves instead of one card
+            # standing in for all of them.
+            day["cards"] = one_each[:PER_DAY]
+        else:
+            day["cards"] = events[:PER_DAY]
+
+        day["more"] = not day["open"] and day["total"] > len(day["cards"])
+    return days
 
 
 def page(request, template, **values):
@@ -429,7 +492,7 @@ def dev_login(request: Request, user_id: int = Form(...)):
 
 # --------------------------------------------------------------- the four tabs
 
-def tab_page(request, kind, q, scope="mine"):
+def tab_page(request, kind, q, scope="mine", cat="", day=""):
     me = me_or_none(request)
     if me is None:
         return go("/start")
@@ -440,9 +503,17 @@ def tab_page(request, kind, q, scope="mine"):
     mine = db.courses_of(me["id"]) if kind == "group" else []
     only_for = me["id"] if (kind == "group" and scope == "mine") else None
 
-    rows = db.listings_of_type(kind, q or "", only_for=only_for)
+    cat = cat if categories.is_valid(cat) else ""
+    rows = db.listings_of_type(kind, q or "", only_for=only_for,
+                               category=cat or None)
+
+    # Tickets are the one tab that is read by day, so they are grouped before
+    # the page sees them. Everything else stays a plain list.
+    days = by_day(rows, day) if kind == "ticket" else None
+
     return page(request, "listings.html", tab=tab, listings=rows, q=q or "",
-                active=kind, me=me, scope=scope, my_courses=mine)
+                active=kind, me=me, scope=scope, my_courses=mine,
+                days=days, cat=cat, open_day=day)
 
 
 @app.get("/housing")
@@ -451,8 +522,8 @@ def housing(request: Request, q: str = ""):
 
 
 @app.get("/tickets")
-def tickets(request: Request, q: str = ""):
-    return tab_page(request, "ticket", q)
+def tickets(request: Request, q: str = "", cat: str = "", day: str = ""):
+    return tab_page(request, "ticket", q, cat=cat, day=day)
 
 
 @app.get("/market")
@@ -579,8 +650,11 @@ async def new_listing(request: Request,
                       title: str = Form(""),
                       price: str = Form(""),
                       info: str = Form(""),
+                      category: str = Form(""),
                       event_date: str = Form(""),
-                      spots: str = Form(""),
+                      event_time: str = Form(""),
+                      place: str = Form(""),
+                      quantity: str = Form(""),
                       course_id: str = Form(""),
                       description: str = Form(""),
                       photos: List[UploadFile] = File(default=[])):
@@ -600,6 +674,10 @@ async def new_listing(request: Request,
         return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
                     my_courses=mine, error="Pick the course this group is for.")
 
+    if kind == "ticket" and not event_date.strip():
+        return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
+                    my_courses=mine, error="A ticket needs the date of the event.")
+
     listing_id = db.create_listing(
         owner_id=me["id"],
         kind=kind,
@@ -607,14 +685,17 @@ async def new_listing(request: Request,
         description=description.strip(),
         price=float(price) if price.strip() else None,
         info=info.strip(),
+        category=categories.clean(category) if kind == "ticket" else None,
         event_date=event_date.strip() or None,
-        spots=int(spots) if spots.strip().isdigit() else None,
+        event_time=event_time.strip() or None,
+        place=place.strip() or None,
+        quantity=int(quantity) if quantity.strip().isdigit() else None,
         course_id=int(course_id) if (kind == "group" and course_id.strip().isdigit())
         else None,
     )
 
     position = 0
-    for upload in photos or []:
+    for upload in (photos or []) if kind != "ticket" else []:
         if not upload or not upload.filename:
             continue
         ext = os.path.splitext(upload.filename)[1].lower()

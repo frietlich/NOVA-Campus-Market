@@ -122,20 +122,68 @@ HOUSING = [
      "here for one semester."),
 ]
 
+# Owner, category, date, time, place, title, price each, how many,
+# description. Saturday the 21st is on purpose crowded, six students selling
+# for the same night at the same place, so you can see that the short view
+# still shows the other three events of that day.
 TICKETS = [
-    ("Tiago R.",   "Sunset rooftop party",       15, "2 available · face value €20", "2026-11-20",
-     "Two tickets left for the rooftop party. I paid twenty each, happy to pass them on for "
-     "fifteen. Transfer by app, I send them the same day."),
-    ("Clara V.",   "Student night, Urban Beach", 12, "1 available · entry before 1am", "2026-11-21",
-     "One spare ticket. Entry only before one in the morning, after that the ticket is dead."),
-    ("Sofia M.",   "Finance Ball, seated table", 45, "1 available · table of eight", "2026-11-27",
+    ("Tiago R.",     "party",     "2026-11-20", "19:00", "Rooftop Bairro Alto",
+     "Sunset rooftop party", 15, 2,
+     "Leaving at midnight. Two tickets left for the rooftop party. Transfer "
+     "by app, I send them the same day."),
+    ("Lena K.",      "travel",    "2026-11-20", "07:30", "Sete Rios",
+     "Bus to Porto, one seat", 12, 1,
+     "Window seat, can be renamed. I booked the early bus and cannot go. The "
+     "company lets you rename the ticket for free until the day before."),
+    ("Clara V.",     "party",     "2026-11-21", "23:00", "Urban Beach",
+     "Student night, Urban Beach", 12, 1,
+     "Entry before 1am. One spare ticket. Entry only before one in the "
+     "morning, after that the ticket is dead."),
+    ("Mariana S.",   "party",     "2026-11-21", "23:00", "Urban Beach",
+     "Two for student night", 12, 2,
+     "Entry before 1am. Two tickets, we are not going any more. Same price I "
+     "paid."),
+    ("João P.",      "party",     "2026-11-21", "23:00", "Urban Beach",
+     "Urban Beach, one left", 10, 1,
+     "Entry before 1am. Selling below face value, I just want it gone."),
+    ("Noah B.",      "party",     "2026-11-21", "23:00", "Urban Beach",
+     "Student night tickets", 14, 2,
+     "Entry before 1am. Two tickets. I can meet on campus during the day to "
+     "hand them over."),
+    ("Sofia M.",     "party",     "2026-11-21", "23:00", "Urban Beach",
+     "One ticket, Saturday", 12, 1,
+     "Entry before 1am. One ticket for Saturday. Transfer by app."),
+    ("Lena K.",      "party",     "2026-11-21", "23:00", "Urban Beach",
+     "Three for Urban Beach", 11, 3,
+     "Entry before 1am. Three together, our group dropped out. Happy to "
+     "split them up."),
+    ("Lena K.",      "sports",    "2026-11-21", "09:00", "Jamor",
+     "Padel tournament, day pass", None, 3,
+     "Saturday morning. Three day passes going free, we signed up and cannot "
+     "make it. First to write gets them."),
+    ("André C.",     "concert",   "2026-11-21", "21:00", "Coliseu dos Recreios",
+     "Jazz at the Coliseu", 28, 2,
+     "Seats together, first balcony. Two seats next to each other. Printed "
+     "tickets, I hand them over on campus."),
+    ("Inês B.",      "culture",   "2026-11-21", "18:00", "Museu Berardo",
+     "Museum night, two entries", 6, 2,
+     "Entry until 22:00. Two entries for the late opening. They are not "
+     "named, anyone can use them."),
+    ("Sofia M.",     "culture",   "2026-11-27", "20:00", "Hotel Cascais Miragem",
+     "Finance Ball, seated table", 45, 1,
      "One seat at our table of eight. Dinner included, drinks are not."),
-    ("Lena K.",    "Padel tournament, day pass", None, "3 available · Saturday morning", "2026-11-28",
-     "Three day passes going free, we signed up and cannot make it. First to write gets them."),
-    ("André C.",   "Football, upper tier",       38, "2 available · seats together", "2026-11-29",
-     "Two seats next to each other in the upper tier. Printed tickets, I hand them over on campus."),
-    ("Mariana S.", "Half marathon bib",          25, "1 available · transfer by 5 Dec", "2026-12-06",
-     "My bib for the half marathon. The transfer has to go through before the fifth of December."),
+    ("Noah B.",      "travel",    "2026-11-28", "06:15", "Lisbon Airport",
+     "Flight to Madrid, one seat", 39, 1,
+     "Hand luggage only. I booked twice by mistake. The name can be changed "
+     "for a small fee."),
+    ("André C.",     "sports",    "2026-11-29", "17:30", "Estádio da Luz",
+     "Football, upper tier", 38, 2,
+     "Seats together. Two seats next to each other in the upper tier. "
+     "Printed tickets."),
+    ("Mariana S.",   "sports",    "2026-12-06", "08:00", "Parque das Nações",
+     "Half marathon bib", 25, 1,
+     "Transfer by 5 Dec. My bib for the half marathon. The transfer has to "
+     "go through before the fifth of December."),
 ]
 
 MARKET = [
@@ -156,7 +204,7 @@ MARKET = [
      "Warm winter coat, size M, worn for one season only. Washed and ready."),
 ]
 
-# Owner, course, title, spots, grey line, description.
+# Owner, course, title, free spots, grey line, description.
 # Three of these are in a course you take, the rest are not. That difference is
 # the whole point of the Groups tab.
 GROUPS = [
@@ -231,13 +279,16 @@ def main():
                 (ids[student], course_id[code]),
             )
 
-    def add(owner, kind, title, price, info, description, event_date=None,
-            spots=None, course=None, days_ago=2, views=0, status="open"):
+    def add(owner, kind, title, price, info, description, category=None,
+            event_date=None, event_time=None, place=None, quantity=None,
+            course=None, days_ago=2, views=0, status="open"):
         cur = conn.execute(
             "INSERT INTO listings (owner_id, type, title, description, price, info,"
-            " event_date, spots, course_id, status, views, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (ids[owner], kind, title, description, price, info, event_date, spots,
+            " category, event_date, event_time, place, quantity, course_id,"
+            " status, views, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (ids[owner], kind, title, description, price, info, category,
+             event_date, event_time, place, quantity,
              course_id[course] if course else None, status, views, stamp(days_ago)),
         )
         return cur.lastrowid
@@ -246,15 +297,18 @@ def main():
     for n, (owner, title, price, info, text) in enumerate(HOUSING):
         listing[title] = add(owner, "housing", title, price, info, text,
                              days_ago=2 + n, views=31 - n * 3)
-    for n, (owner, title, price, info, date, text) in enumerate(TICKETS):
-        listing[title] = add(owner, "ticket", title, price, info, text,
-                             event_date=date, days_ago=1 + n, views=18 - n)
+    for n, (owner, cat, date, at, place, title, price, many, text) in enumerate(TICKETS):
+        listing[title] = add(owner, "ticket", title, price, "", text,
+                             category=cat, event_date=date, event_time=at,
+                             place=place, quantity=many, days_ago=1 + (n % 6),
+                             views=24 - n)
     for n, (owner, title, price, info, text) in enumerate(MARKET):
         listing[title] = add(owner, "item", title, price, info, text,
                              days_ago=1 + n, views=24 - n * 2)
     for n, (owner, code, title, spots, info, text) in enumerate(GROUPS):
-        listing[title] = add(owner, "group", title, None, info, text, spots=spots,
-                             course=code, days_ago=1 + n, views=14 - n)
+        listing[title] = add(owner, "group", title, None, info, text,
+                             quantity=spots, course=code, days_ago=1 + n,
+                             views=14 - n)
 
     owner, kind, title, price, info, text = CLOSED
     listing[title] = add(owner, kind, title, price, info, text, days_ago=9, views=40,

@@ -63,6 +63,7 @@ special character.
     app/db.py          every read and write of the database, nobody else writes SQL
     app/programmes.py  the list of programmes the school offers
     app/passwords.py   the password rules and how a password is stored
+    app/categories.py  what a ticket can be for
     app/schema.sql     the five tables
     app/seed.py        the fake students and entries
     app/templates/     one file per screen, plus partials for the icons and the tab bar
@@ -98,6 +99,27 @@ shows it in the dropdown and then asks which master it sits on, but we store
 the master in `users.programme` and a plain yes or no in `users.cems`. That
 way every other part of the app reads a normal programme and the special case
 lives in one place.
+
+## How Tickets is read by day
+
+A long list of tickets sorted by date is unusable, because the day you care
+about is buried. So Tickets is not one list, it is one block per day with the
+date as a heading.
+
+Inside a day, two tickets are the same event when they are at the same time
+and the same place. The name does not count, because six students selling for
+the same night will call their entry six different things. The short view then
+shows one card per event with a note saying how many others are selling, so a
+party with forty tickets cannot push the other events of that day off the
+screen. `View all` opens the day in full, sorted by time and then by price.
+
+Grouping only happens when there is something to protect. A day left with a
+single event, which is what a category filter usually does, shows the tickets
+themselves instead of one card standing in for all of them.
+
+The chips above the list filter by category, which is the other half of the
+same problem. Both live in the address, so a filtered day can be sent to
+somebody as a link.
 
 ## How Groups stays short
 

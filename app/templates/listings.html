@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% import "partials/icons.html" as icon %}
 {% import "partials/avatar.html" as av %}
+{% import "partials/card.html" as c %}
 {% block title %}{{ tab.label }}{% endblock %}
 {% block body %}
 <div class="app app--tabs">
@@ -23,6 +24,17 @@
       {% endif %}
     </form>
 
+    {% if tab.kind == 'ticket' %}
+      <div class="chips">
+        <a href="/tickets{% if q %}?q={{ q }}{% endif %}"
+           class="chip {{ 'chip--on' if not cat }}">All</a>
+        {% for key, name in TICKET_CATEGORIES %}
+          <a href="/tickets?cat={{ key }}{% if q %}&q={{ q }}{% endif %}"
+             class="chip {{ 'chip--on' if cat == key }}">{{ name }}</a>
+        {% endfor %}
+      </div>
+    {% endif %}
+
     {% if tab.kind == 'group' %}
       <div class="segment">
         <a href="/groups{% if q %}?q={{ q }}{% endif %}"
@@ -33,51 +45,33 @@
     {% endif %}
 
     {% if listings %}
-      <div class="list">
-        {% for l in listings %}
-          <a class="card" href="/listing/{{ l.id }}">
+      {% if days is not none %}
 
-            {% if l.type == 'ticket' %}
-              {% set d = event_badge(l.event_date) %}
-              <div class="tile">
-                {% if d %}
-                  <span class="cap">{{ d.weekday }}</span>
-                  <span class="big">{{ d.day }}</span>
-                  <span class="cap">{{ d.month }}</span>
-                {% else %}
-                  {{ icon.ticket(22) }}
-                {% endif %}
-              </div>
-            {% elif l.type == 'group' %}
-              <div class="tile">
-                <span class="big">{{ l.spots or 1 }}</span>
-                <span class="cap">{{ 'SPOT' if (l.spots or 1) == 1 else 'SPOTS' }}</span>
-              </div>
-            {% else %}
-              <div class="thumb">
-                {% if l.photo %}
-                  <img src="/static/uploads/{{ l.photo }}" alt="">
-                {% else %}
-                  {{ icon.picture(22) }}
-                {% endif %}
-              </div>
-            {% endif %}
-
-            <div class="card-body">
-              <div class="card-top">
-                <span class="card-title">{{ l.title }}</span>
-                {% if l.price is not none %}<span class="card-price">{{ l.price | money }}</span>{% endif %}
-              </div>
-              {% if l.course_name %}
-                <span class="course-line truncate">{{ l.course_name }}</span>
-              {% endif %}
-              <span class="card-info">{{ l.info }}</span>
-              <span class="card-owner truncate">{{ l.owner_name }} · {{ l.owner_programme | short }}</span>
+        {% for day in days %}
+          <div class="day-block">
+            <span class="section day-head">{{ day.date | day_label }}</span>
+            <div class="list">
+              {% for item in day.cards %}
+                {{ c.card(item.listing, item.extra) }}
+              {% endfor %}
             </div>
-
-          </a>
+            {% if day.more %}
+              <a class="more" href="/tickets?day={{ day.date }}{% if cat %}&cat={{ cat }}{% endif %}{% if q %}&q={{ q }}{% endif %}">
+                View all {{ day.total }} tickets
+              </a>
+            {% elif day.open and day.total > 1 %}
+              <a class="more" href="/tickets{% if cat %}?cat={{ cat }}{% endif %}{% if q %}{{ '&' if cat else '?' }}q={{ q }}{% endif %}">
+                Show less
+              </a>
+            {% endif %}
+          </div>
         {% endfor %}
-      </div>
+
+      {% else %}
+        <div class="list">
+          {% for l in listings %}{{ c.card(l) }}{% endfor %}
+        </div>
+      {% endif %}
     {% else %}
       <div class="empty">
         {{ icon.of_kind(tab.kind, 34, 1.4) }}
