@@ -261,7 +261,7 @@ def start_page(request: Request):
 
 def join_page(request, form, error="", picked=()):
     return page(request, "join.html", f=form, error=error,
-                masters=programmes.MASTER, courses=db.all_courses(),
+                masters=programmes.MASTER, courses=db.all_catalogue_options(),
                 picked=set(picked))
 
 
@@ -336,7 +336,7 @@ async def join(request: Request,
     if saved:
         db.update_profile(user_id, name, chosen, cems, saved)
 
-    db.set_enrolments(user_id, picked)
+    db.set_enrolments(user_id, set(map(int, picked)) & db.valid_course_ids(chosen))
 
     code = db.new_code(user_id)
     # Person 2 replaces this print with a real e-mail. Until then the code is
@@ -546,12 +546,8 @@ def courses_form(request: Request, back: str = "/profile"):
         return go("/start")
     chosen = {c["id"] for c in db.courses_of(me["id"])}
 
-    # Your own programme first, because that is where your courses are.
-    mine_first = sorted(
-        db.all_courses(),
-        key=lambda c: (c["programme"] != (me["programme"] or ""), c["programme"], c["name"]),
-    )
-    return page(request, "courses.html", courses=mine_first, chosen=chosen,
+    courses = db.courses_for_programme(me["programme"])
+    return page(request, "courses.html", courses=courses, chosen=chosen,
                 back=back, me=me)
 
 
@@ -562,22 +558,9 @@ async def courses_save(request: Request):
         return go("/start")
     form = await request.form()
     picked = [v for v in form.getlist("course_id") if str(v).isdigit()]
-    db.set_enrolments(me["id"], picked)
+    db.set_enrolments(me["id"], set(map(int, picked)) & db.valid_course_ids(me["programme"]))
     back = form.get("back") or "/profile"
     return go(back if str(back).startswith("/") else "/profile")
-
-
-@app.post("/courses/new")
-def courses_add(request: Request, code: str = Form(""), name: str = Form(""),
-                back: str = Form("/profile")):
-    """Add a course that is not on the list, and join it straight away."""
-    me = me_or_none(request)
-    if me is None:
-        return go("/start")
-    new_id = db.create_course(code, name)
-    if new_id:
-        db.enrol(me["id"], new_id)
-    return go(f"/courses?back={back}")
 
 
 # ------------------------------------------------------------- one listing

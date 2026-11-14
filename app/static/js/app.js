@@ -58,6 +58,10 @@
   const rows = Array.from(list.querySelectorAll(".pick"));
   const nothing = document.getElementById("nothing");
   const picked = document.getElementById("picked");
+  const programmePicker = document.getElementById("programme");
+  const cemsPicker = document.getElementById("cems_programme");
+  const missingProgramme = document.getElementById("no-programme-courses");
+  const courseHeadings = list.querySelectorAll(".course-heading");
 
   function count() {
     const n = rows.filter((r) => r.querySelector("input").checked).length;
@@ -70,22 +74,46 @@
     if (visible.length) visible[visible.length - 1].classList.add("last");
   }
 
-  field.addEventListener("input", () => {
+  const updateFilter = () => {
     const q = field.value.trim().toLowerCase();
     let shown = 0;
+    const programme = programmePicker
+      ? (programmePicker.value === "CEMS Master in Management" ? cemsPicker.value : programmePicker.value)
+      : null;
     rows.forEach((row) => {
-      const hit = !q || row.dataset.text.includes(q);
+      let fitsProgramme = true;
+      if (programmePicker) {
+        const programmeTypes = JSON.parse(row.dataset.programmes || "{}");
+        fitsProgramme = Boolean(programme && programmeTypes[programme]);
+        const badge = row.querySelector(".course-type");
+        if (badge) badge.textContent = fitsProgramme
+          ? " · " + programmeTypes[programme].toLowerCase().replaceAll("_", " ") : "";
+      }
+      const hit = fitsProgramme && (!q || row.dataset.text.includes(q));
       row.hidden = !hit;
       if (hit) shown += 1;
     });
+    courseHeadings.forEach((heading) => {
+      const siblings = [];
+      for (let sibling = heading.nextElementSibling; sibling && !sibling.classList.contains("course-heading"); sibling = sibling.nextElementSibling) {
+        if (sibling.classList.contains("pick")) siblings.push(sibling);
+      }
+      heading.hidden = !siblings.some((row) => !row.hidden);
+    });
+    if (missingProgramme && programmePicker) {
+      missingProgramme.hidden = Boolean(programme);
+    }
     list.hidden = shown === 0;
     nothing.hidden = shown !== 0;
     lastLine();
-  });
+  };
+  field.addEventListener("input", updateFilter);
+  if (programmePicker) programmePicker.addEventListener("change", updateFilter);
+  if (cemsPicker) cemsPicker.addEventListener("change", updateFilter);
 
   list.addEventListener("change", count);
   count();
-  lastLine();
+  updateFilter();
 })();
 
 // On the edit page, picking CEMS asks which master it sits on top of, and a

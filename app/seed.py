@@ -31,73 +31,30 @@ STUDENTS = [
     ("62287@novasbe.pt",      "Noah B.",     "Exchange",                      0),
 ]
 
-# Every course on offer. Invented, but the sort of list a school really has,
-# long enough that the Groups tab is useless without the filter.
-COURSES = [
-    ("FIN2101", "Corporate Finance",            "Master in Finance"),
-    ("FIN2102", "Investments",                  "Master in Finance"),
-    ("FIN2103", "Derivatives",                  "Master in Finance"),
-    ("FIN2104", "Financial Modelling",          "Master in Finance"),
-    ("FIN2105", "Fixed Income",                 "Master in Finance"),
-    ("FIN2106", "Risk Management",              "Master in Finance"),
-    ("FIN2107", "Private Equity",               "Master in Finance"),
-    ("FIN2108", "Behavioural Finance",          "Master in Finance"),
-    ("FIN2109", "Financial Statement Analysis", "Master in Finance"),
-    ("FIN2110", "Mergers and Acquisitions",     "Master in Finance"),
-    ("FIN2111", "Econometrics I",               "Master in Finance"),
-    ("FIN2112", "Econometrics II",              "Master in Finance"),
-
-    ("MGT3201", "Strategy",                     "Master in Management"),
-    ("MGT3202", "Organisational Behaviour",     "Master in Management"),
-    ("MGT3203", "Operations Management",        "Master in Management"),
-    ("MGT3204", "Marketing Management",         "Master in Management"),
-    ("MGT3205", "Leadership",                   "Master in Management"),
-    ("MGT3206", "Business Law",                 "Master in Management"),
-    ("MGT3207", "Negotiation",                  "Master in Management"),
-    ("MGT3208", "Entrepreneurship",             "Master in Management"),
-    ("MGT3209", "Supply Chain Management",      "Master in Management"),
-    ("MGT3210", "Project Management",           "Master in Management"),
-
-    ("BAN4301", "Machine Learning",             "Master in Business Analytics"),
-    ("BAN4302", "Data Visualisation",           "Master in Business Analytics"),
-    ("BAN4303", "Statistics for Business",      "Master in Business Analytics"),
-    ("BAN4304", "Database Systems",             "Master in Business Analytics"),
-    ("BAN4305", "Introduction to Programming",  "Master in Business Analytics"),
-    ("BAN4306", "Big Data Tools",               "Master in Business Analytics"),
-    ("BAN4307", "Forecasting",                  "Master in Business Analytics"),
-    ("BAN4308", "Optimisation",                 "Master in Business Analytics"),
-    ("BAN4309", "Text Analytics",               "Master in Business Analytics"),
-    ("BAN4310", "Deep Learning",                "Master in Business Analytics"),
-
-    ("ECO5401", "Microeconomics",               "Master in Economics"),
-    ("ECO5402", "Macroeconomics",               "Master in Economics"),
-    ("ECO5403", "Development Economics",        "Master in Economics"),
-    ("ECO5404", "Labour Economics",             "Master in Economics"),
-    ("ECO5405", "International Trade",          "Master in Economics"),
-    ("ECO5406", "Public Finance",               "Master in Economics"),
-    ("ECO5407", "Game Theory",                  "Master in Economics"),
-    ("ECO5408", "Monetary Economics",           "Master in Economics"),
-
-    ("GEN1501", "Business Ethics",              "Open to all"),
-    ("GEN1502", "Sustainability",               "Open to all"),
-    ("GEN1503", "Academic Writing",             "Open to all"),
-    ("GEN1504", "Portuguese for Beginners",     "Open to all"),
-    ("GEN1505", "Capstone Project",             "Open to all"),
-    ("GEN1506", "Consulting Lab",               "Open to all"),
-]
-
-# Who is taking what. You are in five, which is why the Groups tab is short.
+# Demo records use the official catalogue. The keys below translate old demo
+# references so pre-existing example conversations and group entries still work.
+DEMO_COURSE_IDS = {
+    'FIN2101': '2253', 'FIN2102': '2229', 'FIN2103': '2218',
+    'FIN2104': '2270', 'FIN2105': '2248', 'FIN2106': '2225',
+    'FIN2109': '2222', 'FIN2110': '2204', 'FIN2111': '2269',
+    'MGT3201': '2584', 'MGT3204': '2431', 'MGT3207': '2473',
+    'MGT3202': '2336', 'MGT3205': '2459', 'MGT3208': '2332',
+    'BAN4301': '2767', 'BAN4302': '2609', 'BAN4307': '2659',
+    'BAN4305': '2477', 'ECO5407': '2185', 'ECO5403': '2176',
+    'GEN1501': '2375', 'GEN1502': '2652', 'GEN1503': '2477',
+    'GEN1504': '2477', 'GEN1505': '2638', 'GEN1506': '2698',
+}
 ENROLMENTS = {
-    "Marco C.":   ["FIN2111", "FIN2104", "BAN4305", "FIN2101", "FIN2102"],
-    "Mariana S.": ["FIN2111", "FIN2103", "FIN2109", "GEN1501"],
-    "Tiago R.":   ["MGT3201", "MGT3204", "MGT3207", "GEN1502"],
-    "Clara V.":   ["BAN4305", "FIN2102", "FIN2106", "GEN1503"],
-    "Sofia M.":   ["BAN4301", "BAN4302", "BAN4307", "FIN2104"],
-    "André C.":   ["GEN1505", "MGT3208"],
-    "Lena K.":    ["FIN2101", "FIN2105", "FIN2111", "GEN1504"],
-    "Inês B.":    ["MGT3201", "MGT3202", "MGT3205", "FIN2111"],
-    "João P.":    ["FIN2104", "FIN2110", "ECO5407", "FIN2101"],
-    "Noah B.":    ["MGT3204", "ECO5403", "GEN1504", "GEN1506"],
+    "Marco C.":   ['FIN2111','FIN2104','BAN4305','FIN2101','FIN2102'],
+    "Mariana S.": ['FIN2111','FIN2103','FIN2109','GEN1501'],
+    "Tiago R.":  ['MGT3201','MGT3204','MGT3207','GEN1502'],
+    "Clara V.":  ['BAN4305','FIN2102','FIN2106','GEN1503'],
+    "Sofia M.":  ['BAN4301','BAN4302','BAN4307','FIN2104'],
+    "André C.":  ['GEN1505','MGT3208'],
+    "Lena K.":   ['FIN2101','FIN2105','FIN2111','GEN1504'],
+    "Inês B.":   ['MGT3201','MGT3202','MGT3205','FIN2111'],
+    "João P.":   ['FIN2104','FIN2110','ECO5407','FIN2101'],
+    "Noah B.":  ['MGT3204','ECO5403','GEN1504','GEN1506'],
 }
 
 HOUSING = [
@@ -251,13 +208,14 @@ def main():
         t = t.replace(hour=hours, minute=minutes, second=0, microsecond=0)
         return t.isoformat(timespec="seconds")
 
+    # db.setup() has imported the official course catalogue.
+    # Use official course IDs rather than inventing additional courses.
     course_id = {}
-    for code, name, programme in COURSES:
-        cur = conn.execute(
-            "INSERT INTO courses (code, name, programme) VALUES (?, ?, ?)",
-            (code, name, programme),
-        )
-        course_id[code] = cur.lastrowid
+    for old_code, official_code in DEMO_COURSE_IDS.items():
+        row = conn.execute('SELECT id FROM courses WHERE code=?', (official_code,)).fetchone()
+        if row is None:
+            raise ValueError(f'Missing official course {official_code}')
+        course_id[old_code] = row['id']
 
     # One hash for everyone, worked out once instead of ten times, because
     # the calculation is slow on purpose.
@@ -275,7 +233,7 @@ def main():
     for student, codes in ENROLMENTS.items():
         for code in codes:
             conn.execute(
-                "INSERT INTO enrolments (user_id, course_id) VALUES (?, ?)",
+                "INSERT OR IGNORE INTO enrolments (user_id, course_id) VALUES (?, ?)",
                 (ids[student], course_id[code]),
             )
 
@@ -363,11 +321,12 @@ def main():
         ("Noah B.", "I am Erasmus, here until February."),
     ], days_ago=2, start_hour=16, read=False)
 
+    courses_count = conn.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
     conn.commit()
     conn.close()
 
     print(f"database written to {db.DB_PATH}")
-    print(f"{len(STUDENTS)} students, {len(COURSES)} courses, "
+    print(f"{len(STUDENTS)} students, {courses_count} courses, "
           f"{len(HOUSING) + len(TICKETS) + len(MARKET) + len(GROUPS) + 1} entries, "
           f"5 conversations")
     print(f"you are {ME}, and every demo student's password is {DEMO_PASSWORD}")

@@ -82,3 +82,13 @@ CREATE INDEX IF NOT EXISTS idx_messages_conv   ON messages (conversation_id);
 CREATE INDEX IF NOT EXISTS idx_conv_listing    ON conversations (listing_id);
 CREATE INDEX IF NOT EXISTS idx_listings_course ON listings (course_id);
 CREATE INDEX IF NOT EXISTS idx_enrolments_user ON enrolments (user_id);
+
+-- Official academic-year catalogue: a course can have a different type for
+-- each programme. This table avoids duplicating the course itself.
+CREATE TABLE IF NOT EXISTS course_offerings (
+    course_id INTEGER NOT NULL REFERENCES courses(id),
+    programme TEXT NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('MANDATORY','ELECTIVE','EXCLUSIVE_ELECTIVE','OUT_PROGRAM')),
+    PRIMARY KEY (course_id, programme)
+);
+CREATE INDEX IF NOT EXISTS idx_course_offerings_programme ON course_offerings (programme, type);
