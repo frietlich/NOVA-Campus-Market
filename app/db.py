@@ -404,7 +404,7 @@ def conversations_of(user_id):
     """Every conversation this student is in, newest message first."""
     conn = connect()
     rows = conn.execute(
-        "SELECT c.id, c.listing_id, c.starter_id, l.title, l.owner_id,"
+        "SELECT c.id, c.listing_id, c.starter_id, l.title, l.type AS kind, l.owner_id,"
         "       CASE WHEN l.owner_id = ? THEN c.starter_id ELSE l.owner_id END AS other_id,"
         "       (SELECT name FROM users u WHERE u.id ="
         "           CASE WHEN l.owner_id = ? THEN c.starter_id ELSE l.owner_id END"

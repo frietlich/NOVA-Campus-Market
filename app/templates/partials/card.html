@@ -1,13 +1,14 @@
 {# One entry in a list. The left square changes with the kind, the text does not. #}
 {% import "partials/icons.html" as icon %}
+{% import "partials/art.html" as art %}
 
 {% macro card(l, extra=0) %}
 {# Tickets and things for sale always say what they cost, and Free is a price
    like any other. A group spot has no price at all, so it says nothing. #}
-<a class="card" href="/listing/{{ l.id }}">
+<a class="card" href="/listing/{{ l.id }}" data-kind="{{ l.type }}">
 
   {% if l.type == 'ticket' %}
-    <div class="tile">
+    <div class="tile tile--ticket">
       {% if l.event_time %}
         <span class="time">{{ l.event_time }}</span>
       {% else %}
@@ -22,7 +23,7 @@
   {% else %}
     <div class="thumb">
       {% if l.photo %}<img src="/static/uploads/{{ l.photo }}" alt="">
-      {% else %}{{ icon.picture(22) }}{% endif %}
+      {% else %}{{ art.cover(l.type, l.id) }}{% endif %}
     </div>
   {% endif %}
 

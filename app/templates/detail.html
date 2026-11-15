@@ -1,9 +1,10 @@
 {% extends "base.html" %}
 {% import "partials/icons.html" as icon %}
 {% import "partials/avatar.html" as av %}
+{% import "partials/art.html" as art %}
 {% block title %}{{ listing.title }}{% endblock %}
 {% block body %}
-<div class="app detail">
+<div class="app detail" data-kind="{{ listing.type }}">
 
   {% if listing.type == 'ticket' %}
 
@@ -60,7 +61,7 @@
       {% if photos %}
         <img src="/static/uploads/{{ photos[0].filename }}" alt="">
       {% else %}
-        {{ icon.picture(40, 1.4) }}
+        {{ art.cover(listing.type, listing.id) }}
       {% endif %}
       <a class="back" href="{{ tab.path }}" aria-label="Back to {{ tab.label }}">{{ icon.back() }}</a>
       {% if photos | length > 1 %}

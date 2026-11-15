@@ -2,7 +2,7 @@
 {% import "partials/icons.html" as icon %}
 {% block title %}New entry{% endblock %}
 {% block body %}
-<div class="app">
+<div class="app" data-kind="{{ tab.kind }}">
   <form class="form" method="post" action="/new" enctype="multipart/form-data">
     <input type="hidden" name="kind" value="{{ tab.kind }}">
 

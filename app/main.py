@@ -603,7 +603,7 @@ def listing_close(request: Request, listing_id: int):
     if me is None:
         return go("/start")
     db.close_listing(listing_id, me["id"])
-    return go("/profile")
+    return go("/profile?done=closed")
 
 
 @app.post("/listing/{listing_id}/reopen")
@@ -612,7 +612,7 @@ def listing_reopen(request: Request, listing_id: int):
     if me is None:
         return go("/start")
     db.reopen_listing(listing_id, me["id"])
-    return go("/profile")
+    return go("/profile?done=reopened")
 
 
 @app.post("/listing/{listing_id}/chat")
@@ -707,7 +707,7 @@ async def new_listing(request: Request,
         db.add_photo(listing_id, name, position)
         position += 1
 
-    return go(f"/listing/{listing_id}")
+    return go(f"/listing/{listing_id}?done=published")
 
 
 PICTURE_TYPES = (".jpg", ".jpeg", ".png", ".webp", ".heic")

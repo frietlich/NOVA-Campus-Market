@@ -61,7 +61,7 @@
         {% for l in mine %}
           {% if not loop.first %}<div class="divider divider--tight"></div>{% endif %}
           <a class="row" href="/listing/{{ l.id }}">
-            <div class="mini">
+            <div class="mini" data-kind="{{ l.type }}">
               {% if l.photo %}<img src="/static/uploads/{{ l.photo }}" alt="">{% else %}{{ icon.of_kind(l.type, 19, 1.7) }}{% endif %}
             </div>
             <div class="row-body">
