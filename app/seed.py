@@ -268,6 +268,7 @@ def main():
     listing = {}
     for n, (owner, title, price, info, text) in enumerate(HOUSING):
         listing[title] = add(owner, "housing", title, price, info, text,
+                             category=("room", "studio", "room", "flat", "room", "room")[n],
                              days_ago=2 + n, views=31 - n * 3)
     for n, (owner, cat, date, at, place, title, price, many, text) in enumerate(TICKETS):
         listing[title] = add(owner, "ticket", title, price, "", text,
@@ -276,6 +277,7 @@ def main():
                              quantity=many, days_ago=1 + (n % 6), views=24 - n)
     for n, (owner, title, price, info, text) in enumerate(MARKET):
         listing[title] = add(owner, "item", title, price, info, text,
+                             category=("electronics", "furniture", "books", "transport", "electronics", "clothing")[n],
                              days_ago=1 + n, views=24 - n * 2)
     for n, (owner, code, title, spots, info, text) in enumerate(GROUPS):
         listing[title] = add(owner, "group", title, None, info, text,

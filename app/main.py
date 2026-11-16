@@ -85,7 +85,7 @@ def when(iso):
         return t.strftime("%H:%M")
     if days == 1:
         return "Yesterday"
-    return t.strftime("%-d %b")
+    return f"{t.day} {t:%b}"
 
 
 def month(iso):
@@ -117,7 +117,7 @@ def event_badge(iso_date):
     if not iso_date:
         return None
     d = datetime.strptime(iso_date, "%Y-%m-%d")
-    return {"weekday": d.strftime("%a").upper(), "day": d.strftime("%-d"),
+    return {"weekday": d.strftime("%a").upper(), "day": str(d.day),
             "month": d.strftime("%b").upper()}
 
 
@@ -131,13 +131,14 @@ def day_label(iso_date):
         return "Today"
     if (d - today).days == 1:
         return "Tomorrow"
-    return d.strftime("%A %-d %B")
+    return f"{d:%A} {d.day} {d:%B}"
 
 
 def pretty_date(iso_date):
     if not iso_date:
         return ""
-    return datetime.strptime(iso_date, "%Y-%m-%d").strftime("%-d %b %Y")
+    d = datetime.strptime(iso_date, "%Y-%m-%d")
+    return f"{d.day} {d:%b %Y}"
 
 
 def programme_label(name, cems=False):
@@ -530,7 +531,7 @@ def dev_login(request: Request, user_id: int = Form(...)):
 
 # --------------------------------------------------------------- the four tabs
 
-def tab_page(request, kind, q, scope="mine", cat="", day=""):
+def tab_page(request, kind, q, scope="mine", cat="", day="", course=None):
     me = me_or_none(request)
     if me is None:
         return go("/start")
@@ -541,9 +542,19 @@ def tab_page(request, kind, q, scope="mine", cat="", day=""):
     mine = db.courses_of(me["id"]) if kind == "group" else []
     only_for = me["id"] if (kind == "group" and scope == "mine") else None
 
-    cat = cat if categories.is_valid(cat) else ""
+    cat = cat if categories.is_valid(cat, kind) else ""
     rows = db.listings_of_type(kind, q or "", only_for=only_for,
                                category=cat or None)
+
+    course_options = []
+    if kind == "group":
+        available = db.listings_of_type(kind, only_for=only_for) if q else rows
+        course_names = {row["course_id"]: row["course_name"] for row in available if row["course_name"]}
+        course_options = sorted(course_names.items(), key=lambda item: item[1].casefold())
+        if course in course_names:
+            rows = [row for row in rows if row["course_id"] == course]
+        else:
+            course = None
 
     # Tickets are the one tab that is read by day, so they are grouped before
     # the page sees them. Everything else stays a plain list.
@@ -551,12 +562,13 @@ def tab_page(request, kind, q, scope="mine", cat="", day=""):
 
     return page(request, "listings.html", tab=tab, listings=rows, q=q or "",
                 active=kind, me=me, scope=scope, my_courses=mine,
-                days=days, cat=cat, open_day=day)
+                days=days, cat=cat, open_day=day, course=course,
+                course_options=course_options, category_options=categories.OPTIONS.get(kind, ()))
 
 
 @app.get("/housing")
-def housing(request: Request, q: str = ""):
-    return tab_page(request, "housing", q)
+def housing(request: Request, q: str = "", cat: str = ""):
+    return tab_page(request, "housing", q, cat=cat)
 
 
 @app.get("/tickets")
@@ -565,13 +577,14 @@ def tickets(request: Request, q: str = "", cat: str = "", day: str = ""):
 
 
 @app.get("/market")
-def market(request: Request, q: str = ""):
-    return tab_page(request, "item", q)
+def market(request: Request, q: str = "", cat: str = ""):
+    return tab_page(request, "item", q, cat=cat)
 
 
 @app.get("/groups")
-def groups(request: Request, q: str = "", scope: str = "mine"):
-    return tab_page(request, "group", q, "all" if scope == "all" else "mine")
+def groups(request: Request, q: str = "", scope: str = "mine", course: str = ""):
+    course_id = int(course) if course.isascii() and course.isdigit() and len(course) <= 18 else None
+    return tab_page(request, "group", q, "all" if scope == "all" else "mine", course=course_id)
 
 
 # ------------------------------------------------------------------- courses
@@ -662,7 +675,7 @@ def new_form(request: Request, kind: str = "housing", error: str = ""):
         # You cannot put up a group entry without saying which course it is for.
         return go("/courses?back=/new%3Fkind%3Dgroup")
     return page(request, "new.html", tab=BY_KIND[kind], error=error, me=me,
-                active=kind, my_courses=mine)
+                active=kind, my_courses=mine, category_options=categories.OPTIONS.get(kind, ()))
 
 
 @app.post("/new")
@@ -690,7 +703,8 @@ async def new_listing(request: Request,
 
     if not title.strip():
         return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
-                    my_courses=mine, error="An entry needs a title.")
+                    my_courses=mine, category_options=categories.OPTIONS.get(kind, ()),
+                    error="An entry needs a title.")
 
     if kind == "group" and not course_id.strip().isdigit():
         return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
@@ -698,7 +712,8 @@ async def new_listing(request: Request,
 
     if kind == "ticket" and not event_date.strip():
         return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
-                    my_courses=mine, error="A ticket needs the date of the event.")
+                    my_courses=mine, category_options=categories.OPTIONS[kind],
+                    error="A ticket needs the date of the event.")
 
     listing_id = db.create_listing(
         owner_id=me["id"],
@@ -707,7 +722,7 @@ async def new_listing(request: Request,
         description=description.strip(),
         price=float(price) if price.strip() else None,
         info=info.strip(),
-        category=categories.clean(category) if kind == "ticket" else None,
+        category=categories.clean(category, kind) if kind in categories.OPTIONS else None,
         event_date=event_date.strip() or None,
         event_time=event_time.strip() or None,
         place=place.strip() or None,

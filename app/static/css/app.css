@@ -124,6 +124,15 @@ img { display: block; max-width: 100%; }
 
 /* ------------------------------------------------------------- the search */
 
+.listing-filters {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.listing-filters .chip { justify-self: start; }
+
+
 .search {
   display: flex; align-items: center; gap: 8px;
   height: 44px; flex: none;

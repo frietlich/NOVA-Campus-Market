@@ -228,7 +228,7 @@ def listings_of_type(kind, search="", only_for=None, category=None):
     args = [kind]
 
     if category:
-        where += " AND l.category = ?"
+        where += " AND COALESCE(l.category, 'other') = ?"
         args.append(category)
 
     if only_for is not None:

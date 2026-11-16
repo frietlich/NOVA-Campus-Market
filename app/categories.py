@@ -1,8 +1,4 @@
-"""What kind of thing a ticket is for.
-
-One list, used by the form, by the chips above the list and by the check that
-nobody can send in something we do not know.
-"""
+"""Category choices shared by posting forms and listing filters."""
 
 TICKET = [
     ("party",   "Party"),
@@ -13,21 +9,28 @@ TICKET = [
     ("other",   "Other"),
 ]
 
+OPTIONS = {
+    "ticket": TICKET,
+    "housing": [("room", "Room"), ("studio", "Studio"), ("flat", "Entire flat"), ("other", "Other")],
+    "item": [("furniture", "Furniture"), ("electronics", "Electronics"), ("books", "Books"),
+             ("transport", "Transport"), ("clothing", "Clothing"), ("other", "Other")],
+}
+
 TICKET_KEYS = [key for key, _ in TICKET]
 TICKET_LABELS = dict(TICKET)
 
 DEFAULT = "other"
 
 
-def is_valid(key):
-    return key in TICKET_LABELS
+def is_valid(key, kind="ticket"):
+    return key in dict(OPTIONS.get(kind, ()))
 
 
 def label(key):
     return TICKET_LABELS.get(key, "")
 
 
-def clean(key):
+def clean(key, kind="ticket"):
     """Take what the form sent and give back something we can store."""
     key = (key or "").strip().lower()
-    return key if is_valid(key) else DEFAULT
+    return key if is_valid(key, kind) else DEFAULT

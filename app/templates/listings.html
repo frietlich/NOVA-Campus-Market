@@ -15,31 +15,40 @@
       </div>
     </div>
 
-    <form class="search" method="get" action="{{ tab.path }}" role="search">
-      {{ icon.search() }}
-      <label class="sr" for="q">Search {{ tab.label }}</label>
-      <input id="q" name="q" type="search" value="{{ q }}" placeholder="{{ tab.placeholder }}">
+    <form class="listing-filters" method="get" action="{{ tab.path }}">
+      <div class="search" role="search">
+        {{ icon.search() }}
+        <label class="sr" for="q">Search {{ tab.label }}</label>
+        <input id="q" name="q" type="search" value="{{ q }}" placeholder="{{ tab.placeholder }}">
+      </div>
       {% if tab.kind == 'group' and scope == 'all' %}
         <input type="hidden" name="scope" value="all">
       {% endif %}
+      {% if category_options %}
+        <label class="sr" for="cat">Category</label>
+        <select class="input" id="cat" name="cat">
+          <option value="">All categories</option>
+          {% for key, name in category_options %}
+            <option value="{{ key }}"{% if cat == key %} selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      {% elif course_options %}
+        <label class="sr" for="course">Course</label>
+        <select class="input" id="course" name="course">
+          <option value="">All listed courses</option>
+          {% for id, name in course_options %}
+            <option value="{{ id }}"{% if course == id %} selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      {% endif %}
+      <button type="submit" class="chip">Apply filters</button>
     </form>
-
-    {% if tab.kind == 'ticket' %}
-      <div class="chips">
-        <a href="/tickets{% if q %}?q={{ q }}{% endif %}"
-           class="chip {{ 'chip--on' if not cat }}">All</a>
-        {% for key, name in TICKET_CATEGORIES %}
-          <a href="/tickets?cat={{ key }}{% if q %}&q={{ q }}{% endif %}"
-             class="chip {{ 'chip--on' if cat == key }}">{{ name }}</a>
-        {% endfor %}
-      </div>
-    {% endif %}
 
     {% if tab.kind == 'group' %}
       <div class="segment">
-        <a href="/groups{% if q %}?q={{ q }}{% endif %}"
+        <a href="/groups{% if q %}?q={{ q | urlencode }}{% endif %}"
            aria-current="{{ 'true' if scope != 'all' else 'false' }}">My courses</a>
-        <a href="/groups?scope=all{% if q %}&q={{ q }}{% endif %}"
+        <a href="/groups?scope=all{% if q %}&q={{ q | urlencode }}{% endif %}"
            aria-current="{{ 'true' if scope == 'all' else 'false' }}">All courses</a>
       </div>
     {% endif %}
@@ -56,11 +65,11 @@
               {% endfor %}
             </div>
             {% if day.more %}
-              <a class="more" href="/tickets?day={{ day.date }}{% if cat %}&cat={{ cat }}{% endif %}{% if q %}&q={{ q }}{% endif %}">
+              <a class="more" href="/tickets?day={{ day.date }}{% if cat %}&cat={{ cat }}{% endif %}{% if q %}&q={{ q | urlencode }}{% endif %}">
                 View all {{ day.total }} tickets
               </a>
             {% elif day.open and day.total > 1 %}
-              <a class="more" href="/tickets{% if cat %}?cat={{ cat }}{% endif %}{% if q %}{{ '&' if cat else '?' }}q={{ q }}{% endif %}">
+              <a class="more" href="/tickets{% if cat %}?cat={{ cat }}{% endif %}{% if q %}{{ '&' if cat else '?' }}q={{ q | urlencode }}{% endif %}">
                 Show less
               </a>
             {% endif %}
@@ -75,14 +84,14 @@
     {% else %}
       <div class="empty">
         {{ icon.of_kind(tab.kind, 34, 1.4) }}
-        {% if tab.kind == 'group' and not my_courses %}
+        {% if tab.kind == 'group' and scope != 'all' and not my_courses %}
           <b>Tell us your courses</b>
           <p>There are hundreds of courses. Pick the ones you are taking and this tab
             shows only those.</p>
           <a class="btn" href="/courses?back=/groups"
              style="width: auto; padding: 0 22px; margin-top: 8px">Pick my courses</a>
           <a class="link link--quiet" href="/groups?scope=all">Look at all courses</a>
-        {% elif q %}
+        {% elif q or cat or course %}
           <b>Nothing found</b>
           <p>No open entry in {{ tab.label }} matches that.</p>
         {% elif tab.kind == 'group' and scope != 'all' %}

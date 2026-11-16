@@ -48,16 +48,17 @@
     <input class="input" id="title" name="title" type="text" required
            placeholder="{% if tab.kind == 'housing' %}Room in a 3-bed flat{% elif tab.kind == 'ticket' %}Student night, Urban Beach{% elif tab.kind == 'item' %}iPad Air, 11 inch{% else %}Econometrics, final project{% endif %}">
 
-    {% if tab.kind == 'ticket' %}
-
-      <label class="label" for="category">What is it for</label>
+    {% if category_options %}
+      <label class="label" for="category">Category</label>
       <select class="input" id="category" name="category" required>
         <option value="" selected disabled>Pick a category</option>
-        {% for key, name in TICKET_CATEGORIES %}
+        {% for key, name in category_options %}
           <option value="{{ key }}">{{ name }}</option>
         {% endfor %}
       </select>
+    {% endif %}
 
+    {% if tab.kind == 'ticket' %}
       <div class="pair">
         <div>
           <label class="label" for="event_date">Date</label>
