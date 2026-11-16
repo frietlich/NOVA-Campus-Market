@@ -209,17 +209,17 @@ def listings_of_user(user_id):
 
 def create_listing(owner_id, kind, title, description="", price=None, info="",
                    category=None, event_date=None, event_time=None, place=None,
-                   quantity=None, course_id=None):
+                   address=None, quantity=None, course_id=None):
     if kind not in TYPES:
         raise ValueError(f"unknown type {kind}")
     conn = connect()
     cur = conn.execute(
         "INSERT INTO listings (owner_id, type, title, description, price, info,"
-        " category, event_date, event_time, place, quantity, course_id,"
+        " category, event_date, event_time, place, address, quantity, course_id,"
         " status, views, created_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', 0, ?)",
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', 0, ?)",
         (owner_id, kind, title, description, price, info, category, event_date,
-         event_time, place, quantity, course_id, now()),
+         event_time, place, address, quantity, course_id, now()),
     )
     conn.commit()
     new_id = cur.lastrowid

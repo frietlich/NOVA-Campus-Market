@@ -149,6 +149,31 @@ Only Groups works this way. Housing, Tickets and Market are untouched.
     /chat/<id>              one conversation
     /profile                you, and the entries you put up
 
+## Where a ticket is
+
+A ticket carries two things about the place, and they do different jobs.
+
+`place` is the venue as everyone says it, Urban Beach or Jamor. It is what
+shows on the ticket at the top of the page, and together with the date and
+the time it is what decides whether two entries are the same event.
+
+`address` is the street address off the ticket. It sits under the description
+with a link that hands it to whatever map the phone already has. We draw no
+map ourselves, which is why this costs one column and one line of markup
+instead of a mapping library and an API key.
+
+## Not now, but worth knowing
+
+Things we left out on purpose. If somebody has time at the end, this is the
+list, in the order that pays off most.
+
+A real map on the page instead of a link out, which needs a mapping library,
+an API key and a way to turn an address into coordinates. Tests, one file per
+area, which is the biggest single gap against the plan. Filters for Market and
+Housing the way Tickets has them. Editing an entry you already put up. The
+mail provider, so the 6-digit code arrives by e-mail instead of in the
+terminal.
+
 ## Rules we agreed on
 
 Every student and every entry in the demo is invented. We use no Nova logo and

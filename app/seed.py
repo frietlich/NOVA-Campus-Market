@@ -122,8 +122,8 @@ HOUSING = [
      "here for one semester."),
 ]
 
-# Owner, category, date, time, place, title, price each, how many,
-# description. Saturday the 21st is on purpose crowded, six students selling
+# Owner, category, date, time, venue, title, price each, how many,
+# description. The street address of every venue is in ADDRESSES below. Saturday the 21st is on purpose crowded, six students selling
 # for the same night at the same place, so you can see that the short view
 # still shows the other three events of that day.
 TICKETS = [
@@ -185,6 +185,20 @@ TICKETS = [
      "Transfer by 5 Dec. My bib for the half marathon. The transfer has to "
      "go through before the fifth of December."),
 ]
+
+# The street address of each venue, so the entry can point at a map.
+ADDRESSES = {
+    "Rooftop Bairro Alto":     "R. do Norte 35, 1200-286 Lisboa",
+    "Sete Rios":               "Terminal Rodoviário de Sete Rios, 1500-423 Lisboa",
+    "Urban Beach":             "Cais da Viscondessa, 1200-109 Lisboa",
+    "Jamor":                   "Complexo do Jamor, 1495-751 Cruz Quebrada",
+    "Coliseu dos Recreios":    "R. das Portas de Santo Antão 96, 1150-269 Lisboa",
+    "Museu Berardo":           "Praça do Império, 1449-003 Lisboa",
+    "Hotel Cascais Miragem":   "Av. Marginal 8554, 2754-536 Cascais",
+    "Lisbon Airport":          "Alameda das Comunidades Portuguesas, 1700-111 Lisboa",
+    "Estádio da Luz":          "Av. Eusébio da Silva Ferreira, 1500-313 Lisboa",
+    "Parque das Nações":       "Passeio de Neptuno, 1990-193 Lisboa",
+}
 
 MARKET = [
     ("Mariana S.", "iPad Air, 11 inch",        290, "Good condition · with pencil",
@@ -280,15 +294,15 @@ def main():
             )
 
     def add(owner, kind, title, price, info, description, category=None,
-            event_date=None, event_time=None, place=None, quantity=None,
-            course=None, days_ago=2, views=0, status="open"):
+            event_date=None, event_time=None, place=None, address=None,
+            quantity=None, course=None, days_ago=2, views=0, status="open"):
         cur = conn.execute(
             "INSERT INTO listings (owner_id, type, title, description, price, info,"
-            " category, event_date, event_time, place, quantity, course_id,"
-            " status, views, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " category, event_date, event_time, place, address, quantity,"
+            " course_id, status, views, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (ids[owner], kind, title, description, price, info, category,
-             event_date, event_time, place, quantity,
+             event_date, event_time, place, address, quantity,
              course_id[course] if course else None, status, views, stamp(days_ago)),
         )
         return cur.lastrowid
@@ -300,8 +314,8 @@ def main():
     for n, (owner, cat, date, at, place, title, price, many, text) in enumerate(TICKETS):
         listing[title] = add(owner, "ticket", title, price, "", text,
                              category=cat, event_date=date, event_time=at,
-                             place=place, quantity=many, days_ago=1 + (n % 6),
-                             views=24 - n)
+                             place=place, address=ADDRESSES.get(place),
+                             quantity=many, days_ago=1 + (n % 6), views=24 - n)
     for n, (owner, title, price, info, text) in enumerate(MARKET):
         listing[title] = add(owner, "item", title, price, info, text,
                              days_ago=1 + n, views=24 - n * 2)

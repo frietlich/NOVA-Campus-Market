@@ -96,6 +96,20 @@
 
     {% if listing.description %}<p class="text">{{ listing.description }}</p>{% endif %}
 
+    {% if listing.type == 'ticket' and listing.address %}
+      {# No map of our own. The phone already has one, so we hand the address
+         over to it. #}
+      <a class="where" href="https://maps.google.com/?q={{ listing.address | urlencode }}"
+         target="_blank" rel="noopener">
+        <span class="where-pin">{{ icon.pin(19) }}</span>
+        <span class="where-text">
+          <b>{{ listing.place or 'Where it is' }}</b>
+          <span>{{ listing.address }}</span>
+        </span>
+        <span class="where-go">Open in maps</span>
+      </a>
+    {% endif %}
+
     <div class="rule"></div>
 
     <div class="owner">
