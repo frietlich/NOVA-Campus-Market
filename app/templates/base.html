@@ -16,6 +16,18 @@
 </head>
 <body>
 {% block body %}{% endblock %}
+{#- A short confirmation after the moments that matter. The page that sends you
+    here adds ?done=... to the address; the script removes it again. -#}
+{%- set TOASTS = {
+  'published': 'Your entry is live. Every Nova student can see it now.',
+  'closed': 'Entry closed. It is gone from the list.',
+  'reopened': 'It is back up and visible again.',
+} -%}
+{%- set done = request.query_params.get('done') if request else None -%}
+{%- if done in TOASTS -%}
+{% import "partials/icons.html" as icon %}
+<div class="toast" id="toast" role="status">{{ icon.check(20, 2) }}<span>{{ TOASTS[done] }}</span></div>
+{%- endif %}
 <script src="{{ asset('js/app.js') }}" defer></script>
 </body>
 </html>

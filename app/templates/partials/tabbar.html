@@ -1,7 +1,7 @@
 {% import "partials/icons.html" as icon %}
 <nav class="tabbar" aria-label="Main">
   {% for t in TABS %}
-    <a class="tab" href="{{ t.path }}"{% if active == t.kind %} aria-current="page"{% endif %}>
+    <a class="tab" data-kind="{{ t.kind }}" href="{{ t.path }}"{% if active == t.kind %} aria-current="page"{% endif %}>
       {{ icon.of_kind(t.kind, 24) }}
       {{ t.label }}
     </a>

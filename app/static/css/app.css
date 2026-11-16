@@ -1047,3 +1047,196 @@ img { display: block; max-width: 100%; }
   .tab .pip { border-color: rgba(18, 18, 22, 0.95); }
   .card:active, .row:active, .where:active { background: #1D1D22; }
 }
+
+/* ============================================================ design layer
+   Added on top of everything above, so the original rules stay readable.
+   1. Every kind of entry has its own colour. A page takes the colour of its
+      tab, so buttons, chips and the + follow it without any extra class.
+   2. Entries without a photo get a drawn cover instead of a grey box.
+   3. Small moments in the journey: first screen, toasts, empty states. */
+
+:root {
+  --c-housing: #12998A;
+  --c-ticket:  #E5492F;
+  --c-item:    #7A5AF0;
+  --c-group:   #0A66E8;
+}
+
+[data-kind="housing"] { --k: var(--c-housing); }
+[data-kind="ticket"]  { --k: var(--c-ticket); }
+[data-kind="item"]    { --k: var(--c-item); }
+[data-kind="group"]   { --k: var(--c-group); }
+[data-kind] { --k-soft: color-mix(in srgb, var(--k) 13%, transparent); }
+
+/* The page takes its tab's colour: every rule above that says var(--accent)
+   now follows the tab you are in. */
+.app[data-kind] { --accent: var(--k); --accent-soft: var(--k-soft); }
+
+/* ----------------------------------------------------------- the colours */
+
+.tab[data-kind][aria-current="page"] { color: var(--k); }
+
+.tile { background: var(--k-soft, var(--fill-2)); }
+.tile .big, .tile .time { color: var(--k, var(--ink)); }
+.tile .cap { color: var(--k, var(--muted)); opacity: 0.8; }
+
+/* A ticket in a list looks like the stub it is: a dotted tear line and two
+   bites out of the edge. */
+.tile--ticket {
+  position: relative;
+  border-right: 2px dashed color-mix(in srgb, var(--k) 35%, transparent);
+  border-radius: var(--r-tile) 6px 6px var(--r-tile);
+}
+.tile--ticket::before, .tile--ticket::after {
+  content: "";
+  position: absolute; right: -7px;
+  width: 12px; height: 12px;
+  border-radius: 999px;
+  background: var(--card);
+}
+.tile--ticket::before { top: -6px; }
+.tile--ticket::after { bottom: -6px; }
+
+/* --------------------------------------------------------------- covers */
+
+.cover { display: block; width: 100%; height: 100%; }
+.thumb:has(.cover), .hero:has(.cover) { background: none; }
+
+/* ----------------------------------------------------------- the cards */
+
+.card {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 14px rgba(0, 0, 0, 0.03);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.card:active { transform: scale(0.985); }
+.btn, .plus, .chip { transition: transform 0.12s ease; }
+.btn:active, .plus:active, .chip:active { transform: scale(0.97); }
+
+/* ---------------------------------------------------------- empty states */
+
+.empty > svg:first-child {
+  box-sizing: content-box;
+  padding: 18px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+/* ------------------------------------------------------------- the toast */
+
+.toast {
+  position: fixed;
+  left: 50%; top: calc(var(--top) + 8px);
+  transform: translate(-50%, 0);
+  width: calc(100% - 32px); max-width: calc(var(--app) - 32px);
+  padding: 12px 14px;
+  display: flex; align-items: center; gap: 10px;
+  border-radius: 16px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 14px; font-weight: 600; line-height: 1.35;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  z-index: 50;
+  animation: toast-in 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+.toast svg { flex: none; color: #3DDC97; }
+.toast--out { animation: toast-out 0.3s ease forwards; }
+
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, -16px) scale(0.96); } }
+@keyframes toast-out { to { opacity: 0; transform: translate(-50%, -16px); } }
+
+/* ---------------------------------------------------------- chats context */
+
+.who-pic { position: relative; flex: none; display: flex; }
+.kind-badge {
+  position: absolute; right: -4px; bottom: -4px;
+  width: 22px; height: 22px;
+  border-radius: 999px;
+  background: var(--k);
+  color: #FFFFFF;
+  border: 2px solid var(--card);
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ------------------------------------------------------- the first screen */
+
+.mark--brand {
+  background: linear-gradient(135deg, var(--c-housing), var(--c-group) 55%, var(--c-item));
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--c-group) 30%, transparent);
+}
+
+.gate--start { padding-top: calc(var(--top) + 28px); }
+.gate--start h1 { margin-top: 18px; text-align: center; }
+.gate--start p.lead { text-align: center; }
+
+.kinds {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  margin-top: 24px;
+}
+
+.kind {
+  padding: 12px;
+  border-radius: var(--r-card);
+  background: var(--card);
+  border: 1px solid var(--hair);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  display: flex; flex-direction: column; gap: 8px;
+  animation: rise 0.5s ease both;
+}
+.kind:nth-child(2) { animation-delay: 0.06s; }
+.kind:nth-child(3) { animation-delay: 0.12s; }
+.kind:nth-child(4) { animation-delay: 0.18s; }
+
+.kind-icon {
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  background: var(--k-soft); color: var(--k);
+  display: flex; align-items: center; justify-content: center;
+}
+.kind b { font-size: 15px; font-weight: 700; }
+.kind span { font-size: 12px; line-height: 1.35; color: var(--muted); }
+
+.steps {
+  list-style: none; margin: 22px 0 0; padding: 0;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.steps li { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--ink-2); }
+.steps .n {
+  width: 26px; height: 26px; flex: none;
+  border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700;
+}
+
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .kind, .toast, .toast--out { animation: none; }
+}
+
+/* ------------------------------------------------------------- dark mode */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --c-housing: #2EC4B0;
+    --c-ticket:  #FF735B;
+    --c-item:    #A28DFF;
+    --c-group:   #4E97FF;
+  }
+  [data-kind] { --k-soft: color-mix(in srgb, var(--k) 20%, transparent); }
+  .cover { filter: brightness(0.82) saturate(0.95); }
+  .card { box-shadow: none; }
+  .toast { background: #F4F4F6; color: #0B0B0F; }
+  .toast svg { color: #12A86B; }
+}
+
+/* Light category colours are bright in the dark, so text on them turns dark. */
+@media (prefers-color-scheme: dark) {
+  .app[data-kind] .btn:not(.btn--quiet):not(.btn--danger),
+  .app[data-kind] .chip--on { color: #0B0B0F; }
+}
+
+/* Your own entries on the profile carry their tab's colour too. */
+.mini[data-kind] { background: var(--k-soft); color: var(--k); }
