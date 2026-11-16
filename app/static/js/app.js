@@ -143,3 +143,17 @@
     });
   }
 })();
+
+// The confirmation after publishing or closing fades away on its own, and the
+// ?done=... leaves the address so a reload does not show it again.
+(function toast() {
+  const t = document.getElementById("toast");
+  if (!t) return;
+  const url = new URL(window.location.href);
+  url.searchParams.delete("done");
+  history.replaceState(null, "", url.pathname + url.search + url.hash);
+  setTimeout(() => {
+    t.classList.add("toast--out");
+    t.addEventListener("animationend", () => t.remove(), { once: true });
+  }, 3200);
+})();

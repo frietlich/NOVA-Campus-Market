@@ -3,22 +3,47 @@
 {% block title %}Campus Market{% endblock %}
 {% block body %}
 <div class="app">
-  <div class="gate">
-
-    <div class="grow"></div>
+  <div class="gate gate--start">
 
     <div class="brand">
-      <div class="mark">{{ icon.house(28, 1.8) }}</div>
+      <div class="mark mark--brand">{{ icon.house(28, 1.8) }}</div>
       <span>CAMPUS MARKET</span>
     </div>
 
-    <h1 style="margin-top: 28px; text-align: center">Nova students only</h1>
-    <p class="lead" style="text-align: center">
-      Rooms, tickets, things for sale and a spot in a group project. All of it
-      from students you share a campus with.
+    <h1>Nova students only</h1>
+    <p class="lead">
+      Everything the 40 WhatsApp groups were for, in one place, from students
+      you share a campus with.
     </p>
 
-    <div class="grow"></div>
+    {# The four tabs, so a new student sees what is inside before signing up. #}
+    <div class="kinds">
+      <div class="kind" data-kind="housing">
+        <span class="kind-icon">{{ icon.house(20, 1.9) }}</span>
+        <b>Housing</b><span>Rooms, sublets and lease takeovers</span>
+      </div>
+      <div class="kind" data-kind="ticket">
+        <span class="kind-icon">{{ icon.ticket(20, 1.9) }}</span>
+        <b>Tickets</b><span>Parties, concerts and games, by day</span>
+      </div>
+      <div class="kind" data-kind="item">
+        <span class="kind-icon">{{ icon.bag(20, 1.9) }}</span>
+        <b>Market</b><span>Bikes, desks, books and more</span>
+      </div>
+      <div class="kind" data-kind="group">
+        <span class="kind-icon">{{ icon.people(20, 1.9) }}</span>
+        <b>Groups</b><span>A free spot in a project group</span>
+      </div>
+    </div>
+
+    {# The whole journey in three lines. #}
+    <ol class="steps">
+      <li><span class="n">1</span>Find what you need, or put up your own</li>
+      <li><span class="n">2</span>Message the student who posted it</li>
+      <li><span class="n">3</span>Done? The entry closes and disappears</li>
+    </ol>
+
+    <div class="grow" style="min-height: 24px"></div>
 
     <a class="btn" href="/join">Create an account</a>
     <a class="btn btn--quiet" href="/login" style="margin-top: 10px">Log in</a>

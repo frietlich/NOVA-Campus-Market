@@ -2,7 +2,7 @@
 {% import "partials/icons.html" as icon %}
 {% block title %}New entry{% endblock %}
 {% block body %}
-<div class="app">
+<div class="app" data-kind="{{ tab.kind }}">
   <form class="form" method="post" action="/new" enctype="multipart/form-data">
     <input type="hidden" name="kind" value="{{ tab.kind }}">
 
@@ -69,12 +69,19 @@
         </div>
       </div>
 
-      <label class="label" for="place">Where</label>
+      <label class="label" for="place">Venue</label>
       <input class="input" id="place" name="place" type="text" maxlength="60"
              placeholder="Urban Beach">
       <p class="note" style="text-align: left; margin: 6px 2px 0">
-        Time and place are what puts your ticket next to the others for the same
-        event, so write the place the way everyone says it.
+        The name everyone uses. Time and venue are what put your ticket next to
+        the others for the same event, so write it the way people say it.
+      </p>
+
+      <label class="label" for="address">Address</label>
+      <input class="input" id="address" name="address" type="text" maxlength="120"
+             placeholder="Cais da Viscondessa, 1200-109 Lisboa">
+      <p class="note" style="text-align: left; margin: 6px 2px 0">
+        Copy it off the ticket. Whoever buys it can then open it in maps.
       </p>
 
       <div class="pair">

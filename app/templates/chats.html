@@ -16,7 +16,10 @@
         {% for c in conversations %}
           {% if not loop.first %}<div class="divider"></div>{% endif %}
           <a class="row" href="/chat/{{ c.id }}">
-            {{ av.avatar(c.other_name, c.other_photo, "md") }}
+            <span class="who-pic">
+              {{ av.avatar(c.other_name, c.other_photo, "md") }}
+              <span class="kind-badge" data-kind="{{ c.kind }}">{{ icon.of_kind(c.kind, 12, 2.2) }}</span>
+            </span>
             <div class="row-body">
               <div class="row-top">
                 <span class="row-name truncate">{{ c.other_name }}</span>

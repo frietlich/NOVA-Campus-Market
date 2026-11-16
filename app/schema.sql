@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS users (
                                                  -- password itself
     verified   INTEGER NOT NULL DEFAULT 0,       -- 0 until the e-mail code was right
     code       TEXT,                             -- the 6 digits we last sent
+    code_sent  TEXT,                             -- when that code went out
+    code_tries INTEGER NOT NULL DEFAULT 0,       -- wrong guesses at that code
     created_at TEXT    NOT NULL
 );
 
@@ -42,7 +44,8 @@ CREATE TABLE IF NOT EXISTS listings (
     category    TEXT,                            -- tickets only, see categories.py
     event_date  TEXT,                            -- tickets only, YYYY-MM-DD
     event_time  TEXT,                            -- tickets only, HH:MM
-    place       TEXT,                            -- tickets only, where it is
+    place       TEXT,                            -- tickets only, the venue name
+    address     TEXT,                            -- tickets only, the street address
     quantity    INTEGER,                         -- how many are left. Tickets to
                                                  -- sell, or free spots in a group
     course_id   INTEGER REFERENCES courses(id),  -- groups only
