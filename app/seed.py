@@ -157,22 +157,68 @@ ADDRESSES = {
     "Parque das Nações":       "Passeio de Neptuno, 1990-193 Lisboa",
 }
 
+# Owner, title, price, category, condition, grey line, description.
+# The grey line no longer repeats the condition, that is a field of its own.
+# The order is the order they went up, newest first, which is what decides
+# what lands in the row at the top of the tab.
 MARKET = [
-    ("Mariana S.", "iPad Air, 11 inch",        290, "Good condition · with pencil",
+    ("Mariana S.", "iPad Air, 11 inch",               290, "electronics", "like_new",
+     "with the pencil and the charger",
      "Two years old, always in a case. Comes with the pencil and the charger. Battery still "
      "holds a full day."),
-    ("Lena K.",    "Desk and chair",            45, "Used · pick up in Carcavelos",
+    ("Lena K.",    "Desk and chair",                   45, "furniture",   "used",
+     "pick up in Carcavelos",
      "Simple desk and an office chair. Both work fine, the desk has a scratch on the top. "
      "Pick up only, I cannot deliver."),
-    ("Tiago R.",   "Finance textbooks, bundle", 30, "Good condition · three books",
+    ("Clara V.",   "Finance textbooks, bundle",        30, "books",       "used",
+     "three books together",
      "Three books from last year, Corporate Finance, Investments and Derivatives. Barely "
      "written in."),
-    ("Sofia M.",   "City bike",                120, "Good condition · lock and lights",
-     "City bike, seven gears, serviced last month. Lock and both lights are included."),
-    ("André C.",   "Monitor, 27 inch",          95, "Good condition · no dead pixels",
-     "27 inch monitor, 1440p. No dead pixels, no scratches. Stand and cable included."),
-    ("Clara V.",   "Winter coat, size M",       25, "Good condition · worn one season",
+    ("Tiago R.",   "Surfboard, 7 foot",               150, "sports",      "used",
+     "beginner board, soft top",
+     "Seven foot soft top, the board I learned on. A few dings on the nose, all sealed. "
+     "Carcavelos is a five minute walk, you can try it first."),
+    ("Inês B.",    "Winter coat, size M",              25, "clothes",     "used",
+     "worn one season",
      "Warm winter coat, size M, worn for one season only. Washed and ready."),
+    ("Lena K.",    "Statistics lecture notes, printed", None, "books",    "used",
+     "two folders, whole course",
+     "My printed notes for the whole statistics course, in two folders. Giving them away, "
+     "I am done with the exam."),
+    ("Sofia M.",   "City bike",                       120, "sports",      "used",
+     "lock and lights included",
+     "City bike, seven gears, serviced last month. Lock and both lights are included."),
+    ("Marco C.",   "Monitor, 27 inch",                 95, "electronics", "used",
+     "no dead pixels",
+     "27 inch monitor, 1440p. No dead pixels, no scratches. Stand and cable included."),
+    ("João P.",    "Bookshelf, white",                 20, "furniture",   "used",
+     "I can help carry it",
+     "White shelf, five shelves, from the flat I am leaving. I can help carry it down if "
+     "you come with a car."),
+    ("Noah B.",    "Wetsuit, size M",                  55, "sports",      "like_new",
+     "worn five times",
+     "Three two wetsuit, size M, bought in September and worn maybe five times. No tears."),
+    ("André C.",   "Headphones, noise cancelling",     60, "electronics", "like_new",
+     "case and cable included",
+     "Over ear, noise cancelling. Barely used since I started working from the office. "
+     "Case and cable are with them."),
+    ("Mariana S.", "Desk lamp with USB",                8, "furniture",   "used",
+     "warm light",
+     "Small desk lamp with a USB socket in the base. Warm light, works fine."),
+    ("Tiago R.",   "Suit, size 48, navy",              70, "clothes",     "like_new",
+     "worn twice, for interviews",
+     "Navy suit, size 48, worn twice for interviews. Dry cleaned and in the bag."),
+    ("Clara V.",   "Corporate Finance, 4th edition",   18, "books",       "like_new",
+     "nothing written in it",
+     "The edition the course uses. I read it on the screen in the end, so there is nothing "
+     "written in this one."),
+    ("Sofia M.",   "Mattress, 90x200",                None, "furniture",  "used",
+     "clean, with a cover",
+     "Single mattress, 90 by 200, with a washed cover. Giving it away, I leave in December."),
+    ("Noah B.",    "Kettle and toaster",              None, "other",      "well_used",
+     "both work",
+     "Kettle and toaster from my kitchen. Both work, both look their age. Free, I just "
+     "cannot take them home."),
 ]
 
 # Owner, course, title, free spots, grey line, description.
@@ -205,8 +251,20 @@ GROUPS = [
 ]
 
 # Something of mine that is already gone, so the profile shows both states.
-CLOSED = ("Marco C.", "item", "Coffee machine, like new", 35, "Good condition · pick up on campus",
+CLOSED = ("Marco C.", "item", "Coffee machine, like new", 35, "pick up on campus",
           "Small filter machine, used for one semester. Already taken, leaving it here for the record.")
+
+# A few hearts, so the number on an entry and the Saved list on a profile are
+# not empty in the demo. Nobody saves their own entry, there is no button for
+# it. Student, then what they saved.
+SAVES = [
+    ("Marco C.",  ["Surfboard, 7 foot", "Jazz at the Coliseu", "Room in a 3-bed flat"]),
+    ("Lena K.",   ["Surfboard, 7 foot", "iPad Air, 11 inch"]),
+    ("Tiago R.",  ["iPad Air, 11 inch"]),
+    ("Sofia M.",  ["Surfboard, 7 foot"]),
+    ("João P.",   ["iPad Air, 11 inch"]),
+    ("Clara V.",  ["Statistics lecture notes, printed"]),
+]
 
 
 def main():
@@ -252,14 +310,15 @@ def main():
             )
 
     def add(owner, kind, title, price, info, description, category=None,
-            event_date=None, event_time=None, place=None, address=None,
-            quantity=None, course=None, days_ago=2, views=0, status="open"):
+            condition=None, event_date=None, event_time=None, place=None,
+            address=None, quantity=None, course=None, days_ago=2, views=0,
+            status="open"):
         cur = conn.execute(
             "INSERT INTO listings (owner_id, type, title, description, price, info,"
-            " category, event_date, event_time, place, address, quantity,"
+            " category, condition, event_date, event_time, place, address, quantity,"
             " course_id, status, views, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (ids[owner], kind, title, description, price, info, category,
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (ids[owner], kind, title, description, price, info, category, condition,
              event_date, event_time, place, address, quantity,
              course_id[course] if course else None, status, views, stamp(days_ago)),
         )
@@ -274,17 +333,27 @@ def main():
                              category=cat, event_date=date, event_time=at,
                              place=place, address=ADDRESSES.get(place),
                              quantity=many, days_ago=1 + (n % 6), views=24 - n)
-    for n, (owner, title, price, info, text) in enumerate(MARKET):
+    for n, (owner, title, price, cat, worn, info, text) in enumerate(MARKET):
         listing[title] = add(owner, "item", title, price, info, text,
-                             days_ago=1 + n, views=24 - n * 2)
+                             category=cat, condition=worn,
+                             days_ago=1 + n, views=26 - n)
     for n, (owner, code, title, spots, info, text) in enumerate(GROUPS):
         listing[title] = add(owner, "group", title, None, info, text,
                              quantity=spots, course=code, days_ago=1 + n,
                              views=14 - n)
 
     owner, kind, title, price, info, text = CLOSED
-    listing[title] = add(owner, kind, title, price, info, text, days_ago=9, views=40,
+    listing[title] = add(owner, kind, title, price, info, text, category="other",
+                         condition="like_new", days_ago=9, views=40,
                          status="closed")
+
+    for n, (student, titles) in enumerate(SAVES):
+        for m, what in enumerate(titles):
+            conn.execute(
+                "INSERT OR IGNORE INTO saves (user_id, listing_id, created_at)"
+                " VALUES (?, ?, ?)",
+                (ids[student], listing[what], stamp(n, 9 + m)),
+            )
 
     # Conversations. Marco writes to three people, and two people write to Marco
     # about the same entry of his, which must stay two separate conversations.
@@ -342,7 +411,7 @@ def main():
     print(f"database written to {db.DB_PATH}")
     print(f"{len(STUDENTS)} students, {courses_count} courses, "
           f"{len(HOUSING) + len(TICKETS) + len(MARKET) + len(GROUPS) + 1} entries, "
-          f"5 conversations")
+          f"5 conversations, {sum(len(t) for _, t in SAVES)} hearts")
     print(f"you are {ME}, and every demo student's password is {DEMO_PASSWORD}")
 
 

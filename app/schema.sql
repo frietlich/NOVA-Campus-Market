@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS listings (
     description TEXT    NOT NULL DEFAULT '',
     price       REAL,                            -- NULL means no price
     info        TEXT    NOT NULL DEFAULT '',     -- the grey line under the title
-    category    TEXT,                            -- tickets only, see categories.py
+    category    TEXT,                            -- tickets and market, categories.py
+    condition   TEXT,                            -- market only, how worn it is
     event_date  TEXT,                            -- tickets only, YYYY-MM-DD
     event_time  TEXT,                            -- tickets only, HH:MM
     place       TEXT,                            -- tickets only, the venue name
@@ -80,11 +81,21 @@ CREATE TABLE IF NOT EXISTS messages (
     read_at         TEXT
 );
 
+-- One heart. A student saved an entry, which is the whole table. There is no
+-- row for a heart that was taken away again, it is simply deleted.
+CREATE TABLE IF NOT EXISTS saves (
+    user_id    INTEGER NOT NULL REFERENCES users(id),
+    listing_id INTEGER NOT NULL REFERENCES listings(id),
+    created_at TEXT    NOT NULL,
+    PRIMARY KEY (user_id, listing_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_listings_type   ON listings (type, status);
 CREATE INDEX IF NOT EXISTS idx_messages_conv   ON messages (conversation_id);
 CREATE INDEX IF NOT EXISTS idx_conv_listing    ON conversations (listing_id);
 CREATE INDEX IF NOT EXISTS idx_listings_course ON listings (course_id);
 CREATE INDEX IF NOT EXISTS idx_enrolments_user ON enrolments (user_id);
+CREATE INDEX IF NOT EXISTS idx_saves_listing   ON saves (listing_id);
 
 -- Official academic-year catalogue: a course can have a different type for
 -- each programme. This table avoids duplicating the course itself.

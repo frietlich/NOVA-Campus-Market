@@ -37,7 +37,7 @@
         <div class="row">
           <div class="row-body">
             <span class="row-name truncate">{{ c.name }}</span>
-            <span class="row-meta">{{ c.code }} · {{ c.programme }}</span>
+            <span class="row-meta">{{ c.code }}</span>
           </div>
         </div>
         <div class="divider" style="margin-left: 14px"></div>
@@ -76,6 +76,34 @@
       <div class="empty">
         <b>Nothing up yet</b>
         <p>Whatever you put up shows here, open or closed.</p>
+      </div>
+    {% endif %}
+
+    <span class="section">SAVED</span>
+
+    {% if saved %}
+      <div class="rows">
+        {% for l in saved %}
+          {% if not loop.first %}<div class="divider divider--tight"></div>{% endif %}
+          <a class="row" href="/listing/{{ l.id }}">
+            <div class="mini" data-kind="{{ l.type }}">
+              {% if l.photo %}<img src="/static/uploads/{{ l.photo }}" alt="">{% else %}{{ icon.of_kind(l.type, 19, 1.7) }}{% endif %}
+            </div>
+            <div class="row-body">
+              <span class="row-name truncate">{{ l.title }}</span>
+              <span class="row-meta truncate">
+                {{ l.owner_name }} · {% if l.price is not none %}{{ l.price | money }}{% else %}Free{% endif %}
+              </span>
+            </div>
+            {% if l.status != 'open' %}<span class="badge badge--off">Gone</span>{% endif %}
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty">
+        {{ icon.heart(30, 1.5) }}
+        <b>Nothing saved</b>
+        <p>Tap the heart on anything you want to come back to and it waits here.</p>
       </div>
     {% endif %}
 

@@ -51,10 +51,31 @@
       </span>
     {% else %}
       {% if l.course_name %}<span class="course-line truncate">{{ l.course_name }}</span>{% endif %}
-      <span class="card-info">{{ l.info }}</span>
+      <span class="card-info truncate">
+        {%- if l.type == 'item' and l.condition -%}
+          {{ l.condition | condition }}{% if l.info %} · {% endif %}
+        {%- endif -%}
+        {{ l.info }}
+      </span>
       <span class="card-owner truncate">{{ l.owner_name }} · {{ l.owner_programme | short }}</span>
     {% endif %}
   </div>
 
+</a>
+{% endmacro %}
+
+
+{% macro small(l) %}
+{# The card in the row you swipe along. Picture, title, price, nothing else,
+   because it has to be readable at a third of the width. #}
+<a class="scard" href="/listing/{{ l.id }}" data-kind="{{ l.type }}">
+  <div class="scard-pic">
+    {% if l.photo %}<img src="/static/uploads/{{ l.photo }}" alt="">
+    {% else %}{{ art.cover(l.type, l.id) }}{% endif %}
+  </div>
+  <span class="scard-title truncate">{{ l.title }}</span>
+  <span class="scard-price">
+    {%- if l.price is not none -%}{{ l.price | money }}{%- else -%}Free{%- endif -%}
+  </span>
 </a>
 {% endmacro %}

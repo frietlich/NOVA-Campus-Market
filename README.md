@@ -103,17 +103,19 @@ predictable by design. All of it lives in `db.new_code` and `db.check_code`.
     app/static/uploads/ photos people upload, not in git
     docs/              the one pager and the task split
 
-## The seven tables
+## The nine tables
 
-    users          a student, their programme, photo and hashed password,
-                   whether the e-mail code was right, and the code itself
-                   with when it was sent and how often it was guessed wrong
-    courses        every course the school offers
-    enrolments     which courses a student is taking
-    listings       one entry, with a type of housing, ticket, item or group
-    photos         the pictures of one entry
-    conversations  one entry plus the one student who wrote about it
-    messages       the lines inside a conversation
+    users             a student, their programme, photo and hashed password,
+                      whether the e-mail code was right, and the code itself
+                      with when it was sent and how often it was guessed wrong
+    courses           every course the school offers
+    course_offerings  which programme a course belongs to, and how
+    enrolments        which courses a student is taking
+    listings          one entry, of type housing, ticket, item or group
+    photos            the pictures of one entry
+    saves             one student put a heart on one entry
+    conversations     one entry plus the one student who wrote about it
+    messages          the lines inside a conversation
 
 Several students can write about the same entry. Each of them gets a separate
 conversation, and neither sees the other.
@@ -152,6 +154,45 @@ themselves instead of one card standing in for all of them.
 The chips above the list filter by category, which is the other half of the
 same problem. Both live in the address, so a filtered day can be sent to
 somebody as a link.
+
+## How Market is put in order
+
+Tickets has a deadline and Market has none, so the day something went up says
+almost nothing and there is no point grouping by it. What Market gets instead
+is a line of two controls under the chips, a sort and a price. Everything
+they do stands in the address, so a filtered list can be sent to somebody and
+the back button does what you expect.
+
+The price filter is steps and not two number fields, because nobody fills in
+two number fields on a phone. Free is one of the steps rather than a switch
+standing beside them. An entry with no price is free, and free counts as
+being under every ceiling.
+
+Above the list sits one row of new entries that you swipe along. It is the
+same entries as in the list below, which is the point, it is a shortcut to
+what arrived this week. It shows on one condition, that nothing is set.
+No search, no category, Newest, Any price. Pick any one of those and the list
+itself is the answer, and an unfiltered row next to a filtered list would
+only say something that is not true of the list.
+
+A thing for sale carries a condition of its own, New, Like new, Used or Well
+used. It used to be typed into the grey line, where nothing could be done
+with it.
+
+## Saving something
+
+The heart sits top right on every entry, in all four tabs. Your own entries
+have none, saving your own thing says nothing. What you saved waits under
+SAVED on your profile, newest heart first. A saved ticket for a day that is
+over drops out by itself.
+
+An entry says how many students saved it, next to how many viewed it. The
+number only. Who saved it is never shown to anybody, which keeps the heart a
+thing you press for yourself.
+
+The button is a real form, so it works with JavaScript switched off, the page
+simply comes back fresh. With JavaScript it answers in JSON and the heart
+fills in on the spot.
 
 ## How Groups stays short
 
@@ -201,10 +242,9 @@ list, in the order that pays off most.
 
 A real map on the page instead of a link out, which needs a mapping library,
 an API key and a way to turn an address into coordinates. Tests, one file per
-area, which is the biggest single gap against the plan. Filters for Market and
-Housing the way Tickets has them. Editing an entry you already put up. The
-mail provider, so the 6-digit code arrives by e-mail instead of in the
-terminal.
+area, which is the biggest single gap against the plan. Filters for Housing
+the way Market has them. Editing an entry you already put up. The mail
+provider, so the 6-digit code arrives by e-mail instead of in the terminal.
 
 ## Rules we agreed on
 

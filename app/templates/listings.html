@@ -24,15 +24,47 @@
       {% endif %}
     </form>
 
-    {% if tab.kind == 'ticket' %}
+    {% if tab.kind in CATEGORIES_FOR %}
       <div class="chips">
-        <a href="/tickets{% if q %}?q={{ q }}{% endif %}"
+        <a href="{{ link(cat='', day='') }}"
            class="chip {{ 'chip--on' if not cat }}">All</a>
-        {% for key, name in TICKET_CATEGORIES %}
-          <a href="/tickets?cat={{ key }}{% if q %}&q={{ q }}{% endif %}"
+        {% for key, name in CATEGORIES_FOR[tab.kind] %}
+          <a href="{{ link(cat=key, day='') }}"
              class="chip {{ 'chip--on' if cat == key }}">{{ name }}</a>
         {% endfor %}
       </div>
+    {% endif %}
+
+    {% if tab.kind == 'item' %}
+      {# Market has no date to read it by, so this line is what puts it in an
+         order. Everything sits in the address, which means a filtered list
+         can be shared and the back button does what you expect. #}
+      <form class="filters" method="get" action="{{ tab.path }}" data-auto>
+        {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+        {% if cat %}<input type="hidden" name="cat" value="{{ cat }}">{% endif %}
+
+        <label class="fpill fpill--pick {{ 'fpill--on' if sort }}">
+          <span class="sr">Sort by</span>
+          <select name="sort">
+            {% for key, name in SORT_OPTIONS %}
+              <option value="{{ key }}"{{ ' selected' if sort == key }}>{{ name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <label class="fpill fpill--pick {{ 'fpill--on' if price }}">
+          <span class="sr">Price</span>
+          <select name="price">
+            {% for key, name, low, high in bands %}
+              <option value="{{ key }}"{{ ' selected' if price == key }}>{{ name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        {% if sort or price %}
+          <a class="fpill fpill--clear" href="{{ link(sort='', price='') }}">Clear</a>
+        {% endif %}
+      </form>
     {% endif %}
 
     {% if tab.kind == 'group' %}
@@ -42,6 +74,14 @@
         <a href="/groups?scope=all{% if q %}&q={{ q }}{% endif %}"
            aria-current="{{ 'true' if scope == 'all' else 'false' }}">All courses</a>
       </div>
+    {% endif %}
+
+    {% if fresh %}
+      <span class="section day-head">New this week</span>
+      <div class="strip">
+        {% for l in fresh %}{{ c.small(l) }}{% endfor %}
+      </div>
+      <span class="section day-head">All items</span>
     {% endif %}
 
     {% if listings %}
@@ -56,11 +96,11 @@
               {% endfor %}
             </div>
             {% if day.more %}
-              <a class="more" href="/tickets?day={{ day.date }}{% if cat %}&cat={{ cat }}{% endif %}{% if q %}&q={{ q }}{% endif %}">
+              <a class="more" href="{{ link(day=day.date) }}">
                 View all {{ day.total }} tickets
               </a>
             {% elif day.open and day.total > 1 %}
-              <a class="more" href="/tickets{% if cat %}?cat={{ cat }}{% endif %}{% if q %}{{ '&' if cat else '?' }}q={{ q }}{% endif %}">
+              <a class="more" href="{{ link(day='') }}">
                 Show less
               </a>
             {% endif %}
@@ -85,6 +125,10 @@
         {% elif q %}
           <b>Nothing found</b>
           <p>No open entry in {{ tab.label }} matches that.</p>
+        {% elif cat or price %}
+          <b>Nothing like that</b>
+          <p>No open entry in {{ tab.label }} matches what you picked.</p>
+          <a class="link" href="{{ tab.path }}">Clear the filters</a>
         {% elif tab.kind == 'group' and scope != 'all' %}
           <b>Nothing in your courses</b>
           <p>No group is looking for anyone in the courses you are taking.</p>

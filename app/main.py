@@ -7,12 +7,12 @@ Start it with   uvicorn app.main:app --reload   from the project folder.
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from fastapi import FastAPI, Form, Request, UploadFile, File
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -38,6 +38,31 @@ TABS = [
      "placeholder": "Course or hand in date"},
 ]
 BY_KIND = {t["kind"]: t for t in TABS}
+
+# What the Sort button on Market offers. The key is what stands in the
+# address, db.py turns it into the order the rows come back in.
+SORT_OPTIONS = [
+    ("",     "Newest"),
+    ("low",  "Price low to high"),
+    ("high", "Price high to low"),
+]
+
+# The price filter, in steps. Two number fields is something nobody fills in
+# on a phone. Key, what the button says, floor, ceiling. Free is a step like
+# any other rather than a switch standing next to them.
+PRICE_BANDS = [
+    ("",     "Any price", None, None),
+    ("free", "Free only", None, None),
+    ("10",   "Under 10",  None, 10),
+    ("25",   "Under 25",  None, 25),
+    ("50",   "Under 50",  None, 50),
+    ("50+",  "50 and up", 50,   None),
+]
+BY_BAND = {band[0]: band for band in PRICE_BANDS}
+
+# How long something counts as new, and how many of them the row holds.
+FRESH_DAYS = 7
+FRESH_MAX = 10
 
 app = FastAPI(title="Campus Market")
 app.add_middleware(SessionMiddleware, secret_key=SECRET, max_age=60 * 60 * 24 * 30)
@@ -155,6 +180,7 @@ templates.env.filters["ago"] = ago
 templates.env.globals["event_badge"] = event_badge
 templates.env.filters["day_label"] = day_label
 templates.env.filters["category"] = categories.label
+templates.env.filters["condition"] = categories.condition_label
 templates.env.globals["pretty_date"] = pretty_date
 def asset(path):
     """static/css/app.css?v=1763... so the browser never serves an old file.
@@ -174,7 +200,43 @@ templates.env.globals["TABS"] = TABS
 templates.env.globals["PROGRAMME_GROUPS"] = programmes.GROUPS
 templates.env.globals["CEMS"] = programmes.CEMS
 templates.env.globals["PASSWORD_RULES"] = passwords.RULES
-templates.env.globals["TICKET_CATEGORIES"] = categories.TICKET
+templates.env.globals["CATEGORIES_FOR"] = categories.FOR_KIND
+templates.env.globals["CONDITIONS"] = categories.CONDITION
+templates.env.globals["SORT_OPTIONS"] = SORT_OPTIONS
+templates.env.globals["PRICE_BANDS"] = PRICE_BANDS
+
+
+def as_utc(iso):
+    """A stored time as something you can compare with now."""
+    t = datetime.fromisoformat(iso)
+    return t.replace(tzinfo=timezone.utc) if t.tzinfo is None else t
+
+
+def fresh_rows(rows):
+    """The ones put up in the last week, newest first.
+
+    Market has no deadline the way Tickets has, so the only thing worth
+    lifting out of the list is what is new. These are the same entries as in
+    the list below, shown once more as a row you swipe along.
+    """
+    cut = datetime.now(timezone.utc) - timedelta(days=FRESH_DAYS)
+    new = [r for r in rows if r["created_at"] and as_utc(r["created_at"]) >= cut]
+    new.sort(key=lambda r: r["created_at"], reverse=True)
+    return new[:FRESH_MAX]
+
+
+def link_maker(path, params):
+    """Gives the page a link() that changes one thing and keeps the rest.
+
+    Without it, tapping a category would quietly throw away the price filter
+    and the sort order that are already set.
+    """
+    def link(**changes):
+        merged = dict(params)
+        merged.update(changes)
+        pairs = [(key, value) for key, value in merged.items() if value]
+        return path + ("?" + urlencode(pairs) if pairs else "")
+    return link
 
 
 PER_DAY = 4
@@ -530,7 +592,8 @@ def dev_login(request: Request, user_id: int = Form(...)):
 
 # --------------------------------------------------------------- the four tabs
 
-def tab_page(request, kind, q, scope="mine", cat="", day=""):
+def tab_page(request, kind, q, scope="mine", cat="", day="", sort="",
+             price=""):
     me = me_or_none(request)
     if me is None:
         return go("/start")
@@ -541,17 +604,37 @@ def tab_page(request, kind, q, scope="mine", cat="", day=""):
     mine = db.courses_of(me["id"]) if kind == "group" else []
     only_for = me["id"] if (kind == "group" and scope == "mine") else None
 
-    cat = cat if categories.is_valid(cat) else ""
+    # Anything the address does not recognise is dropped rather than argued
+    # with, so a hand typed link can never put the page in a state it has no
+    # button for.
+    cat = cat if categories.is_valid(cat, kind) else ""
+    sort = sort if sort in dict(SORT_OPTIONS) else ""
+    price = price if price in BY_BAND else ""
+    band = BY_BAND[price]
+
     rows = db.listings_of_type(kind, q or "", only_for=only_for,
-                               category=cat or None)
+                               category=cat or None, sort=sort or None,
+                               min_price=band[2], max_price=band[3],
+                               free_only=price == "free")
 
     # Tickets are the one tab that is read by day, so they are grouped before
     # the page sees them. Everything else stays a plain list.
     days = by_day(rows, day) if kind == "ticket" else None
 
+    # The row is what you get when you have asked for nothing. The moment you
+    # pick a category, a sort, a price or type a search, the list itself is
+    # the answer and a second unfiltered row next to it would only confuse.
+    untouched = not (q or cat or sort or price)
+    fresh = fresh_rows(rows) if kind == "item" and untouched else []
+
+    params = {"q": q or "", "cat": cat, "sort": sort, "price": price,
+              "day": day or ""}
+
     return page(request, "listings.html", tab=tab, listings=rows, q=q or "",
                 active=kind, me=me, scope=scope, my_courses=mine,
-                days=days, cat=cat, open_day=day)
+                days=days, cat=cat, open_day=day, fresh=fresh,
+                sort=sort, price=price, bands=PRICE_BANDS,
+                link=link_maker(tab["path"], params))
 
 
 @app.get("/housing")
@@ -565,8 +648,9 @@ def tickets(request: Request, q: str = "", cat: str = "", day: str = ""):
 
 
 @app.get("/market")
-def market(request: Request, q: str = ""):
-    return tab_page(request, "item", q)
+def market(request: Request, q: str = "", cat: str = "", sort: str = "",
+           price: str = ""):
+    return tab_page(request, "item", q, cat=cat, sort=sort, price=price)
 
 
 @app.get("/groups")
@@ -615,7 +699,9 @@ def listing_detail(request: Request, listing_id: int):
         db.count_view(listing_id)
         row = db.get_listing(listing_id)
     return page(request, "detail.html", listing=row, photos=db.photos_of(listing_id),
-                tab=BY_KIND[row["type"]], me=me)
+                tab=BY_KIND[row["type"]], me=me,
+                saved=db.is_saved(me["id"], listing_id),
+                saves=db.save_count(listing_id))
 
 
 @app.post("/listing/{listing_id}/close")
@@ -634,6 +720,23 @@ def listing_reopen(request: Request, listing_id: int):
         return go("/start")
     db.reopen_listing(listing_id, me["id"])
     return go("/profile?done=reopened")
+
+
+@app.post("/listing/{listing_id}/save")
+def listing_save(request: Request, listing_id: int):
+    """The heart, top right of an entry.
+
+    It answers in JSON when the page asks with fetch, so the heart fills in
+    on the spot. Without JavaScript the same button still works, the page
+    simply comes back fresh.
+    """
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    saved = db.toggle_save(me["id"], listing_id)
+    if "application/json" in request.headers.get("accept", ""):
+        return JSONResponse({"saved": saved, "count": db.save_count(listing_id)})
+    return go(f"/listing/{listing_id}")
 
 
 @app.post("/listing/{listing_id}/chat")
@@ -672,6 +775,7 @@ async def new_listing(request: Request,
                       price: str = Form(""),
                       info: str = Form(""),
                       category: str = Form(""),
+                      condition: str = Form(""),
                       event_date: str = Form(""),
                       event_time: str = Form(""),
                       place: str = Form(""),
@@ -707,7 +811,9 @@ async def new_listing(request: Request,
         description=description.strip(),
         price=float(price) if price.strip() else None,
         info=info.strip(),
-        category=categories.clean(category) if kind == "ticket" else None,
+        category=(categories.clean(category, kind)
+                  if kind in categories.FOR_KIND else None),
+        condition=categories.clean_condition(condition) if kind == "item" else None,
         event_date=event_date.strip() or None,
         event_time=event_time.strip() or None,
         place=place.strip() or None,
@@ -890,4 +996,5 @@ def profile(request: Request):
     mine = db.listings_of_user(me["id"])
     return page(request, "profile.html", mine=mine,
                 my_courses=db.courses_of(me["id"]),
+                saved=db.saved_listings(me["id"]),
                 chat_count=len(db.conversations_of(me["id"])), me=me)

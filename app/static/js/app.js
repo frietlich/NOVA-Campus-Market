@@ -144,6 +144,61 @@
   }
 })();
 
+// The heart fills in on the spot and the number next to it counts along, so
+// saving something never takes you away from what you were looking at.
+(function save() {
+  const form = document.querySelector(".save-form");
+  if (!form) return;
+  const button = form.querySelector("button");
+  const line = document.getElementById("saves");
+  const count = line ? line.querySelector("[data-count]") : null;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    let data;
+    try {
+      const answer = await fetch(form.action, {
+        method: "POST",
+        headers: { Accept: "application/json" },
+      });
+      data = await answer.json();
+    } catch (err) {
+      form.submit();   // no connection, let the page do it the plain way
+      return;
+    }
+
+    button.classList.toggle("save--on", data.saved);
+    button.setAttribute("aria-pressed", data.saved ? "true" : "false");
+    button.setAttribute("aria-label", data.saved ? "Saved" : "Save this");
+    const heart = button.querySelector("svg path");
+    if (heart) heart.setAttribute("fill", data.saved ? "currentColor" : "none");
+    if (line && count) {
+      count.textContent = data.count;
+      line.hidden = data.count === 0;
+    }
+    button.classList.remove("save--pop");
+    void button.offsetWidth;          // start the animation again from zero
+    button.classList.add("save--pop");
+  });
+})();
+
+// Picking a sort or a filter on Market loads the list straight away, so there
+// is no Apply button anywhere to look for.
+(function filters() {
+  const form = document.querySelector("form[data-auto]");
+  if (!form) return;
+
+  form.addEventListener("change", () => {
+    // A filter set to nothing has no business standing in the address, so it
+    // is switched off first and then left out of what gets sent.
+    form.querySelectorAll("select, input").forEach((field) => {
+      const off = field.type === "checkbox" ? !field.checked : !field.value;
+      if (off) field.disabled = true;
+    });
+    form.submit();
+  });
+})();
+
 // The confirmation after publishing or closing fades away on its own, and the
 // ?done=... leaves the address so a reload does not show it again.
 (function toast() {

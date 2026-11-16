@@ -22,6 +22,8 @@
 
 {% macro send(size=20, w=2) %}<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5.5M6 11.5 12 5l6 6.5" stroke="currentColor" stroke-width="{{ w }}" stroke-linecap="round" stroke-linejoin="round"/></svg>{% endmacro %}
 
+{% macro heart(size=22, w=1.9, on=false) %}<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.6S3.4 15.4 3.4 9.6a4.9 4.9 0 0 1 8.6-3 4.9 4.9 0 0 1 8.6 3c0 5.8-8.6 11-8.6 11z" fill="{{ 'currentColor' if on else 'none' }}" stroke="currentColor" stroke-width="{{ w }}" stroke-linejoin="round"/></svg>{% endmacro %}
+
 {% macro pin(size=20, w=1.7) %}<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 21.2c3.6-4 6.2-7 6.2-10.3A6.2 6.2 0 0 0 5.8 10.9c0 3.3 2.6 6.3 6.2 10.3z" stroke="currentColor" stroke-width="{{ w }}" stroke-linejoin="round"/><circle cx="12" cy="10.7" r="2.3" stroke="currentColor" stroke-width="{{ w }}"/></svg>{% endmacro %}
 
 {% macro of_kind(kind, size=24, w=1.7) %}

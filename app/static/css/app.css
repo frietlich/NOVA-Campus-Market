@@ -882,17 +882,16 @@ img { display: block; max-width: 100%; }
 
 /* -------------------------------------------------------------- the chips */
 
+/* Every category at once, on a second line where they do not fit on one.
+   Scrolling sideways hides half of them behind an edge, and a category you
+   cannot see is a category nobody picks. */
 .chips {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   flex: none;
-  overflow-x: auto;
-  scrollbar-width: none;
-  margin: 0 -16px;
-  padding: 0 16px 2px;
+  padding-bottom: 2px;
 }
-
-.chips::-webkit-scrollbar { display: none; }
 
 .chip {
   flex: none;
@@ -1235,8 +1234,171 @@ img { display: block; max-width: 100%; }
 /* Light category colours are bright in the dark, so text on them turns dark. */
 @media (prefers-color-scheme: dark) {
   .app[data-kind] .btn:not(.btn--quiet):not(.btn--danger),
-  .app[data-kind] .chip--on { color: #0B0B0F; }
+  .app[data-kind] .chip--on,
+  .app[data-kind] .fpill--on select { color: #0B0B0F; }
 }
 
 /* Your own entries on the profile carry their tab's colour too. */
 .mini[data-kind] { background: var(--k-soft); color: var(--k); }
+
+/* ------------------------------------------------- sorting and filtering */
+
+/* Market has no date to read it by, so this one line is what puts it in an
+   order. Three controls, all of them visible, and no second page to go to.
+   Everything they do stands in the address, so a filtered list can be sent
+   to somebody and the back button does what you expect. */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: none;
+  margin-top: 8px;
+  padding-bottom: 2px;
+}
+
+.fpill {
+  position: relative;
+  flex: none;
+  display: inline-flex; align-items: center;
+  white-space: nowrap;
+}
+
+.fpill select {
+  appearance: none; -webkit-appearance: none;
+  height: 32px;
+  padding: 0 32px 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  font: inherit; font-size: 13px; font-weight: 600;
+  color: var(--ink);
+  outline: none;
+}
+
+/* The little chevron, drawn with two borders rather than an image. */
+.fpill--pick::after {
+  content: "";
+  position: absolute;
+  right: 14px; top: 50%;
+  width: 6px; height: 6px;
+  margin-top: -5px;
+  border-right: 1.7px solid var(--muted);
+  border-bottom: 1.7px solid var(--muted);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+/* A filter that is doing something says so in the colour of the tab, the
+   same way a chosen chip does. */
+.fpill--on select {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #FFFFFF;
+}
+
+.fpill--on.fpill--pick::after { border-color: #FFFFFF; }
+
+.fpill--clear {
+  height: 32px;
+  display: inline-flex; align-items: center;
+  padding: 0 10px;
+  font-size: 13px; font-weight: 600;
+  color: var(--accent);
+}
+
+.fpill:active { transform: scale(0.97); }
+
+/* ---------------------------------------------- the row you swipe along */
+
+.strip {
+  display: flex;
+  gap: 10px;
+  flex: none;
+  margin: 0 -16px;
+  padding: 0 16px 4px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  /* Without this the snap would pull the first card past the 16px gutter and
+     it would sit flush against the edge of the screen. */
+  scroll-padding: 0 16px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.strip::-webkit-scrollbar { display: none; }
+
+.scard {
+  flex: none;
+  width: 124px;
+  scroll-snap-align: start;
+  display: flex; flex-direction: column; gap: 1px;
+  transition: transform 0.12s ease;
+}
+
+.scard:active { transform: scale(0.98); }
+
+.scard-pic {
+  width: 124px; height: 124px;
+  margin-bottom: 7px;
+  border-radius: var(--r-card);
+  background: var(--fill);
+  overflow: hidden;
+}
+
+.scard-pic:has(.cover) { background: none; }
+.scard-pic img { width: 100%; height: 100%; object-fit: cover; }
+
+.scard-title { font-size: 13px; font-weight: 600; letter-spacing: -0.1px; }
+.scard-price { font-size: 13px; font-weight: 700; color: var(--muted); }
+
+/* --------------------------------------------------------- the heart */
+
+/* Top right of every entry, opposite the way back. Your own entries have
+   none, because saving your own thing says nothing. */
+
+.save-form--hero { position: absolute; right: 16px; top: var(--top); z-index: 5; }
+
+.ticket-top { display: flex; align-items: center; justify-content: space-between; }
+
+.save {
+  width: 44px; height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  backdrop-filter: blur(18px) saturate(180%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  color: var(--ink);
+  transition: transform 0.12s ease;
+}
+
+/* On the blue ticket block there is no picture to blur, so it is solid. */
+.save--head {
+  background: rgba(255, 255, 255, 0.88);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  color: #0B0B0F;
+}
+
+/* A filled heart is red wherever it sits. The tab colour would say nothing,
+   a red heart says saved in any language. */
+.save--on { color: #EA4C35; }
+
+.save:active { transform: scale(0.94); }
+
+@keyframes pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+.save--pop { animation: pop 0.26s ease; }
+
+@media (prefers-color-scheme: dark) {
+  .save { background: rgba(28, 28, 33, 0.72); color: var(--ink); }
+  .save--head { background: rgba(255, 255, 255, 0.88); color: #0B0B0F; }
+  .save--on { color: #FF6B55; }
+}

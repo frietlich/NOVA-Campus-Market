@@ -29,6 +29,9 @@ LATER_COLUMNS = {
         ("code_sent", "TEXT"),
         ("code_tries", "INTEGER NOT NULL DEFAULT 0"),
     ],
+    "listings": [
+        ("condition", "TEXT"),
+    ],
 }
 
 
@@ -199,7 +202,7 @@ def check_code(user_id, code):
 
 # ------------------------------------------------------------------ listings
 
-def _listing_sql(where, order="l.created_at DESC"):
+def _listing_sql(where, order="l.created_at DESC", extra_join=""):
     return (
         "SELECT l.*, u.name AS owner_name, u.programme AS owner_programme,"
         "       u.cems AS owner_cems, u.photo AS owner_photo,"
@@ -208,6 +211,7 @@ def _listing_sql(where, order="l.created_at DESC"):
         "        ORDER BY p.position, p.id LIMIT 1) AS photo"
         "  FROM listings l JOIN users u ON u.id = l.owner_id"
         "  LEFT JOIN courses c ON c.id = l.course_id"
+        f" {extra_join}"
         f" WHERE {where} ORDER BY {order}"
     )
 
@@ -216,13 +220,26 @@ ORDER_FOR = {
     "ticket": "l.event_date, l.event_time, l.price, l.id",
 }
 
+# What the Sort button on Market can be set to. SQLite puts an empty price
+# first when it sorts upwards, which is exactly right, because no price means
+# free and free is the lowest price there is.
+SORTS = {
+    "new":  "l.created_at DESC",
+    "low":  "l.price ASC, l.created_at DESC",
+    "high": "l.price DESC, l.created_at DESC",
+}
 
-def listings_of_type(kind, search="", only_for=None, category=None):
+
+def listings_of_type(kind, search="", only_for=None, category=None, sort=None,
+                     min_price=None, max_price=None, free_only=False):
     """Open listings in one tab.
 
     Search looks in the title, the grey line and the course name. Give
     only_for a user id and you get back just the entries whose course that
     student is taking. That is what keeps the Groups tab short.
+
+    The price arguments are a band, not two boxes a student typed into. An
+    entry with no price is free, so it counts as being under every ceiling.
     """
     where = "l.type = ? AND l.status = 'open'"
     args = [kind]
@@ -230,6 +247,17 @@ def listings_of_type(kind, search="", only_for=None, category=None):
     if category:
         where += " AND l.category = ?"
         args.append(category)
+
+    if free_only:
+        where += " AND (l.price IS NULL OR l.price = 0)"
+
+    if max_price is not None:
+        where += " AND (l.price IS NULL OR l.price < ?)"
+        args.append(max_price)
+
+    if min_price is not None:
+        where += " AND l.price IS NOT NULL AND l.price >= ?"
+        args.append(min_price)
 
     if only_for is not None:
         where += (" AND l.course_id IN (SELECT course_id FROM enrolments"
@@ -242,7 +270,7 @@ def listings_of_type(kind, search="", only_for=None, category=None):
         args += [f"%{search.strip()}%"] * 5
 
     conn = connect()
-    order = ORDER_FOR.get(kind, "l.created_at DESC")
+    order = SORTS.get(sort) or ORDER_FOR.get(kind) or "l.created_at DESC"
     rows = conn.execute(_listing_sql(where, order), tuple(args)).fetchall()
     conn.close()
     return rows
@@ -268,18 +296,19 @@ def listings_of_user(user_id):
 
 
 def create_listing(owner_id, kind, title, description="", price=None, info="",
-                   category=None, event_date=None, event_time=None, place=None,
-                   address=None, quantity=None, course_id=None):
+                   category=None, condition=None, event_date=None,
+                   event_time=None, place=None, address=None, quantity=None,
+                   course_id=None):
     if kind not in TYPES:
         raise ValueError(f"unknown type {kind}")
     conn = connect()
     cur = conn.execute(
         "INSERT INTO listings (owner_id, type, title, description, price, info,"
-        " category, event_date, event_time, place, address, quantity, course_id,"
-        " status, views, created_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', 0, ?)",
-        (owner_id, kind, title, description, price, info, category, event_date,
-         event_time, place, address, quantity, course_id, now()),
+        " category, condition, event_date, event_time, place, address, quantity,"
+        " course_id, status, views, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', 0, ?)",
+        (owner_id, kind, title, description, price, info, category, condition,
+         event_date, event_time, place, address, quantity, course_id, now()),
     )
     conn.commit()
     new_id = cur.lastrowid
@@ -317,6 +346,67 @@ def count_view(listing_id):
     conn.execute("UPDATE listings SET views = views + 1 WHERE id = ?", (listing_id,))
     conn.commit()
     conn.close()
+
+
+# --------------------------------------------------------------------- saves
+
+def toggle_save(user_id, listing_id):
+    """Put a heart on an entry, or take it off again.
+
+    One call does both, because the button is one button. It gives back
+    whether the heart is on now, which is what the page has to show.
+    """
+    conn = connect()
+    there = conn.execute("SELECT 1 FROM listings WHERE id = ?",
+                         (listing_id,)).fetchone()
+    if there is None:
+        conn.close()
+        return False
+
+    cur = conn.execute("DELETE FROM saves WHERE user_id = ? AND listing_id = ?",
+                       (user_id, listing_id))
+    saved = cur.rowcount == 0
+    if saved:
+        conn.execute("INSERT INTO saves (user_id, listing_id, created_at)"
+                     " VALUES (?, ?, ?)", (user_id, listing_id, now()))
+    conn.commit()
+    conn.close()
+    return saved
+
+
+def is_saved(user_id, listing_id):
+    conn = connect()
+    row = conn.execute("SELECT 1 FROM saves WHERE user_id = ? AND listing_id = ?",
+                       (user_id, listing_id)).fetchone()
+    conn.close()
+    return row is not None
+
+
+def save_count(listing_id):
+    """How many students saved it. The number only, never who."""
+    conn = connect()
+    n = conn.execute("SELECT COUNT(*) FROM saves WHERE listing_id = ?",
+                     (listing_id,)).fetchone()[0]
+    conn.close()
+    return n
+
+
+def saved_listings(user_id):
+    """Everything this student put a heart on, newest heart first.
+
+    A saved ticket for a day that is over drops out on its own. Nobody wants
+    to be reminded of a party that already happened.
+    """
+    today = datetime.now().strftime("%Y-%m-%d")
+    conn = connect()
+    rows = conn.execute(
+        _listing_sql("s.user_id = ? AND (l.type != 'ticket' OR l.event_date >= ?)",
+                     order="s.created_at DESC",
+                     extra_join="JOIN saves s ON s.listing_id = l.id"),
+        (user_id, today),
+    ).fetchall()
+    conn.close()
+    return rows
 
 
 # ------------------------------------------------------------------- courses

@@ -3,6 +3,21 @@
 {% import "partials/avatar.html" as av %}
 {% import "partials/art.html" as art %}
 {% block title %}{{ listing.title }}{% endblock %}
+
+{# The heart sits top right on every kind of entry. It is a real form, so it
+   works without JavaScript as well, the page simply comes back fresh. Your
+   own entry has none, you do not save your own things. #}
+{% macro save_button(listing, saved, where) %}
+  <form class="save-form save-form--{{ where }}" method="post"
+        action="/listing/{{ listing.id }}/save">
+    <button class="save save--{{ where }} {{ 'save--on' if saved }}" type="submit"
+            aria-pressed="{{ 'true' if saved else 'false' }}"
+            aria-label="{{ 'Saved' if saved else 'Save this' }}">
+      {{ icon.heart(22, 1.9, saved) }}
+    </button>
+  </form>
+{% endmacro %}
+
 {% block body %}
 <div class="app detail" data-kind="{{ listing.type }}">
 
@@ -12,7 +27,10 @@
        for first. It also gives the page the weight a photo gives the others. #}
     {% set d = event_badge(listing.event_date) %}
     <div class="ticket-head">
-      <a class="ticket-back" href="{{ tab.path }}" aria-label="Back to {{ tab.label }}">{{ icon.back() }}</a>
+      <div class="ticket-top">
+        <a class="ticket-back" href="{{ tab.path }}" aria-label="Back to {{ tab.label }}">{{ icon.back() }}</a>
+        {% if listing.owner_id != me.id %}{{ save_button(listing, saved, 'head') }}{% endif %}
+      </div>
       <div class="stub">
         <div class="stub-day">
           {% if d %}
@@ -64,6 +82,7 @@
         {{ art.cover(listing.type, listing.id) }}
       {% endif %}
       <a class="back" href="{{ tab.path }}" aria-label="Back to {{ tab.label }}">{{ icon.back() }}</a>
+      {% if listing.owner_id != me.id %}{{ save_button(listing, saved, 'hero') }}{% endif %}
       {% if photos | length > 1 %}
         <span class="count">1 / {{ photos | length }}</span>
       {% endif %}
@@ -86,6 +105,9 @@
       {% if listing.type == 'ticket' %}
         {% if listing.category %}<span class="pill pill--on">{{ listing.category | category }}</span>{% endif %}
         {% if not listing.quantity %}<span class="pill">Only one</span>{% endif %}
+      {% elif listing.type == 'item' %}
+        {% if listing.category %}<span class="pill pill--on">{{ listing.category | category }}</span>{% endif %}
+        {% if listing.condition %}<span class="pill">{{ listing.condition | condition }}</span>{% endif %}
       {% elif listing.type == 'group' and listing.quantity %}
         <span class="pill">{{ listing.quantity }} {{ 'spot' if listing.quantity == 1 else 'spots' }} left</span>
       {% endif %}
@@ -122,7 +144,9 @@
       <span class="verified">{{ icon.check() }} Verified</span>
     </div>
 
-    <p class="posted">Posted {{ listing.created_at | ago }} · {{ listing.views }} students viewed this</p>
+    <p class="posted">Posted {{ listing.created_at | ago }} · {{ listing.views }} students viewed
+      this<span id="saves"{{ ' hidden' if not saves }}> · <span data-count>{{ saves }}</span>
+      saved</span></p>
 
   </div>
 
