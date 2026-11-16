@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS users (
                                                  -- password itself
     verified   INTEGER NOT NULL DEFAULT 0,       -- 0 until the e-mail code was right
     code       TEXT,                             -- the 6 digits we last sent
+    code_sent  TEXT,                             -- when that code went out
+    code_tries INTEGER NOT NULL DEFAULT 0,       -- wrong guesses at that code
     created_at TEXT    NOT NULL
 );
 

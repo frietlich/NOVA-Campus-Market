@@ -9,6 +9,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 from typing import List
+from urllib.parse import quote
 
 from fastapi import FastAPI, Form, Request, UploadFile, File
 from fastapi.responses import RedirectResponse
@@ -16,11 +17,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import categories, db, passwords, programmes
+from . import categories, db, mailer, passwords, programmes
+
+# .env first, so CAMPUS_SECRET and the mail account can live in it.
+mailer.load_env()
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 UPLOADS = os.path.join(HERE, "static", "uploads")
-SECRET = os.environ.get("CAMPUS_SECRET", "change-me-before-you-deploy")
+SECRET = os.environ.get("CAMPUS_SECRET") or "change-me-before-you-deploy"
 
 # The four tabs. Everything about a tab is in this one list.
 TABS = [
@@ -238,6 +242,37 @@ def go(path):
     return RedirectResponse(path, status_code=303)
 
 
+# How long somebody waits before the same address gets another code. Stops a
+# finger on "Send it again", or a script, from flooding an inbox.
+RESEND_SECONDS = 60
+
+CODE_ERRORS = {
+    "wrong": "That code is not right. Try again.",
+    "expired": "That code has run out. Send a new one.",
+    "locked": "Too many wrong tries. Send a new code.",
+    "none": "There is no code for this address yet. Send a new one.",
+}
+
+
+def verify_url(error=""):
+    return "/verify?error=" + quote(error) if error else "/verify"
+
+
+def send_code(user, why):
+    """Make and send a fresh code. Gives back an error message or "".
+
+    A code sent less than a minute ago is left alone. It still works, and the
+    e-mail is probably on its way.
+    """
+    age = db.code_age(user["id"])
+    if age is not None and age < RESEND_SECONDS:
+        return ""
+    code = db.new_code(user["id"])
+    if not mailer.send_code(user["email"], code, why):
+        return "We could not send the e-mail. Try again in a minute."
+    return ""
+
+
 # -------------------------------------------------------------------- doors
 
 @app.get("/favicon.ico")
@@ -338,12 +373,9 @@ async def join(request: Request,
 
     db.set_enrolments(user_id, picked)
 
-    code = db.new_code(user_id)
-    # Person 2 replaces this print with a real e-mail. Until then the code is
-    # in the terminal where the server runs.
-    print(f"\n  code for {email} is {code}\n", flush=True)
     request.session["pending_id"] = user_id
-    return go("/verify")
+    problem = send_code(db.get_user(user_id), "join")
+    return go(verify_url(problem))
 
 
 @app.get("/verify")
@@ -361,9 +393,10 @@ def verify(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = F
     if not user_id:
         return go("/start")
     code = "".join([d1, d2, d3, d4, d5, d6]).strip()
-    if not db.check_code(user_id, code):
+    result = db.check_code(user_id, code)
+    if result != "ok":
         return page(request, "verify.html", pending=db.get_user(user_id),
-                    error="That code is not right. Try again.")
+                    error=CODE_ERRORS[result])
     request.session.pop("pending_id", None)
     request.session["user_id"] = user_id
     # Whoever skipped the courses on the way in gets asked once now, so that
@@ -378,9 +411,13 @@ def resend(request: Request):
     user_id = request.session.get("pending_id")
     if not user_id:
         return go("/start")
-    code = db.new_code(user_id)
-    print(f"\n  new code is {code}\n", flush=True)
-    return go("/verify")
+    user = db.get_user(user_id)
+    age = db.code_age(user_id)
+    if age is not None and age < RESEND_SECONDS:
+        wait = int(RESEND_SECONDS - age) + 1
+        return go(verify_url(f"Wait {wait} seconds, then ask again."))
+    problem = send_code(user, "join")
+    return go(verify_url(problem))
 
 
 # ------------------------------------------------------------- coming back
@@ -403,10 +440,9 @@ def login(request: Request, email: str = Form(""), password: str = Form("")):
                     error="That e-mail and password do not go together.")
 
     if not user["verified"]:
-        code = db.new_code(user["id"])
-        print(f"\n  code for {user['email']} is {code}\n", flush=True)
         request.session["pending_id"] = user["id"]
-        return go("/verify")
+        problem = send_code(user, "login")
+        return go(verify_url(problem))
 
     request.session.clear()
     request.session["user_id"] = user["id"]
@@ -435,8 +471,9 @@ def forgot(request: Request, email: str = Form("")):
         # addresses exist. The code simply never arrives.
         return page(request, "forgot.html", email=email,
                     error="If that address has an account, the code is on its way.")
-    code = db.new_code(user["id"])
-    print(f"\n  reset code for {email} is {code}\n", flush=True)
+    problem = send_code(user, "reset")
+    if problem:
+        return page(request, "forgot.html", email=email, error=problem)
     request.session["reset_id"] = user["id"]
     return go("/forgot/reset")
 
@@ -466,8 +503,9 @@ def reset(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = Fo
     wrong = passwords.problem(password)
     if wrong:
         return fail(wrong)
-    if not db.check_code(user_id, "".join([d1, d2, d3, d4, d5, d6]).strip()):
-        return fail("That code is not right. Try again.")
+    result = db.check_code(user_id, "".join([d1, d2, d3, d4, d5, d6]).strip())
+    if result != "ok":
+        return fail(CODE_ERRORS[result])
 
     db.set_password(user_id, passwords.hash_password(password))
     request.session.pop("reset_id", None)

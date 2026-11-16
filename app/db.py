@@ -5,7 +5,7 @@ If you need something the app cannot do yet, add a function here first.
 """
 
 import os
-import random
+import secrets
 import sqlite3
 from datetime import datetime, timezone
 
@@ -15,6 +15,21 @@ SCHEMA_PATH = os.path.join(HERE, "schema.sql")
 
 TYPES = ("housing", "ticket", "item", "group")
 EMAIL_DOMAIN = "@novasbe.pt"
+
+# A code is good for this long, and for this many wrong guesses. After that a
+# new one has to be sent. Without the limit a script could simply try all one
+# million codes and take over any account.
+CODE_MINUTES = 15
+CODE_TRIES = 5
+
+# Columns added after the first version. setup() puts them into an older
+# campus.db, so nobody has to wipe their database to get them.
+LATER_COLUMNS = {
+    "users": [
+        ("code_sent", "TEXT"),
+        ("code_tries", "INTEGER NOT NULL DEFAULT 0"),
+    ],
+}
 
 
 # ---------------------------------------------------------------- connection
@@ -33,6 +48,11 @@ def setup():
         schema = f.read()
     conn = connect()
     conn.executescript(schema)
+    for table, columns in LATER_COLUMNS.items():
+        have = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        for name, kind in columns:
+            if name not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
     conn.commit()
     conn.close()
 
@@ -112,29 +132,66 @@ def set_password(user_id, hashed):
 
 
 def new_code(user_id):
-    """Make a fresh 6 digit code, store it, give it back so we can send it."""
-    code = "".join(str(random.randint(0, 9)) for _ in range(6))
+    """Make a fresh 6 digit code, store it, give it back so we can send it.
+
+    secrets and not random, because random is predictable by design and a
+    code is exactly the kind of thing nobody must be able to predict.
+    """
+    code = f"{secrets.randbelow(1_000_000):06d}"
     conn = connect()
-    conn.execute("UPDATE users SET code = ? WHERE id = ?", (code, user_id))
+    conn.execute(
+        "UPDATE users SET code = ?, code_sent = ?, code_tries = 0 WHERE id = ?",
+        (code, now(), user_id),
+    )
     conn.commit()
     conn.close()
     return code
 
 
+def code_age(user_id):
+    """Seconds since the last code went out, or None when there is none."""
+    user = get_user(user_id)
+    if user is None or not user["code"] or not user["code_sent"]:
+        return None
+    sent = datetime.fromisoformat(user["code_sent"])
+    return (datetime.now(timezone.utc) - sent).total_seconds()
+
+
 def check_code(user_id, code):
-    """True only if the code matches. A right code also marks the user verified."""
+    """Check a code. Gives back one word:
+
+    "ok"        right, and the user is now verified
+    "wrong"     not the code, try again
+    "expired"   older than CODE_MINUTES, a new one is needed
+    "locked"    too many wrong guesses, a new one is needed
+    "none"      there is no code to check against
+    """
     user = get_user(user_id)
     if user is None or not user["code"]:
-        return False
-    if str(code).strip() != user["code"]:
-        return False
+        return "none"
+    age = code_age(user_id)
+    if age is None or age > CODE_MINUTES * 60:
+        return "expired"
+    if user["code_tries"] >= CODE_TRIES:
+        return "locked"
+
     conn = connect()
+    if not secrets.compare_digest(str(code).strip(), user["code"]):
+        conn.execute(
+            "UPDATE users SET code_tries = code_tries + 1 WHERE id = ?", (user_id,)
+        )
+        conn.commit()
+        conn.close()
+        return "locked" if user["code_tries"] + 1 >= CODE_TRIES else "wrong"
+
     conn.execute(
-        "UPDATE users SET verified = 1, code = NULL WHERE id = ?", (user_id,)
+        "UPDATE users SET verified = 1, code = NULL, code_sent = NULL,"
+        " code_tries = 0 WHERE id = ?",
+        (user_id,),
     )
     conn.commit()
     conn.close()
-    return True
+    return "ok"
 
 
 # ------------------------------------------------------------------ listings
