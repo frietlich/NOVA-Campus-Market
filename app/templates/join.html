@@ -69,14 +69,15 @@
       <input id="filter" type="search" placeholder="Course name or code" autocomplete="off">
     </div>
 
+    <p class="note" id="no-programme-courses" hidden>Select a programme to see its official courses.</p>
     <div class="rows scroller" id="list">
       {% for c in courses %}
-        <label class="row pick" data-text="{{ (c.code ~ ' ' ~ c.name ~ ' ' ~ c.programme) | lower }}">
+        <label class="row pick" data-text="{{ (c.code ~ ' ' ~ c.name) | lower }}" data-programmes='{{ c.programmes | tojson }}'>
           <input type="checkbox" name="course_id" value="{{ c.id }}" class="sr"
                  {% if c.id in picked %}checked{% endif %}>
           <div class="row-body">
             <span class="row-name truncate">{{ c.name }}</span>
-            <span class="row-meta">{{ c.code }} · {{ c.programme }}</span>
+            <span class="row-meta">{{ c.code }} <span class="course-type"></span></span>
           </div>
           <span class="tick" aria-hidden="true">{{ icon.check(22, 1.8) }}</span>
         </label>

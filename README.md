@@ -216,3 +216,16 @@ no Nova branding, and no real student data goes in.
 Open the site in Safari on the iPhone, tap Share, then Add to Home Screen. It
 then opens full screen with no address bar. On a plain `http` address some of
 this behaves worse, so test it properly once the app is deployed.
+
+## Official 2026/27 courses (course selection enhancement)
+
+The catalogue lives in `app/data/course_catalogue.csv` (808 source entries, six MSc
+programme groups). The database stores one course record per code and programme-specific
+classifications in `course_offerings`. The exceptional code 2743 has two official
+IDPP titles, stored separately while both are *displayed* as 2743; `TBD` is also
+displayed verbatim. The catalogue is imported safely at app startup.
+
+Students can select predefined courses on **My courses** and at signup. They cannot
+create a course. Unsupported programmes have no predefined offerings yet.
+The existing seed command still **deletes the local database**, so do not run it on
+real or shared data. This branch does not change other contributors' code.

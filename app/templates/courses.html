@@ -5,67 +5,48 @@
 <div class="app">
   <form class="form" method="post" action="/courses" id="courses">
     <input type="hidden" name="back" value="{{ back }}">
-
     <div class="sheet-head">
       <span class="side"><a class="link link--plain" href="{{ back }}">Cancel</a></span>
       <span class="mid">My courses</span>
       <span class="side side--right"><button class="link" type="submit">Save</button></span>
     </div>
-
-    <p class="note" style="text-align: left; margin: 4px 2px 0">
-      Pick the courses you are taking. Groups then shows you only those, instead of
-      every course in the school.
+    <p class="note" style="text-align:left;margin:4px 2px 0">
+      Choose from Nova's predefined 2026/27 courses for {{ me.programme }}.
+      Groups shows listings for the courses you select.
     </p>
-
-    <div class="search" style="margin-top: 14px">
+    <div class="search" style="margin-top:14px">
       {{ icon.search() }}
       <label class="sr" for="filter">Search the course list</label>
       <input id="filter" type="search" placeholder="Course name or code" autocomplete="off">
     </div>
-
-    <span class="section" style="margin: 18px 0 8px 2px">
-      ALL COURSES <span id="picked" class="count-inline">{{ chosen | length }} picked</span>
+    <span class="section" style="margin:18px 0 8px 2px">
+      OFFICIAL COURSES <span id="picked" class="count-inline">{{ chosen | length }} picked</span>
     </span>
-
     <div class="rows" id="list">
-      {% for c in courses %}
-        <label class="row pick" data-text="{{ (c.code ~ ' ' ~ c.name ~ ' ' ~ c.programme) | lower }}">
-          <input type="checkbox" name="course_id" value="{{ c.id }}" class="sr"
-                 {% if c.id in chosen %}checked{% endif %}>
-          <div class="row-body">
-            <span class="row-name truncate">{{ c.name }}</span>
-            <span class="row-meta">{{ c.code }} · {{ c.programme }}</span>
-          </div>
-          <span class="tick" aria-hidden="true">{{ icon.check(22, 1.8) }}</span>
-        </label>
+      {% for label, types in [
+          ('MANDATORY COURSES', ['MANDATORY']),
+          ('ELECTIVES', ['ELECTIVE','EXCLUSIVE_ELECTIVE']),
+          ('OUT OF PROGRAMME', ['OUT_PROGRAM'])
+      ] %}
+        {% if courses | selectattr('course_type', 'in', types) | list %}
+          <div class="section course-heading" style="margin:18px 0 8px 2px">{{ label }}</div>
+        {% endif %}
+        {% for c in courses if c.course_type in types %}
+          <label class="row pick" data-text="{{ (c.code ~ ' ' ~ c.name) | lower }}">
+            <input type="checkbox" name="course_id" value="{{ c.id }}" class="sr"
+                   {% if c.id in chosen %}checked{% endif %}>
+            <div class="row-body">
+              <span class="row-name truncate">{{ c.name }}</span>
+              <span class="row-meta">{{ c.code }}{% if c.course_type == 'EXCLUSIVE_ELECTIVE' %} · Exclusive elective{% endif %}</span>
+            </div>
+            <span class="tick" aria-hidden="true">{{ icon.check(22, 1.8) }}</span>
+          </label>
+        {% endfor %}
       {% endfor %}
     </div>
-
-    <p class="empty-filter" id="nothing" hidden>
-      No course matches that. Add it below.
-    </p>
-
-    <div style="height: 26px"></div>
-  </form>
-
-  <form class="form" method="post" action="/courses/new">
-    <input type="hidden" name="back" value="{{ back }}">
-    <span class="section" style="margin: 0 0 8px 2px">COURSE MISSING</span>
-    <div class="pair">
-      <div>
-        <label class="label" for="code" style="margin-top: 0">Code</label>
-        <input class="input" id="code" name="code" type="text" placeholder="FIN2113">
-      </div>
-      <div style="flex: 2">
-        <label class="label" for="name" style="margin-top: 0">Name</label>
-        <input class="input" id="name" name="name" type="text" placeholder="Corporate Governance">
-      </div>
-    </div>
-    <div style="height: 14px"></div>
-    <button class="btn btn--quiet" type="submit">Add it and join</button>
-    <p class="note" style="padding-bottom: calc(var(--foot) + 20px)">
-      Everyone sees a course you add, so write it the way it is on the timetable.
-    </p>
+    <p class="empty-filter" id="nothing" hidden>No course matches that search.</p>
+    {% if not courses %}<p class="note">There is no official course catalogue for this programme yet.</p>{% endif %}
+    <div style="height:26px"></div>
   </form>
 </div>
 {% endblock %}

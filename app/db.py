@@ -53,6 +53,9 @@ def setup():
         for name, kind in columns:
             if name not in have:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
+
+    from .course_catalogue import import_courses
+    import_courses(conn)
     conn.commit()
     conn.close()
 
@@ -200,7 +203,7 @@ def _listing_sql(where, order="l.created_at DESC"):
     return (
         "SELECT l.*, u.name AS owner_name, u.programme AS owner_programme,"
         "       u.cems AS owner_cems, u.photo AS owner_photo,"
-        "       c.name AS course_name, c.code AS course_code,"
+        "       c.name AS course_name, COALESCE(c.official_code,c.code) AS course_code,"
         "       (SELECT filename FROM photos p WHERE p.listing_id = l.id"
         "        ORDER BY p.position, p.id LIMIT 1) AS photo"
         "  FROM listings l JOIN users u ON u.id = l.owner_id"
@@ -327,39 +330,54 @@ def all_courses():
     return rows
 
 
+def courses_for_programme(programme):
+    """Only official courses offered to this programme, with classification."""
+    conn = connect()
+    rows = conn.execute(
+        "SELECT c.id, c.name, COALESCE(c.official_code,c.code) AS code, "
+        "o.type AS course_type, o.programme FROM courses c "
+        "JOIN course_offerings o ON o.course_id=c.id WHERE o.programme=? "
+        "ORDER BY CASE o.type WHEN 'MANDATORY' THEN 0 "
+        "WHEN 'EXCLUSIVE_ELECTIVE' THEN 1 WHEN 'ELECTIVE' THEN 2 ELSE 3 END, c.name",
+        (programme,),
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def all_catalogue_options():
+    """One item per course, with per-programme types for the join-page filter."""
+    conn = connect()
+    rows = conn.execute(
+        'SELECT c.id,c.name,COALESCE(c.official_code,c.code) AS code, '
+        'o.programme,o.type FROM courses c '
+        'JOIN course_offerings o ON o.course_id=c.id ORDER BY c.name'
+    ).fetchall()
+    conn.close()
+    courses = {}
+    for r in rows:
+        courses.setdefault(r['id'], {'id':r['id'], 'name':r['name'],
+                                      'code':r['code'], 'programmes':{}})
+        courses[r['id']]['programmes'][r['programme']] = r['type']
+    return list(courses.values())
+
+
+def valid_course_ids(programme):
+    return {c['id'] for c in courses_for_programme(programme)}
+
+
 def get_course(course_id):
     conn = connect()
-    row = conn.execute("SELECT * FROM courses WHERE id = ?", (course_id,)).fetchone()
+    row = conn.execute("SELECT id, COALESCE(official_code,code) AS code, name, programme FROM courses WHERE id = ?", (course_id,)).fetchone()
     conn.close()
     return row
-
-
-def create_course(code, name, programme=""):
-    """Add a course nobody put in the list yet. Gives back the id either way."""
-    code = code.strip().upper()
-    name = name.strip()
-    if not code or not name:
-        return None
-    conn = connect()
-    row = conn.execute("SELECT id FROM courses WHERE code = ?", (code,)).fetchone()
-    if row is not None:
-        conn.close()
-        return row["id"]
-    cur = conn.execute(
-        "INSERT INTO courses (code, name, programme) VALUES (?, ?, ?)",
-        (code, name, programme.strip()),
-    )
-    conn.commit()
-    new_id = cur.lastrowid
-    conn.close()
-    return new_id
 
 
 def courses_of(user_id):
     """The courses one student is taking."""
     conn = connect()
     rows = conn.execute(
-        "SELECT c.* FROM courses c"
+        "SELECT c.id, COALESCE(c.official_code,c.code) AS code, c.name, c.programme FROM courses c"
         "  JOIN enrolments e ON e.course_id = c.id"
         " WHERE e.user_id = ? ORDER BY c.name",
         (user_id,),
