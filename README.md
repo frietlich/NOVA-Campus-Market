@@ -35,8 +35,8 @@ you are in. Whoever skips the courses is asked once right after the code. After 
 in at `/login` with the address and the password. Forgotten passwords go
 through `/forgot`, which sends a fresh code.
 
-There is no mail provider wired up yet, so every code is printed in the
-terminal where the server runs. Copy it from there.
+Without a mail account the code is printed in the terminal where the server
+runs. Copy it from there. With one, it arrives by e-mail, see below.
 
 The quick one is at `/dev`. Pick any fake student and you are that person. Use
 this while building. It goes away once we are happy with the real one.
@@ -57,12 +57,43 @@ The rules are in the same file, one function, which makes them easy to test.
 At least 8 characters, at most 30, one capital letter, one number and one
 special character.
 
+## The code by e-mail
+
+`app/mailer.py` sends the code. It reads its settings from a file called
+`.env` in this folder, which is in `.gitignore` and never goes into git. Copy
+`.env.example` to `.env` and fill it in.
+
+For a Gmail account:
+
+1. Turn on 2-step verification for that Google account.
+2. Create an app password at https://myaccount.google.com/apppasswords.
+   Google shows 16 letters, that is what goes into `SMTP_PASSWORD`.
+3. Put the Gmail address into `SMTP_USER` and restart the server.
+
+Never put the normal Gmail password in there, and never commit `.env`. Each
+of us who wants real e-mails keeps their own.
+
+Gmail sends a few hundred mails a day from a normal account, which is fine for
+building and a small test. For the real launch we want a proper provider.
+
+## How the code is protected
+
+A 6-digit code is only a million possibilities, so it gets three limits.
+
+* It works for 15 minutes.
+* After 5 wrong tries it is dead and a new one has to be sent.
+* A new one is sent at most once a minute per address.
+
+The code is made with `secrets`, not `random`, because `random` is
+predictable by design. All of it lives in `db.new_code` and `db.check_code`.
+
 ## What is where
 
     app/main.py        every page and every form, nothing else
     app/db.py          every read and write of the database, nobody else writes SQL
     app/programmes.py  the list of programmes the school offers
     app/passwords.py   the password rules and how a password is stored
+    app/mailer.py      sending the 6-digit code, and reading .env
     app/categories.py  what a ticket can be for
     app/schema.sql     the five tables
     app/seed.py        the fake students and entries
@@ -75,7 +106,8 @@ special character.
 ## The seven tables
 
     users          a student, their programme, photo and hashed password,
-                   and whether the e-mail code was right
+                   whether the e-mail code was right, and the code itself
+                   with when it was sent and how often it was guessed wrong
     courses        every course the school offers
     enrolments     which courses a student is taking
     listings       one entry, with a type of housing, ticket, item or group
