@@ -57,27 +57,70 @@ ENROLMENTS = {
     "Noah B.":  ['MGT3204','ECO5403','GEN1504','GEN1506'],
 }
 
+# Owner, title, kind, area, rent, bills included, bills estimate, deposit in
+# months, free from, minimum stay, minutes to campus, flatmates, what it has,
+# address, description. Everything a place is searched by is a field, so the
+# description only carries what a person would actually say out loud.
 HOUSING = [
-    ("Mariana S.", "Room in a 3-bed flat",      480,  "Carcavelos · from 1 Feb · own bathroom",
-     "Bright room in a flat I share with two other Nova students. Five minutes to the train, "
-     "fifteen to campus on foot. Comes furnished, with a desk and a double bed. Looking for "
-     "someone tidy who stays until at least June."),
-    ("Tiago R.",   "Studio sublet, Feb to June", 720, "Praia · bills included · 4 months",
-     "My own studio, free while I am on exchange. Everything stays in it, you only bring "
-     "clothes. Bills and internet are in the price."),
-    ("Lena K.",    "Shared room, 8 min to campus", 390, "Parede · from 15 Jan · 2 flatmates",
-     "Shared room in a quiet flat. Two flatmates, both Nova. Washing machine, small balcony, "
-     "and the bus stops in front of the door."),
-    ("Sofia M.",   "Lease takeover, flat for four", 1540, "Carcavelos · from 1 Mar · whole flat",
-     "We are all finishing in February, so the whole flat is free from March. Four bedrooms, "
-     "two bathrooms, furnished. The landlord is easy to deal with."),
-    ("André C.",   "Room with balcony, long stay", 560, "São Pedro · from 1 Feb · 12 months",
-     "Large room with its own balcony facing the sea. Twelve month contract only. Deposit of "
-     "one month, paid back when you leave."),
-    ("Clara V.",   "Single room, short term",    430,  "Oeiras · Jan to Mar · furnished",
-     "Single room for the winter term only. Furnished, bills split four ways. Good if you are "
-     "here for one semester."),
+    ("Noah B.",    "Cheap room, Lisboa centre", "shared_flat", "lisboa",
+     420, 0, 50, 1, "2026-12-01", 4, 55, 4,
+     "furnished,own_room,wifi,washing_machine", "R. da Madalena 61",
+     "Small room in a big old flat near Martim Moniz. Four of us, three "
+     "studying, one working. Cheap, lively, and a long way from campus."),
+    ("João P.",    "Studio with parking", "studio", "oeiras",
+     690, 1, None, 2, "2027-01-01", 12, 28, 0,
+     "furnished,own_bathroom,own_room,desk,wifi,washing_machine,parking,air_conditioning",
+     "Rua Alto da Loba 5",
+     "My studio while I am away for the year. Everything stays, including "
+     "the car space downstairs. Quiet building, mostly families."),
+    ("Clara V.",   "Single room, short term", "shared_flat", "oeiras",
+     430, 0, 45, 1, "2027-01-05", 3, 25, 3,
+     "furnished,own_room,wifi,washing_machine", "Rua Cândido dos Reis 9",
+     "Single room for the winter term only. Good if you are here for one "
+     "semester and do not want to sign for a year."),
+    ("Lena K.",    "Shared room, 8 min to campus", "shared_flat", "parede",
+     390, 1, None, 1, "2027-01-15", 5, 8, 2,
+     "furnished,wifi,washing_machine,balcony", "Rua da Igreja 7",
+     "You would share the room with one other person, which is why it is "
+     "this cheap. Two flatmates besides, both Nova. The bus stops in front "
+     "of the door and bills are in the rent."),
+    ("Mariana S.", "Room in a 3-bed flat", "shared_flat", "carcavelos",
+     480, 0, 55, 1, "2027-02-01", 5, 15, 2,
+     "furnished,own_bathroom,own_room,desk,wifi,washing_machine",
+     "Rua Bartolomeu Dias 14",
+     "Bright room in a flat I share with two other Nova students. Comes "
+     "furnished, with a desk and a double bed. Looking for someone tidy who "
+     "stays until at least June."),
+    ("Tiago R.",   "Studio sublet, Feb to June", "studio", "carcavelos",
+     720, 1, None, 1, "2027-02-01", 4, 10, 0,
+     "furnished,own_bathroom,own_room,desk,wifi,washing_machine,air_conditioning",
+     "Av. Jorge V 22",
+     "My own studio, free while I am on exchange. Everything stays in it, "
+     "you only bring clothes. Bills and internet are in the price."),
+    ("André C.",   "Room with balcony, long stay", "shared_flat", "sao_pedro",
+     560, 0, 60, 1, "2027-02-01", 12, 22, 3,
+     "furnished,own_room,desk,wifi,washing_machine,balcony", "Av. Marginal 118",
+     "Large room with its own balcony facing the sea. Twelve month contract "
+     "only, the landlord does not do shorter."),
+    ("Inês B.",    "Room in Cascais, sea view", "shared_flat", "cascais",
+     620, 0, 70, 2, "2027-02-15", 6, 35, 1,
+     "furnished,own_room,own_bathroom,desk,wifi,washing_machine,dishwasher,balcony",
+     "Rua Frederico Arouca 44",
+     "One flatmate, also Nova, very quiet. The flat is above the old town, "
+     "five minutes from the beach and a train ride from campus."),
+    ("Sofia M.",   "Lease takeover, flat for four", "whole_flat", "carcavelos",
+     1540, 0, 120, 2, "2027-03-01", 12, 12, 0,
+     "furnished,own_bathroom,desk,wifi,washing_machine,dishwasher,parking",
+     "Rua do Mercado 3",
+     "We are all finishing in February, so the whole flat is free from "
+     "March. Four bedrooms, two bathrooms, furnished. Take it as a group."),
+    ("Mariana S.", "Room, pets welcome", "shared_flat", "parede",
+     455, 0, 50, 1, "2027-03-01", 6, 12, 2,
+     "furnished,own_room,wifi,washing_machine,balcony,pets", "Rua do Moinho 12",
+     "The one flat around here that says yes to a cat. Two flatmates, both "
+     "fine with it, and there is a balcony she can sit on."),
 ]
+
 
 # Owner, category, date, time, venue, title, price each, how many,
 # description. The street address of every venue is in ADDRESSES below. Saturday the 21st is on purpose crowded, six students selling
@@ -224,31 +267,58 @@ MARKET = [
 # Owner, course, title, free spots, grey line, description.
 # Three of these are in a course you take, the rest are not. That difference is
 # the whole point of the Groups tab.
+# Owner, course, title, spots free, group size, hand in, grey line, text.
+# The hand in date and the size are real fields now, so the grey line only
+# carries the bit a person actually wrote. Three of these sit in a course
+# Marco takes, which is what makes the course headings in the tab worth
+# having.
 GROUPS = [
-    ("Marco C.",  "FIN2111", "Final project, panel data",     1, "Group of four · hand in 28 Nov",
+    ("Marco C.",  "FIN2111", "Final project, panel data",    1, 4, "2026-11-28",
+     "We meet twice a week in the library",
      "We are three and need one more for the final project. Panel data, we already have the "
      "dataset. We meet twice a week in the library."),
-    ("Inês B.",   "MGT3201", "Case study, group of five",     2, "Group of five · hand in 2 Dec",
-     "Two spots left in our group of five. The case is already picked, we split the sections "
-     "evenly."),
-    ("João P.",   "FIN2104", "Valuation assignment",          1, "Group of three · hand in 5 Dec",
+    ("Clara V.",  "FIN2111", "Panel data, second group",     2, 4, "2026-12-01",
+     "Thursdays, online",
+     "Second group for the same project. Two of us so far, we work Thursday evenings over a "
+     "call. Bring your own laptop and that is it."),
+    ("João P.",   "FIN2111", "Econometrics, need two",       2, 5, "2026-11-28",
+     "Stata or R, either is fine",
+     "Three of us, two places open. Half the group uses Stata and half uses R, nobody minds."),
+    ("João P.",   "FIN2104", "Valuation assignment",         1, 3, "2026-12-05",
+     "Excel heavy",
      "One spot in a group of three. You should be comfortable in Excel, the rest we work out "
      "together."),
-    ("Noah B.",   "MGT3204", "Campaign brief, group work",    1, "Group of four · hand in 9 Dec",
-     "One spot left. We meet on Wednesday afternoons, everything else is done on our own time."),
-    ("Clara V.",  "BAN4305", "Pair assignment, exercise 3",   1, "Pair · hand in 21 Nov",
+    ("Lena K.",   "FIN2104", "Modelling case, one spot",     1, 3, "2026-12-05",
+     "We split the model in three",
+     "One spot left. We split the model in three parts and put it together on the last "
+     "weekend."),
+    ("Clara V.",  "BAN4305", "Pair assignment, exercise 3",  1, 2, "2026-11-21",
+     "First exercise already started",
      "Looking for one partner for the pair assignment. I have started the first exercise already."),
-    ("Sofia M.",  "BAN4301", "New group, no one picked yet",  2, "Group of four · hand in 12 Dec",
+    ("Inês B.",   "MGT3201", "Case study, group of five",    2, 5, "2026-12-02",
+     "Case already picked",
+     "Two spots left in our group of five. The case is already picked, we split the sections "
+     "evenly."),
+    ("Noah B.",   "MGT3204", "Campaign brief, group work",   1, 4, "2026-12-09",
+     "Wednesday afternoons",
+     "One spot left. We meet on Wednesday afternoons, everything else is done on our own time."),
+    ("Sofia M.",  "BAN4301", "New group, no one picked yet", 2, 4, "2026-12-12",
+     "No preference on background",
      "Starting a new group, two spots open. No preference on background, just show up."),
-    ("Tiago R.",  "MGT3207", "Role play, need a partner",     1, "Pair · hand in 24 Nov",
+    ("Tiago R.",  "MGT3207", "Role play, need a partner",    1, 2, "2026-11-24",
+     "Half an hour of prep",
      "Need one person for the negotiation role play. Half an hour of prep, that is all."),
-    ("André C.",  "GEN1505", "Capstone, two seats left",      2, "Group of five · hand in 15 Dec",
+    ("André C.",  "GEN1505", "Capstone, two seats left",     2, 5, "2026-12-15",
+     "Topic agreed with the supervisor",
      "Our capstone group lost two people. Topic is already agreed with the supervisor."),
-    ("Lena K.",   "FIN2105", "Problem set, study group",      3, "Group of five · hand in 30 Nov",
+    ("Lena K.",   "FIN2105", "Problem set, study group",     3, 5, "2026-11-30",
+     "We meet Mondays",
      "Starting a study group for the weekly problem sets. We meet Mondays."),
-    ("Mariana S.","FIN2103", "Pricing project, one spot",     1, "Group of four · hand in 8 Dec",
+    ("Mariana S.","FIN2103", "Pricing project, one spot",    1, 4, "2026-12-08",
+     "Black Scholes part included",
      "One spot in our group. You need to be fine with the Black Scholes part."),
 ]
+
 
 # Something of mine that is already gone, so the profile shows both states.
 CLOSED = ("Marco C.", "item", "Coffee machine, like new", 35, "pick up on campus",
@@ -311,23 +381,38 @@ def main():
 
     def add(owner, kind, title, price, info, description, category=None,
             condition=None, event_date=None, event_time=None, place=None,
-            address=None, quantity=None, course=None, days_ago=2, views=0,
-            status="open"):
+            address=None, quantity=None, course=None, hand_in=None,
+            group_size=None, available_from=None, months_min=None,
+            bills_included=None, bills_estimate=None, deposit_months=None,
+            minutes_campus=None, flatmates=None, features=None,
+            days_ago=2, views=0, status="open"):
         cur = conn.execute(
             "INSERT INTO listings (owner_id, type, title, description, price, info,"
             " category, condition, event_date, event_time, place, address, quantity,"
-            " course_id, status, views, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " course_id, hand_in, group_size, available_from, months_min,"
+            " bills_included, bills_estimate, deposit_months, minutes_campus,"
+            " flatmates, features, status, views, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
+            " ?, ?, ?, ?, ?, ?, ?, ?)",
             (ids[owner], kind, title, description, price, info, category, condition,
              event_date, event_time, place, address, quantity,
-             course_id[course] if course else None, status, views, stamp(days_ago)),
+             course_id[course] if course else None, hand_in, group_size,
+             available_from, months_min, bills_included, bills_estimate,
+             deposit_months, minutes_campus, flatmates, features,
+             status, views, stamp(days_ago)),
         )
         return cur.lastrowid
 
     listing = {}
-    for n, (owner, title, price, info, text) in enumerate(HOUSING):
-        listing[title] = add(owner, "housing", title, price, info, text,
-                             days_ago=2 + n, views=31 - n * 3)
+    for n, (owner, title, kind, area, rent, allin, bills, dep, free, least,
+            mins, mates, has, where, text) in enumerate(HOUSING):
+        listing[title] = add(owner, "housing", title, rent, "", text,
+                             category=kind, place=area, address=where,
+                             available_from=free, months_min=least,
+                             bills_included=allin, bills_estimate=bills,
+                             deposit_months=dep, minutes_campus=mins,
+                             flatmates=mates, features=has,
+                             days_ago=2 + n, views=34 - n * 3)
     for n, (owner, cat, date, at, place, title, price, many, text) in enumerate(TICKETS):
         listing[title] = add(owner, "ticket", title, price, "", text,
                              category=cat, event_date=date, event_time=at,
@@ -337,10 +422,10 @@ def main():
         listing[title] = add(owner, "item", title, price, info, text,
                              category=cat, condition=worn,
                              days_ago=1 + n, views=26 - n)
-    for n, (owner, code, title, spots, info, text) in enumerate(GROUPS):
+    for n, (owner, code, title, spots, size, due, info, text) in enumerate(GROUPS):
         listing[title] = add(owner, "group", title, None, info, text,
-                             quantity=spots, course=code, days_ago=1 + n,
-                             views=14 - n)
+                             quantity=spots, course=code, hand_in=due,
+                             group_size=size, days_ago=1 + n, views=22 - n)
 
     owner, kind, title, price, info, text = CLOSED
     listing[title] = add(owner, kind, title, price, info, text, category="other",

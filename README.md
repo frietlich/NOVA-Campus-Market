@@ -159,9 +159,16 @@ somebody as a link.
 
 Tickets has a deadline and Market has none, so the day something went up says
 almost nothing and there is no point grouping by it. What Market gets instead
-is a line of two controls under the chips, a sort and a price. Everything
-they do stands in the address, so a filtered list can be sent to somebody and
-the back button does what you expect.
+is a line of three controls under the chips, a sort, a price and a condition.
+Everything they do stands in the address, so a filtered list can be sent to
+somebody and the back button does what you expect.
+
+They have a line of their own rather than running on after the categories,
+so the same three always sit together wherever the chips above happen to
+wrap. Each one shows the word it is set to, and the select itself lies
+invisible on top of it. That is what keeps a pill as wide as the word it
+shows instead of as wide as its longest option, and it is why the three of
+them plus Clear fill one line exactly on a phone.
 
 The price filter is steps and not two number fields, because nobody fills in
 two number fields on a phone. Free is one of the steps rather than a switch
@@ -171,7 +178,7 @@ being under every ceiling.
 Above the list sits one row of new entries that you swipe along. It is the
 same entries as in the list below, which is the point, it is a shortcut to
 what arrived this week. It shows on one condition, that nothing is set.
-No search, no category, Newest, Any price. Pick any one of those and the list
+No search, no category, Newest, Any price, Any condition. Pick any one of those and the list
 itself is the answer, and an unfiltered row next to a filtered list would
 only say something that is not true of the list.
 
@@ -201,7 +208,38 @@ You pick your own courses once, and the Groups tab then shows only entries in
 those courses. The toggle at the top switches to all courses when you want to
 look wider, and search still works in both.
 
+Inside that, the list is read course by course. The course name is the
+heading over each block, the way the day is the heading on Tickets. There is
+nothing sensible to filter a course list by, and three entries for the same
+course belong together, so a heading does the job a filter would have done
+badly.
+
 Only Groups works this way. Housing, Tickets and Market are untouched.
+
+## The notice on a group entry
+
+A group has no photo and a ticket stub would be the wrong object, so the top
+of a group entry is the notice somebody pinned to the board when they were
+one person short. The header is the board, the paper is pinned to it, and
+the tabs along the bottom are the spots. A tab still hanging is a spot that
+is free, a torn one is a spot somebody took, and through the gap you see the
+board, because the paper only exists where a tab still exists.
+
+The row holds between five and seven tabs whatever the group really is.
+Fewer looks broken and more looks like a comb. A group of three therefore
+shows five tabs with four of them already torn, and a group of twenty with
+nine spots free shows seven tabs all hanging. The true numbers are printed
+on the paper, so nobody has to count the tabs.
+
+Which of the six ragged edges a tab gets comes from the id of the entry. A
+notice therefore always tears the same way, and two notices never tear
+alike. Random would look alive for one second and wrong on the second visit.
+
+A group carries two fields of its own for this. `hand_in` is the date the
+work is due, which is also what the deadline on the notice counts down to,
+and `group_size` is how many the group is in all. `quantity` is how many
+spots are still free, the same column every other tab uses for how many are
+left.
 
 ## The pages
 

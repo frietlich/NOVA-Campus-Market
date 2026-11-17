@@ -36,17 +36,22 @@
     {% endif %}
 
     {% if tab.kind == 'item' %}
-      {# Market has no date to read it by, so this line is what puts it in an
-         order. Everything sits in the address, which means a filtered list
-         can be shared and the back button does what you expect. #}
+      {# The categories say what a thing is, these three say which of them you
+         want. They have a line of their own so the one line always holds the
+         same three, wherever the chips above happen to wrap.
+
+         Each pill shows the word it is set to, and the select lies invisible
+         on top of it. Everything lands in the address, so a filtered list can
+         be shared and the back button does what you expect. #}
       <form class="filters" method="get" action="{{ tab.path }}" data-auto>
         {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
         {% if cat %}<input type="hidden" name="cat" value="{{ cat }}">{% endif %}
 
         <label class="fpill fpill--pick {{ 'fpill--on' if sort }}">
           <span class="sr">Sort by</span>
+          <span>{{ SORT_SHORT[sort] }}</span>
           <select name="sort">
-            {% for key, name in SORT_OPTIONS %}
+            {% for key, name, short in SORT_OPTIONS %}
               <option value="{{ key }}"{{ ' selected' if sort == key }}>{{ name }}</option>
             {% endfor %}
           </select>
@@ -54,6 +59,7 @@
 
         <label class="fpill fpill--pick {{ 'fpill--on' if price }}">
           <span class="sr">Price</span>
+          <span>{{ PRICE_SHORT[price] if price else 'Price' }}</span>
           <select name="price">
             {% for key, name, low, high in bands %}
               <option value="{{ key }}"{{ ' selected' if price == key }}>{{ name }}</option>
@@ -61,10 +67,115 @@
           </select>
         </label>
 
-        {% if sort or price %}
-          <a class="fpill fpill--clear" href="{{ link(sort='', price='') }}">Clear</a>
+        <label class="fpill fpill--pick {{ 'fpill--on' if cond }}">
+          <span class="sr">Condition</span>
+          <span>{{ CONDITION_LABELS[cond] if cond else 'Condition' }}</span>
+          <select name="cond">
+            <option value=""{{ ' selected' if not cond }}>Any condition</option>
+            {% for key, name in CONDITIONS %}
+              <option value="{{ key }}"{{ ' selected' if cond == key }}>{{ name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        {% if sort or price or cond %}
+          <a class="clear" href="{{ link(sort='', price='', cond='') }}">Clear</a>
         {% endif %}
       </form>
+    {% endif %}
+
+    {% if tab.kind == 'housing' %}
+      {# Housing asks about ten things, far too many for a row of pills, so
+         they live behind one button. The checkbox above the panel is what
+         opens it, which means the whole thing works with no JavaScript at
+         all. It starts open when something is already set. #}
+      <form class="hsearch" method="get" action="/housing">
+        {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+        <input class="sr" type="checkbox" id="openfilters"{{ ' checked' if hs.on }}>
+
+        <div class="hbar">
+          <label class="fbtn {{ 'fbtn--on' if hs.on }}" for="openfilters">
+            {{ icon.sliders() }} Filters{% if hs.on %}<span class="fcount">{{ hs.on }}</span>{% endif %}
+          </label>
+          <label class="fpill fpill--pick {{ 'fpill--on' if hs.sort }}">
+            <span class="sr">Sort by</span>
+            <span>{{ HOUSING.SORT_LABELS[hs.sort] }}</span>
+            <select name="sort" onchange="this.form.submit()">
+              {% for key, name in HOUSING.SORTS %}
+                <option value="{{ key }}"{{ ' selected' if hs.sort == key }}>{{ name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+
+        <div class="panel">
+          <div class="panel-top">
+            <b>Filters</b>
+            <a class="link" href="/housing{% if q %}?q={{ q | urlencode }}{% endif %}">Clear all</a>
+          </div>
+
+          <span class="flabel">MOVE IN FROM</span>
+          <input class="input" type="date" name="movein" value="{{ hs.movein }}">
+
+          <span class="flabel">RENT PER MONTH</span>
+          <div class="picks">
+            {% for key, name, low, high in HOUSING.RENT_BANDS %}
+              <label class="pick"><input class="sr" type="radio" name="rent" value="{{ key }}"{{ ' checked' if hs.rent == key }}><span>{{ name }}</span></label>
+            {% endfor %}
+          </div>
+          <div class="pair pair--tight">
+            <input class="input" type="number" name="rmin" min="0" max="9999" value="{{ hs.rmin }}" placeholder="€ from">
+            <input class="input" type="number" name="rmax" min="0" max="9999" value="{{ hs.rmax }}" placeholder="€ to">
+          </div>
+
+          <span class="flabel">KIND OF PLACE</span>
+          <div class="picks">
+            <label class="pick"><input class="sr" type="radio" name="cat" value=""{{ ' checked' if not hs.kind }}><span>Any</span></label>
+            {% for key, name in HOUSING.KINDS %}
+              <label class="pick"><input class="sr" type="radio" name="cat" value="{{ key }}"{{ ' checked' if hs.kind == key }}><span>{{ name }}</span></label>
+            {% endfor %}
+          </div>
+
+          <span class="flabel">AREA</span>
+          <div class="picks">
+            <label class="pick"><input class="sr" type="radio" name="area" value=""{{ ' checked' if not hs.area }}><span>Anywhere</span></label>
+            {% for key, name in HOUSING.AREAS %}
+              <label class="pick"><input class="sr" type="radio" name="area" value="{{ key }}"{{ ' checked' if hs.area == key }}><span>{{ name }}</span></label>
+            {% endfor %}
+          </div>
+
+          <span class="flabel">TO CAMPUS</span>
+          <div class="picks">
+            {% for key, name, cap in HOUSING.CAMPUS_BANDS %}
+              <label class="pick"><input class="sr" type="radio" name="mins" value="{{ key }}"{{ ' checked' if hs.mins == key }}><span>{{ name }}</span></label>
+            {% endfor %}
+          </div>
+          <input class="input" type="number" name="minsx" min="1" max="600" value="{{ hs.minsx }}" placeholder="or type minutes">
+
+          <span class="flabel">STAY FOR</span>
+          <div class="picks">
+            {% for key, name, cap in HOUSING.STAY_BANDS %}
+              <label class="pick"><input class="sr" type="radio" name="stay" value="{{ key }}"{{ ' checked' if hs.stay == key }}><span>{{ name }}</span></label>
+            {% endfor %}
+          </div>
+
+          <span class="flabel">MUST HAVE</span>
+          <div class="picks">
+            <label class="pick"><input class="sr" type="checkbox" name="has" value="bills"{{ ' checked' if hs.bills }}><span>Bills included</span></label>
+            {% for key, name, pic in HOUSING.FEATURES %}
+              <label class="pick"><input class="sr" type="checkbox" name="has" value="{{ key }}"{{ ' checked' if key in hs.picked }}><span>{{ name }}</span></label>
+            {% endfor %}
+          </div>
+
+          <button class="btn" type="submit" style="margin-top: 18px">
+            Show {{ listings | length }} {{ 'place' if listings | length == 1 else 'places' }}
+          </button>
+        </div>
+      </form>
+
+      {% if hs.summary %}
+        <p class="found">{{ listings | length }} {{ 'place' if listings | length == 1 else 'places' }} · {{ hs.summary }}</p>
+      {% endif %}
     {% endif %}
 
     {% if tab.kind == 'group' %}
@@ -107,6 +218,20 @@
           </div>
         {% endfor %}
 
+      {% elif blocks is not none %}
+
+        {# Groups is read course by course. There is nothing sensible to
+           filter a course list by, so the course is the heading instead and
+           two entries for the same one stand together. #}
+        {% for b in blocks %}
+          <div class="day-block">
+            <span class="section day-head">{{ b.head }}</span>
+            <div class="list">
+              {% for l in b.rows %}{{ c.card(l) }}{% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+
       {% else %}
         <div class="list">
           {% for l in listings %}{{ c.card(l) }}{% endfor %}
@@ -125,7 +250,7 @@
         {% elif q %}
           <b>Nothing found</b>
           <p>No open entry in {{ tab.label }} matches that.</p>
-        {% elif cat or price %}
+        {% elif cat or price or cond %}
           <b>Nothing like that</b>
           <p>No open entry in {{ tab.label }} matches what you picked.</p>
           <a class="link" href="{{ tab.path }}">Clear the filters</a>

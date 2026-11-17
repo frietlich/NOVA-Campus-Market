@@ -74,6 +74,46 @@
       </div>
     </div>
 
+  {% elif listing.type == 'group' %}
+
+    {# A group has no photo either, and a ticket stub would be the wrong
+       object. This is the notice on the board that people used to pin up
+       when they were one person short. The tabs along the bottom are the
+       free spots, the torn ones are the spots already taken, and through
+       the gaps you see the board itself. #}
+    <div class="board">
+      <div class="ticket-top">
+        <a class="ticket-back" href="{{ tab.path }}" aria-label="Back to {{ tab.label }}">{{ icon.back() }}</a>
+        {% if listing.owner_id != me.id %}{{ save_button(listing, saved, 'head') }}{% endif %}
+      </div>
+
+      <div class="notice">
+        <span class="notice-behind" aria-hidden="true"></span>
+        <div class="notice-sheet">
+          <span class="pin" aria-hidden="true"></span>
+          {% if listing.quantity and listing.group_size %}
+            <span class="notice-stamp">{{ listing.quantity }} of {{ listing.group_size }} free</span>
+          {% endif %}
+          <div class="notice-paper">
+            <span class="kicker">GROUP WORK</span>
+            <div class="notice-date">{{ listing.hand_in | short_date or 'No date' }}</div>
+            <span class="notice-sub">
+              {{ listing.hand_in | days_left }}{% if listing.group_size %}, group of {{ listing.group_size }}{% endif %}
+            </span>
+          </div>
+          <div class="tear">
+            {% for t in tabs %}
+              {% if t.hanging %}
+                <span class="tear-tab"><b>JOIN<br>US</b></span>
+              {% else %}
+                <span class="tear-tab tear-tab--torn" data-shape="{{ t.shape }}"><i></i><i></i></span>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+
   {% else %}
     <div class="hero">
       {% if photos %}
@@ -92,15 +132,23 @@
   <div class="detail-body">
 
     <h1>{{ listing.title }}</h1>
+    {% if listing.type == 'housing' %}
+      <p class="sub">
+        {{ HOUSING.KIND_LABELS.get(listing.category, 'Place') }}
+        {%- if listing.place %} in {{ HOUSING.AREA_LABELS.get(listing.place, listing.place) }}{% endif -%}
+        {%- if 'own_room' in (listing.features or '') %}, your own room{% endif %}
+      </p>
+    {% elif listing.type != 'group' %}
     <p class="sub">
       {%- if listing.price is not none -%}
         {{ listing.price | money }}{% if listing.type == 'housing' %} per month{% elif listing.type == 'ticket' %} each{% endif %}
       {%- else -%}
         Free
       {%- endif -%}
-
     </p>
+    {% endif %}
 
+    {% if listing.type != 'housing' %}
     <div class="pills">
       {% if listing.type == 'ticket' %}
         {% if listing.category %}<span class="pill pill--on">{{ listing.category | category }}</span>{% endif %}
@@ -108,16 +156,85 @@
       {% elif listing.type == 'item' %}
         {% if listing.category %}<span class="pill pill--on">{{ listing.category | category }}</span>{% endif %}
         {% if listing.condition %}<span class="pill">{{ listing.condition | condition }}</span>{% endif %}
-      {% elif listing.type == 'group' and listing.quantity %}
-        <span class="pill">{{ listing.quantity }} {{ 'spot' if listing.quantity == 1 else 'spots' }} left</span>
+      {% elif listing.type == 'group' %}
+        {% if listing.course_name %}<span class="pill pill--on">{{ listing.course_name }}</span>{% endif %}
+        {% if listing.quantity %}<span class="pill">{{ listing.quantity }} {{ 'spot' if listing.quantity == 1 else 'spots' }} left</span>{% endif %}
+        {% if listing.hand_in %}<span class="pill">{{ listing.hand_in | days_left }}</span>{% endif %}
       {% endif %}
       {% for part in listing.info.split('·') %}
         {% if part.strip() %}<span class="pill">{{ part.strip() }}</span>{% endif %}
       {% endfor %}
       {% if listing.status == 'closed' %}<span class="pill">Closed</span>{% endif %}
     </div>
+    {% endif %}
 
-    {% if listing.description %}<p class="text">{{ listing.description }}</p>{% endif %}
+    {% if listing.type == 'housing' %}
+
+      {# What it really costs, worked out. Rent plus bills is the number you
+         compare with, and nobody can do that from a grey line of text. #}
+      <div class="costs">
+        <div class="cost"><span>Rent</span><b>{{ listing.price | money }}</b></div>
+        {% if listing.bills_included %}
+          <div class="cost cost--quiet"><span>Bills</span><span>included</span></div>
+        {% elif listing.bills_estimate %}
+          <div class="cost cost--quiet"><span>Bills, about</span><span>{{ listing.bills_estimate | money }}</span></div>
+        {% else %}
+          <div class="cost cost--quiet"><span>Bills</span><span>not said</span></div>
+        {% endif %}
+        <div class="cost-rule"></div>
+        <div class="cost cost--sum">
+          <span>Per month</span>
+          <span>{{ (listing.price + (0 if listing.bills_included else (listing.bills_estimate or 0))) | money }}</span>
+        </div>
+        {% if listing.deposit_months and listing.price %}
+          <div class="cost cost--note">
+            <span>Deposit, once</span>
+            <span>{{ (listing.price * listing.deposit_months) | money }}</span>
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="facts">
+        {% if listing.available_from %}
+          <div class="fact">{{ icon.pin(17) }}<span>Move in from</span><b>{{ listing.available_from | pretty_date }}</b></div>
+        {% endif %}
+        {% if listing.months_min %}
+          <div class="fact">{{ icon.check(17) }}<span>Minimum stay</span><b>{{ listing.months_min }} months</b></div>
+        {% endif %}
+        {% if listing.minutes_campus %}
+          <div class="fact">{{ icon.house(17) }}<span>To campus</span><b>about {{ listing.minutes_campus }} min</b></div>
+        {% endif %}
+        {% if listing.flatmates %}
+          <div class="fact">{{ icon.people(17) }}<span>You would live with</span><b>{{ listing.flatmates }} {{ 'student' if listing.flatmates == 1 else 'students' }}</b></div>
+        {% endif %}
+      </div>
+
+      {% set has = HOUSING.feature_list(listing.features) %}
+      {% if has %}
+        <span class="block-head">The flat has</span>
+        <div class="pills">
+          {% for key, name, pic in has %}<span class="pill pill--on">{{ name }}</span>{% endfor %}
+        </div>
+      {% endif %}
+
+      {% if listing.address %}
+        <a class="where" href="https://maps.google.com/?q={{ listing.address | urlencode }}"
+           target="_blank" rel="noopener">
+          <span class="where-pin">{{ icon.pin(19) }}</span>
+          <span class="where-text">
+            <b>{{ listing.address }}</b>
+            <span>{{ HOUSING.AREA_LABELS.get(listing.place, 'Where it is') }}</span>
+          </span>
+          <span class="where-go">Open in maps</span>
+        </a>
+      {% endif %}
+
+      {% if listing.description %}
+        <span class="block-head">About the place</span>
+        <p class="text text--flush">{{ listing.description }}</p>
+      {% endif %}
+
+    {% elif listing.description %}<p class="text">{{ listing.description }}</p>{% endif %}
 
     {% if listing.type == 'ticket' and listing.address %}
       {# No map of our own. The phone already has one, so we hand the address

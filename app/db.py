@@ -31,6 +31,16 @@ LATER_COLUMNS = {
     ],
     "listings": [
         ("condition", "TEXT"),
+        ("hand_in", "TEXT"),
+        ("group_size", "INTEGER"),
+        ("available_from", "TEXT"),
+        ("months_min", "INTEGER"),
+        ("bills_included", "INTEGER"),
+        ("bills_estimate", "REAL"),
+        ("deposit_months", "INTEGER"),
+        ("minutes_campus", "INTEGER"),
+        ("flatmates", "INTEGER"),
+        ("features", "TEXT"),
     ],
 }
 
@@ -218,6 +228,17 @@ def _listing_sql(where, order="l.created_at DESC", extra_join=""):
 
 ORDER_FOR = {
     "ticket": "l.event_date, l.event_time, l.price, l.id",
+    # Groups is read course by course, so the course comes first and the
+    # nearest hand in date leads inside it.
+    "group": "c.name, l.hand_in IS NULL, l.hand_in, l.id",
+    # Housing is read by when you could move in.
+    "housing": "l.available_from IS NULL, l.available_from, l.id",
+}
+
+# What the Sort button on Housing can be set to. Empty is the order above.
+HOUSING_SORTS = {
+    "low":  "l.price ASC, l.available_from, l.id",
+    "high": "l.price DESC, l.available_from, l.id",
 }
 
 # What the Sort button on Market can be set to. SQLite puts an empty price
@@ -231,7 +252,10 @@ SORTS = {
 
 
 def listings_of_type(kind, search="", only_for=None, category=None, sort=None,
-                     min_price=None, max_price=None, free_only=False):
+                     min_price=None, max_price=None, free_only=False,
+                     condition=None, free_from=None, area=None,
+                     max_minutes=None, max_months=None, bills_included=False,
+                     features=None, price_inclusive=False):
     """Open listings in one tab.
 
     Search looks in the title, the grey line and the course name. Give
@@ -248,11 +272,50 @@ def listings_of_type(kind, search="", only_for=None, category=None, sort=None,
         where += " AND l.category = ?"
         args.append(category)
 
+    if condition:
+        where += " AND l.condition = ?"
+        args.append(condition)
+
+    # ------------------------------------------------------------- housing
+    # A place that has been free since January is still free in February, so
+    # the date means free by then and not free exactly then.
+    if free_from:
+        where += " AND (l.available_from IS NULL OR l.available_from <= ?)"
+        args.append(free_from)
+
+    if area:
+        where += " AND l.place = ?"
+        args.append(area)
+
+    # No number means we cannot promise it is near, so it stays out.
+    if max_minutes is not None:
+        where += " AND l.minutes_campus IS NOT NULL AND l.minutes_campus <= ?"
+        args.append(max_minutes)
+
+    # Wanting a semester has to hide everything that insists on a year.
+    if max_months is not None:
+        where += " AND (l.months_min IS NULL OR l.months_min <= ?)"
+        args.append(max_months)
+
+    if bills_included:
+        where += " AND l.bills_included = 1"
+
+    # features is one column holding a comma separated list, so each tick is
+    # a search for that key with a comma on either side of it. An entry with
+    # no features at all gives NULL here, which matches nothing, and that is
+    # exactly right.
+    for key in features or []:
+        where += " AND (',' || l.features || ',') LIKE ?"
+        args.append(f"%,{key},%")
+
     if free_only:
         where += " AND (l.price IS NULL OR l.price = 0)"
 
     if max_price is not None:
-        where += " AND (l.price IS NULL OR l.price < ?)"
+        # Market says under 450 and means it, Housing says to 450 and counts
+        # a place at exactly 450 as a hit. Same column, two readings.
+        where += (" AND (l.price IS NULL OR l.price <= ?)" if price_inclusive
+                  else " AND (l.price IS NULL OR l.price < ?)")
         args.append(max_price)
 
     if min_price is not None:
@@ -270,7 +333,10 @@ def listings_of_type(kind, search="", only_for=None, category=None, sort=None,
         args += [f"%{search.strip()}%"] * 5
 
     conn = connect()
-    order = SORTS.get(sort) or ORDER_FOR.get(kind) or "l.created_at DESC"
+    if kind == "housing":
+        order = HOUSING_SORTS.get(sort) or ORDER_FOR["housing"]
+    else:
+        order = SORTS.get(sort) or ORDER_FOR.get(kind) or "l.created_at DESC"
     rows = conn.execute(_listing_sql(where, order), tuple(args)).fetchall()
     conn.close()
     return rows
@@ -298,17 +364,25 @@ def listings_of_user(user_id):
 def create_listing(owner_id, kind, title, description="", price=None, info="",
                    category=None, condition=None, event_date=None,
                    event_time=None, place=None, address=None, quantity=None,
-                   course_id=None):
+                   course_id=None, hand_in=None, group_size=None,
+                   available_from=None, months_min=None, bills_included=None,
+                   bills_estimate=None, deposit_months=None,
+                   minutes_campus=None, flatmates=None, features=None):
     if kind not in TYPES:
         raise ValueError(f"unknown type {kind}")
     conn = connect()
     cur = conn.execute(
         "INSERT INTO listings (owner_id, type, title, description, price, info,"
         " category, condition, event_date, event_time, place, address, quantity,"
-        " course_id, status, views, created_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', 0, ?)",
+        " course_id, hand_in, group_size, available_from, months_min,"
+        " bills_included, bills_estimate, deposit_months, minutes_campus,"
+        " flatmates, features, status, views, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
+        " ?, ?, ?, ?, 'open', 0, ?)",
         (owner_id, kind, title, description, price, info, category, condition,
-         event_date, event_time, place, address, quantity, course_id, now()),
+         event_date, event_time, place, address, quantity, course_id, hand_in,
+         group_size, available_from, months_min, bills_included, bills_estimate,
+         deposit_months, minutes_campus, flatmates, features, now()),
     )
     conn.commit()
     new_id = cur.lastrowid

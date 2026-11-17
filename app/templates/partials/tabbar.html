@@ -1,5 +1,11 @@
 {% import "partials/icons.html" as icon %}
 <nav class="tabbar" aria-label="Main">
+  {# The capsule the active tab sits in. The server puts it on the right tab
+     straight away, so it is in place before any script runs, and app.js then
+     measures the real tab and slides it when you arrive from another one. #}
+  {% if active in TAB_ORDER %}
+    <span class="glide" style="--n: {{ TAB_ORDER.index(active) }}" aria-hidden="true"></span>
+  {% endif %}
   {% for t in TABS %}
     <a class="tab" data-kind="{{ t.kind }}" href="{{ t.path }}"{% if active == t.kind %} aria-current="page"{% endif %}>
       {{ icon.of_kind(t.kind, 24) }}

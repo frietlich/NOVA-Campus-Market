@@ -199,6 +199,81 @@
   });
 })();
 
+// The capsule under the tab bar. It is measured off the tab it belongs to
+// rather than worked out from the padding, so it fits exactly whatever the
+// bar happens to be doing. Moving between tabs is a real page load here, so
+// the slide happens on arrival. The page works out which tab you came from
+// and plays the capsule travelling from there.
+//
+// The final position is set first and the travel is a separate animation on
+// top. That order matters. If the page is in the background its animations
+// are throttled, and this way the capsule is simply in the right place with
+// no movement, instead of being stranded where it started.
+(function tabglide() {
+  const bar = document.querySelector(".tabbar");
+  const glide = bar && bar.querySelector(".glide");
+  if (!glide) return;
+
+  const tabs = Array.from(bar.querySelectorAll(".tab"));
+  const here = tabs.findIndex((t) => t.getAttribute("aria-current") === "page");
+  if (here < 0) return;
+
+  function boxOf(n) {
+    const tab = tabs[n].getBoundingClientRect();
+    const rail = bar.getBoundingClientRect();
+    // clientLeft and clientTop are the bar's own border. A child placed at
+    // zero starts inside it, so without them the capsule sits one pixel low,
+    // which is exactly the thickness of the line above the bar.
+    return {
+      w: tab.width, h: tab.height,
+      x: tab.left - rail.left - bar.clientLeft,
+      y: tab.top - rail.top - bar.clientTop,
+    };
+  }
+
+  function place(n) {
+    const box = boxOf(n);
+    glide.style.left = "0px";
+    glide.style.top = "0px";
+    glide.style.width = box.w + "px";
+    glide.style.height = box.h + "px";
+    glide.style.transform = "translate(" + box.x + "px," + box.y + "px)";
+    return box;
+  }
+
+  // Which tab you came from. A reload, a listing or the first visit all
+  // count as no journey, and then the capsule simply sits still.
+  let from = -1;
+  if (document.referrer) {
+    try {
+      const came = new URL(document.referrer).pathname;
+      from = tabs.findIndex((t) => new URL(t.href).pathname === came);
+    } catch (err) {
+      from = -1;
+    }
+  }
+
+  const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const seen = document.visibilityState === "visible";
+  const to = place(here);
+
+  // Nothing to animate for a page nobody is looking at. A hidden tab stops
+  // handing out frames, so the capsule would hang at the start of the
+  // journey instead of arriving.
+  if (from >= 0 && from !== here && !still && seen && glide.animate) {
+    const was = boxOf(from);
+    glide.animate(
+      [{ transform: "translate(" + was.x + "px," + was.y + "px)" },
+       { transform: "translate(" + to.x + "px," + to.y + "px)" }],
+      // A touch of overshoot at the end. A straight slide reads as a cheap
+      // animation, the small settle is what makes it feel physical.
+      { duration: 420, easing: "cubic-bezier(0.34, 1.56, 0.64, 1)" }
+    );
+  }
+
+  window.addEventListener("resize", () => place(here));
+})();
+
 // The confirmation after publishing or closing fades away on its own, and the
 // ?done=... leaves the address so a reload does not show it again.
 (function toast() {

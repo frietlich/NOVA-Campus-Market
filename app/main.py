@@ -11,13 +11,13 @@ from datetime import datetime, timedelta, timezone
 from typing import List
 from urllib.parse import quote, urlencode
 
-from fastapi import FastAPI, Form, Request, UploadFile, File
+from fastapi import FastAPI, Form, Query, Request, UploadFile, File
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import categories, db, mailer, passwords, programmes
+from . import categories, db, housing, mailer, passwords, programmes
 
 # .env first, so CAMPUS_SECRET and the mail account can live in it.
 mailer.load_env()
@@ -42,10 +42,12 @@ BY_KIND = {t["kind"]: t for t in TABS}
 # What the Sort button on Market offers. The key is what stands in the
 # address, db.py turns it into the order the rows come back in.
 SORT_OPTIONS = [
-    ("",     "Newest"),
-    ("low",  "Price low to high"),
-    ("high", "Price high to low"),
+    ("",     "Newest",            "Newest"),
+    ("low",  "Price low to high", "Price low"),
+    ("high", "Price high to low", "Price high"),
 ]
+SORT_KEYS = {key for key, _, _ in SORT_OPTIONS}
+SORT_SHORT = {key: short for key, _, short in SORT_OPTIONS}
 
 # The price filter, in steps. Two number fields is something nobody fills in
 # on a phone. Key, what the button says, floor, ceiling. Free is a step like
@@ -97,7 +99,13 @@ def money(value):
 
 
 def when(iso):
-    """14:32 today, Yesterday before that, then 12 Nov."""
+    """14:32 today, Yesterday before that, then 12 Nov.
+
+    The day is put in by hand rather than with %-d. That flag strips the
+    leading zero on a Mac and on Linux, and on Windows it is not a format at
+    all, strftime throws and the page dies. This is the same trick in all
+    four places below.
+    """
     if not iso:
         return ""
     t = datetime.fromisoformat(iso)
@@ -110,7 +118,7 @@ def when(iso):
         return t.strftime("%H:%M")
     if days == 1:
         return "Yesterday"
-    return t.strftime("%-d %b")
+    return f"{t.day} {t:%b}"
 
 
 def month(iso):
@@ -142,7 +150,7 @@ def event_badge(iso_date):
     if not iso_date:
         return None
     d = datetime.strptime(iso_date, "%Y-%m-%d")
-    return {"weekday": d.strftime("%a").upper(), "day": d.strftime("%-d"),
+    return {"weekday": d.strftime("%a").upper(), "day": str(d.day),
             "month": d.strftime("%b").upper()}
 
 
@@ -156,13 +164,45 @@ def day_label(iso_date):
         return "Today"
     if (d - today).days == 1:
         return "Tomorrow"
-    return d.strftime("%A %-d %B")
+    return f"{d:%A} {d.day} {d:%B}"
+
+
+def short_date(iso_date):
+    """Tue 2 Dec, the line at the top of a group notice."""
+    if not iso_date:
+        return ""
+    d = datetime.strptime(iso_date, "%Y-%m-%d")
+    return f"{d:%a} {d.day} {d:%b}"
+
+
+def day_month(iso_date):
+    """15 Jan, for a move in date where the weekday says nothing."""
+    if not iso_date:
+        return ""
+    d = datetime.strptime(iso_date, "%Y-%m-%d")
+    return f"{d.day} {d:%b}"
+
+
+def days_left(iso_date):
+    """today, tomorrow, 16 days left, or overdue once the day is past."""
+    if not iso_date:
+        return ""
+    d = datetime.strptime(iso_date, "%Y-%m-%d").date()
+    gap = (d - datetime.now().astimezone().date()).days
+    if gap < 0:
+        return "overdue"
+    if gap == 0:
+        return "today"
+    if gap == 1:
+        return "tomorrow"
+    return f"{gap} days left"
 
 
 def pretty_date(iso_date):
     if not iso_date:
         return ""
-    return datetime.strptime(iso_date, "%Y-%m-%d").strftime("%-d %b %Y")
+    d = datetime.strptime(iso_date, "%Y-%m-%d")
+    return f"{d.day} {d:%b %Y}"
 
 
 def programme_label(name, cems=False):
@@ -179,9 +219,13 @@ templates.env.filters["month"] = month
 templates.env.filters["ago"] = ago
 templates.env.globals["event_badge"] = event_badge
 templates.env.filters["day_label"] = day_label
+templates.env.filters["short_date"] = short_date
+templates.env.filters["day_month"] = day_month
+templates.env.filters["days_left"] = days_left
 templates.env.filters["category"] = categories.label
 templates.env.filters["condition"] = categories.condition_label
 templates.env.globals["pretty_date"] = pretty_date
+templates.env.filters["pretty_date"] = pretty_date
 def asset(path):
     """static/css/app.css?v=1763... so the browser never serves an old file.
 
@@ -197,13 +241,20 @@ def asset(path):
 
 templates.env.globals["asset"] = asset
 templates.env.globals["TABS"] = TABS
+# The order the tabs stand in, so a page knows which one the capsule under
+# the bar belongs on without counting the loop again.
+templates.env.globals["TAB_ORDER"] = [t["kind"] for t in TABS] + ["chats"]
 templates.env.globals["PROGRAMME_GROUPS"] = programmes.GROUPS
 templates.env.globals["CEMS"] = programmes.CEMS
 templates.env.globals["PASSWORD_RULES"] = passwords.RULES
 templates.env.globals["CATEGORIES_FOR"] = categories.FOR_KIND
 templates.env.globals["CONDITIONS"] = categories.CONDITION
+templates.env.globals["CONDITION_LABELS"] = categories.CONDITION_LABELS
 templates.env.globals["SORT_OPTIONS"] = SORT_OPTIONS
+templates.env.globals["SORT_SHORT"] = SORT_SHORT
 templates.env.globals["PRICE_BANDS"] = PRICE_BANDS
+templates.env.globals["HOUSING"] = housing
+templates.env.globals["PRICE_SHORT"] = {key: name for key, name, _, _ in PRICE_BANDS}
 
 
 def as_utc(iso):
@@ -223,6 +274,136 @@ def fresh_rows(rows):
     new = [r for r in rows if r["created_at"] and as_utc(r["created_at"]) >= cut]
     new.sort(key=lambda r: r["created_at"], reverse=True)
     return new[:FRESH_MAX]
+
+
+# The tear off tabs under a group notice. The row holds between five and
+# seven of them whatever the group really is, because fewer looks broken and
+# more looks like a comb. The true numbers are printed on the paper anyway.
+TABS_MIN = 5
+TABS_MAX = 7
+TEAR_SHAPES = 6
+
+
+def tear_tabs(listing):
+    """One entry per tab at the bottom of a group notice.
+
+    A hanging tab is a spot still free, a torn one is a spot somebody already
+    took. The shape number picks one of six ragged edges and comes from the
+    id of the entry, so the same notice always tears the same way and two
+    notices next to each other do not.
+    """
+    size = listing["group_size"] or listing["quantity"] or TABS_MIN
+    slots = max(TABS_MIN, min(TABS_MAX, size))
+    hanging = max(0, min(listing["quantity"] or 0, slots))
+    return [{"hanging": n >= slots - hanging,
+             "shape": (listing["id"] + n) % TEAR_SHAPES}
+            for n in range(slots)]
+
+
+def by_course(rows):
+    """Turn a flat list of group entries into one block per course.
+
+    Groups has no date to read it by and no categories. The course is what
+    you are looking for, so two entries for the same course belong under one
+    heading. The rows arrive sorted by course, so walking them once is enough.
+    """
+    blocks = []
+    for row in rows:
+        name = row["course_name"] or "No course"
+        if not blocks or blocks[-1]["head"] != name:
+            blocks.append({"head": name, "rows": []})
+        blocks[-1]["rows"].append(row)
+    return blocks
+
+
+def month_label(iso_date):
+    """Free from January, the heading over a block of places."""
+    if not iso_date:
+        return "Date not given"
+    d = datetime.strptime(iso_date, "%Y-%m-%d")
+    return f"Free from {d:%B}"
+
+
+def by_month(rows):
+    """One block per month you could move in.
+
+    Housing has no categories worth a row of chips and no course, but it
+    does have a date, so the month is the heading. Same idea as the day on
+    Tickets, one step coarser, because nobody moves on a Tuesday.
+    """
+    blocks = []
+    for row in rows:
+        name = month_label(row["available_from"])
+        if not blocks or blocks[-1]["head"] != name:
+            blocks.append({"head": name, "rows": []})
+        blocks[-1]["rows"].append(row)
+    return blocks
+
+
+def housing_search(cat, sort, rent, rmin, rmax, mins, minsx, stay, area,
+                   movein, has):
+    """Everything the filter panel sent, cleaned up and counted.
+
+    A number somebody typed beats the band above it and switches that band
+    off, so the panel never shows two answers to the same question.
+    """
+    kind = housing.clean_kind(cat)
+    sort = sort if sort in housing.SORT_KEYS else ""
+
+    rent = rent if rent in housing.RENT_BY_KEY else ""
+    low, high = housing.RENT_BY_KEY[rent][2], housing.RENT_BY_KEY[rent][3]
+    typed_low = housing.whole_number(rmin, 100000)
+    typed_high = housing.whole_number(rmax, 100000)
+    if typed_low or typed_high:
+        rent, low, high = "", typed_low, typed_high
+
+    mins = mins if mins in housing.CAMPUS_BY_KEY else ""
+    minutes = housing.CAMPUS_BY_KEY[mins][2]
+    typed_mins = housing.whole_number(minsx, 600)
+    if typed_mins:
+        mins, minutes = "", typed_mins
+
+    stay = stay if stay in housing.STAY_BY_KEY else ""
+    area = housing.clean_area(area)
+    movein = movein if re.fullmatch(r"\d{4}-\d{2}-\d{2}", movein or "") else ""
+
+    picked = [str(p).strip() for p in (has or []) if str(p).strip()]
+    bills = "bills" in picked
+    feats = [p for p in picked if p in housing.FEATURE_KEYS]
+
+    parts = []
+    if movein:
+        parts.append("from " + pretty_date(movein))
+    if typed_low or typed_high:
+        parts.append(" to ".join(money(x) for x in (low, high) if x is not None))
+    elif rent:
+        band = housing.RENT_BY_KEY[rent]
+        parts.append("to " + money(band[3]) if band[3] else "over " + money(band[2]))
+    if typed_mins:
+        parts.append(f"max {typed_mins} min")
+    elif mins:
+        parts.append("max " + housing.CAMPUS_LABELS[mins])
+    if stay:
+        parts.append(housing.STAY_LABELS[stay].lower())
+    if kind:
+        parts.append(housing.KIND_LABELS[kind])
+    if area:
+        parts.append(housing.AREA_LABELS[area])
+    if bills:
+        parts.append("bills in")
+    if feats:
+        parts.append(f"{len(feats)} must have" if len(feats) == 1
+                     else f"{len(feats)} must haves")
+
+    on = sum(bool(x) for x in (movein, rent or typed_low or typed_high,
+                               mins or typed_mins, stay, kind, area, bills)) + len(feats)
+
+    return {"kind": kind, "sort": sort, "rent": rent, "rmin": rmin.strip(),
+            "rmax": rmax.strip(), "mins": mins, "minsx": minsx.strip(),
+            "stay": stay, "area": area, "movein": movein, "picked": picked,
+            "low": low, "high": high, "minutes": minutes, "bills": bills,
+            "features": feats, "months": housing.STAY_BY_KEY[stay][2],
+            "on": on, "summary": ", ".join(parts)}
 
 
 def link_maker(path, params):
@@ -593,7 +774,7 @@ def dev_login(request: Request, user_id: int = Form(...)):
 # --------------------------------------------------------------- the four tabs
 
 def tab_page(request, kind, q, scope="mine", cat="", day="", sort="",
-             price=""):
+             price="", cond="", hs=None):
     me = me_or_none(request)
     if me is None:
         return go("/start")
@@ -604,42 +785,69 @@ def tab_page(request, kind, q, scope="mine", cat="", day="", sort="",
     mine = db.courses_of(me["id"]) if kind == "group" else []
     only_for = me["id"] if (kind == "group" and scope == "mine") else None
 
-    # Anything the address does not recognise is dropped rather than argued
-    # with, so a hand typed link can never put the page in a state it has no
-    # button for.
-    cat = cat if categories.is_valid(cat, kind) else ""
-    sort = sort if sort in dict(SORT_OPTIONS) else ""
-    price = price if price in BY_BAND else ""
-    band = BY_BAND[price]
+    if hs is not None:
+        # Housing arrives already cleaned, because its panel asks about ten
+        # things and the cleaning of those lives in one place.
+        rows = db.listings_of_type(
+            kind, q or "", category=hs["kind"], sort=hs["sort"] or None,
+            min_price=hs["low"], max_price=hs["high"], price_inclusive=True,
+            free_from=hs["movein"] or None, area=hs["area"],
+            max_minutes=hs["minutes"], max_months=hs["months"],
+            bills_included=hs["bills"], features=hs["features"])
+        cat, sort = hs["kind"] or "", hs["sort"]
+        price = cond = ""
+    else:
+        # Anything the address does not recognise is dropped rather than
+        # argued with, so a hand typed link can never put the page in a state
+        # it has no button for.
+        cat = cat if categories.is_valid(cat, kind) else ""
+        sort = sort if sort in SORT_KEYS else ""
+        price = price if price in BY_BAND else ""
+        cond = cond if cond in categories.CONDITION_LABELS else ""
+        band = BY_BAND[price]
 
-    rows = db.listings_of_type(kind, q or "", only_for=only_for,
-                               category=cat or None, sort=sort or None,
-                               min_price=band[2], max_price=band[3],
-                               free_only=price == "free")
+        rows = db.listings_of_type(kind, q or "", only_for=only_for,
+                                   category=cat or None, sort=sort or None,
+                                   min_price=band[2], max_price=band[3],
+                                   free_only=price == "free",
+                                   condition=cond or None)
 
-    # Tickets are the one tab that is read by day, so they are grouped before
-    # the page sees them. Everything else stays a plain list.
+    # Tickets are read by day, Groups by course and Housing by month, so all
+    # three are grouped before the page sees them. Market stays a plain list
+    # because a thing for sale has no date of its own.
     days = by_day(rows, day) if kind == "ticket" else None
+    blocks = None
+    if kind == "group":
+        blocks = by_course(rows)
+    elif kind == "housing" and not sort:
+        # Sorting by rent and heading by month at the same time would say two
+        # different things about the same list.
+        blocks = by_month(rows)
 
     # The row is what you get when you have asked for nothing. The moment you
     # pick a category, a sort, a price or type a search, the list itself is
     # the answer and a second unfiltered row next to it would only confuse.
-    untouched = not (q or cat or sort or price)
+    untouched = not (q or cat or sort or price or cond)
     fresh = fresh_rows(rows) if kind == "item" and untouched else []
 
     params = {"q": q or "", "cat": cat, "sort": sort, "price": price,
-              "day": day or ""}
+              "cond": cond, "day": day or ""}
 
     return page(request, "listings.html", tab=tab, listings=rows, q=q or "",
                 active=kind, me=me, scope=scope, my_courses=mine,
-                days=days, cat=cat, open_day=day, fresh=fresh,
-                sort=sort, price=price, bands=PRICE_BANDS,
+                days=days, blocks=blocks, cat=cat, open_day=day, fresh=fresh,
+                sort=sort, price=price, cond=cond, bands=PRICE_BANDS, hs=hs,
                 link=link_maker(tab["path"], params))
 
 
 @app.get("/housing")
-def housing(request: Request, q: str = ""):
-    return tab_page(request, "housing", q)
+def housing_tab(request: Request, q: str = "", cat: str = "", sort: str = "",
+                rent: str = "", rmin: str = "", rmax: str = "", mins: str = "",
+                minsx: str = "", stay: str = "", area: str = "",
+                movein: str = "", has: List[str] = Query(default=[])):
+    hs = housing_search(cat, sort, rent, rmin, rmax, mins, minsx, stay, area,
+                        movein, has)
+    return tab_page(request, "housing", q, hs=hs)
 
 
 @app.get("/tickets")
@@ -649,8 +857,9 @@ def tickets(request: Request, q: str = "", cat: str = "", day: str = ""):
 
 @app.get("/market")
 def market(request: Request, q: str = "", cat: str = "", sort: str = "",
-           price: str = ""):
-    return tab_page(request, "item", q, cat=cat, sort=sort, price=price)
+           price: str = "", cond: str = ""):
+    return tab_page(request, "item", q, cat=cat, sort=sort, price=price,
+                    cond=cond)
 
 
 @app.get("/groups")
@@ -700,6 +909,7 @@ def listing_detail(request: Request, listing_id: int):
         row = db.get_listing(listing_id)
     return page(request, "detail.html", listing=row, photos=db.photos_of(listing_id),
                 tab=BY_KIND[row["type"]], me=me,
+                tabs=tear_tabs(row) if row["type"] == "group" else [],
                 saved=db.is_saved(me["id"], listing_id),
                 saves=db.save_count(listing_id))
 
@@ -782,6 +992,16 @@ async def new_listing(request: Request,
                       address: str = Form(""),
                       quantity: str = Form(""),
                       course_id: str = Form(""),
+                      hand_in: str = Form(""),
+                      group_size: str = Form(""),
+                      available_from: str = Form(""),
+                      months_min: str = Form(""),
+                      bills_included: str = Form(""),
+                      bills_estimate: str = Form(""),
+                      deposit_months: str = Form(""),
+                      minutes_campus: str = Form(""),
+                      flatmates: str = Form(""),
+                      features: List[str] = Form(default=[]),
                       description: str = Form(""),
                       photos: List[UploadFile] = File(default=[])):
     me = me_or_none(request)
@@ -800,6 +1020,14 @@ async def new_listing(request: Request,
         return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
                     my_courses=mine, error="Pick the course this group is for.")
 
+    if kind == "housing" and not available_from.strip():
+        return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
+                    my_courses=mine, error="Say from when the place is free.")
+
+    if kind == "group" and not hand_in.strip():
+        return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
+                    my_courses=mine, error="A group entry needs the hand in date.")
+
     if kind == "ticket" and not event_date.strip():
         return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
                     my_courses=mine, error="A ticket needs the date of the event.")
@@ -811,16 +1039,32 @@ async def new_listing(request: Request,
         description=description.strip(),
         price=float(price) if price.strip() else None,
         info=info.strip(),
-        category=(categories.clean(category, kind)
+        # Housing keeps its kind of place in the same column, but its list
+        # lives in housing.py, not in categories.py.
+        category=(housing.clean_kind(category) if kind == "housing"
+                  else categories.clean(category, kind)
                   if kind in categories.FOR_KIND else None),
         condition=categories.clean_condition(condition) if kind == "item" else None,
         event_date=event_date.strip() or None,
         event_time=event_time.strip() or None,
-        place=place.strip() or None,
+        place=(housing.clean_area(place) if kind == "housing"
+               else place.strip() or None),
         address=address.strip() or None,
         quantity=int(quantity) if quantity.strip().isdigit() else None,
         course_id=int(course_id) if (kind == "group" and course_id.strip().isdigit())
         else None,
+        hand_in=(hand_in.strip() or None) if kind == "group" else None,
+        group_size=(int(group_size) if kind == "group" and group_size.strip().isdigit()
+                    else None),
+        available_from=(available_from.strip() or None) if kind == "housing" else None,
+        months_min=housing.whole_number(months_min, 36) if kind == "housing" else None,
+        bills_included=(1 if bills_included.strip() == "1" else 0) if kind == "housing" else None,
+        bills_estimate=(float(bills_estimate) if kind == "housing"
+                        and bills_estimate.strip() else None),
+        deposit_months=housing.whole_number(deposit_months, 12) if kind == "housing" else None,
+        minutes_campus=housing.whole_number(minutes_campus, 600) if kind == "housing" else None,
+        flatmates=housing.whole_number(flatmates, 20) if kind == "housing" else None,
+        features=housing.clean_features(features) if kind == "housing" else None,
     )
 
     position = 0

@@ -50,6 +50,18 @@ CREATE TABLE IF NOT EXISTS listings (
     quantity    INTEGER,                         -- how many are left. Tickets to
                                                  -- sell, or free spots in a group
     course_id   INTEGER REFERENCES courses(id),  -- groups only
+    hand_in     TEXT,                            -- groups only, YYYY-MM-DD
+    group_size  INTEGER,                         -- groups only, how many in all
+    -- housing only, see housing.py. place holds the area and address the
+    -- street, the same two columns a ticket uses for its venue.
+    available_from TEXT,                         -- YYYY-MM-DD
+    months_min     INTEGER,                      -- shortest stay they accept
+    bills_included INTEGER,                      -- 1 when the rent is all in
+    bills_estimate REAL,                         -- what bills cost on top
+    deposit_months INTEGER,                      -- deposit, in months of rent
+    minutes_campus INTEGER,                      -- door to campus, their guess
+    flatmates      INTEGER,                      -- how many already live there
+    features       TEXT,                        -- a comma separated list
     status      TEXT    NOT NULL DEFAULT 'open', -- open or closed
     views       INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT    NOT NULL

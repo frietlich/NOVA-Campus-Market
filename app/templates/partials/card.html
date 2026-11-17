@@ -49,6 +49,31 @@
           {{ l.owner_name }}
         {%- endif -%}
       </span>
+    {% elif l.type == 'housing' %}
+      {# Two lines of facts built from fields, not from a line somebody
+         typed. The first one carries the two that decide everything, what
+         it really costs and how far it is. #}
+      <span class="card-key truncate">
+        {%- if l.bills_included -%}bills included
+        {%- elif l.bills_estimate -%}plus about {{ l.bills_estimate | money }}
+        {%- else -%}plus bills{%- endif -%}
+        {%- if l.minutes_campus %} · {{ l.minutes_campus }} min to campus{% endif -%}
+      </span>
+      <span class="card-info truncate">
+        {%- if l.available_from %}From {{ l.available_from | day_month }}{% endif -%}
+        {%- if l.flatmates %} · {{ l.flatmates }} flatmate{{ '' if l.flatmates == 1 else 's' }}
+        {%- elif l.category == 'studio' or l.category == 'whole_flat' %} · on your own{% endif -%}
+        {%- if l.months_min %} · {{ l.months_min }} months min{% endif -%}
+      </span>
+      <span class="card-owner truncate">{{ l.owner_name }} · {{ l.owner_programme | short }}</span>
+    {% elif l.type == 'group' %}
+      {# No course line here. The course is the heading above the block. #}
+      {# The deadline leads, so it never gets cut off the end of the line. #}
+      <span class="card-info truncate">
+        {%- if l.hand_in -%}{{ l.hand_in | days_left }}{% if l.info %} · {% endif %}{%- endif -%}
+        {{ l.info }}
+      </span>
+      <span class="card-owner truncate">{{ l.owner_name }} · {{ l.owner_programme | short }}</span>
     {% else %}
       {% if l.course_name %}<span class="course-line truncate">{{ l.course_name }}</span>{% endif %}
       <span class="card-info truncate">

@@ -1058,7 +1058,7 @@ img { display: block; max-width: 100%; }
   --c-housing: #12998A;
   --c-ticket:  #E5492F;
   --c-item:    #7A5AF0;
-  --c-group:   #0A66E8;
+  --c-group:   #C8810E;
 }
 
 [data-kind="housing"] { --k: var(--c-housing); }
@@ -1161,8 +1161,8 @@ img { display: block; max-width: 100%; }
 /* ------------------------------------------------------- the first screen */
 
 .mark--brand {
-  background: linear-gradient(135deg, var(--c-housing), var(--c-group) 55%, var(--c-item));
-  box-shadow: 0 8px 22px color-mix(in srgb, var(--c-group) 30%, transparent);
+  background: linear-gradient(135deg, var(--c-housing), #0A66E8 55%, var(--c-item));
+  box-shadow: 0 8px 22px color-mix(in srgb, #0A66E8 30%, transparent);
 }
 
 .gate--start { padding-top: calc(var(--top) + 28px); }
@@ -1222,7 +1222,7 @@ img { display: block; max-width: 100%; }
     --c-housing: #2EC4B0;
     --c-ticket:  #FF735B;
     --c-item:    #A28DFF;
-    --c-group:   #4E97FF;
+    --c-group:   #E8A33D;
   }
   [data-kind] { --k-soft: color-mix(in srgb, var(--k) 20%, transparent); }
   .cover { filter: brightness(0.82) saturate(0.95); }
@@ -1235,7 +1235,7 @@ img { display: block; max-width: 100%; }
 @media (prefers-color-scheme: dark) {
   .app[data-kind] .btn:not(.btn--quiet):not(.btn--danger),
   .app[data-kind] .chip--on,
-  .app[data-kind] .fpill--on select { color: #0B0B0F; }
+  .app[data-kind] .fpill--on { color: #0B0B0F; }
 }
 
 /* Your own entries on the profile carry their tab's colour too. */
@@ -1248,6 +1248,7 @@ img { display: block; max-width: 100%; }
    Everything they do stands in the address, so a filtered list can be sent
    to somebody and the back button does what you expect. */
 
+/* The three pickers, in a row of their own under the categories. */
 .filters {
   display: flex;
   flex-wrap: wrap;
@@ -1257,32 +1258,40 @@ img { display: block; max-width: 100%; }
   padding-bottom: 2px;
 }
 
+/* Same shape and height as a chip, so the two rows belong together. White
+   with a line around it rather than filled, because these open something
+   and a category does not. */
 .fpill {
   position: relative;
   flex: none;
-  display: inline-flex; align-items: center;
-  white-space: nowrap;
-}
-
-.fpill select {
-  appearance: none; -webkit-appearance: none;
-  height: 32px;
-  padding: 0 32px 0 12px;
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 10px 6px 12px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--card);
-  font: inherit; font-size: 13px; font-weight: 600;
+  font-size: 13px; font-weight: 600;
   color: var(--ink);
-  outline: none;
+  white-space: nowrap;
+}
+
+/* The select lies invisible over the whole pill and opens the phone's own
+   picker. That is the only way the pill can be as wide as the word it shows
+   instead of as wide as its longest option, which is what pushed the row
+   onto a third line. */
+.fpill select {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  margin: 0; padding: 0; border: 0;
+  opacity: 0;
+  appearance: none; -webkit-appearance: none;
+  font: inherit;
 }
 
 /* The little chevron, drawn with two borders rather than an image. */
 .fpill--pick::after {
   content: "";
-  position: absolute;
-  right: 14px; top: 50%;
   width: 6px; height: 6px;
-  margin-top: -5px;
+  margin: -4px 0 0 0;
   border-right: 1.7px solid var(--muted);
   border-bottom: 1.7px solid var(--muted);
   transform: rotate(45deg);
@@ -1291,7 +1300,7 @@ img { display: block; max-width: 100%; }
 
 /* A filter that is doing something says so in the colour of the tab, the
    same way a chosen chip does. */
-.fpill--on select {
+.fpill--on {
   background: var(--accent);
   border-color: var(--accent);
   color: #FFFFFF;
@@ -1299,12 +1308,13 @@ img { display: block; max-width: 100%; }
 
 .fpill--on.fpill--pick::after { border-color: #FFFFFF; }
 
-.fpill--clear {
-  height: 32px;
+.clear {
+  flex: none;
   display: inline-flex; align-items: center;
-  padding: 0 10px;
+  padding: 7px 4px;
   font-size: 13px; font-weight: 600;
   color: var(--accent);
+  white-space: nowrap;
 }
 
 .fpill:active { transform: scale(0.97); }
@@ -1401,4 +1411,327 @@ img { display: block; max-width: 100%; }
   .save { background: rgba(28, 28, 33, 0.72); color: var(--ink); }
   .save--head { background: rgba(255, 255, 255, 0.88); color: #0B0B0F; }
   .save--on { color: #FF6B55; }
+}
+
+/* --------------------------------------------- the notice on the board */
+
+/* Groups has no photo, and a ticket stub would be the wrong object. What a
+   group entry really is, is the notice somebody pinned to the board when
+   they were one person short. The header is the board, the paper is pinned
+   to it, and the tabs along the bottom are the free spots. Where one has
+   been torn off you see the board through the gap. */
+
+:root {
+  --paper: #FFFDF8;
+  --paper-edge: #DACFB4;   /* the torn edge, so a rip has thickness */
+  --paper-line: #DED8C8;   /* the cuts between the tabs */
+  --paper-ink: #0B0B0F;
+  --paper-sub: #5E5E66;
+  --paper-faint: #9A9AA2;
+}
+
+.board {
+  background: var(--accent);
+  padding: var(--top) 10px 46px;
+}
+
+.notice { position: relative; margin-top: 16px; }
+
+/* A second sheet behind it. Without this it is one page floating in colour,
+   with it you are looking at a board that has things on it. */
+.notice-behind {
+  position: absolute;
+  left: 5px; right: 5px; top: -10px;
+  height: 58px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.62);
+  transform: rotate(2.6deg);
+}
+
+.notice-sheet { position: relative; transform: rotate(-0.7deg); }
+
+.pin {
+  position: absolute;
+  left: 50%; top: -9px;
+  transform: translateX(-50%);
+  width: 16px; height: 16px;
+  border-radius: 999px;
+  background: #B33B22;
+  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.2);
+  z-index: 3;
+}
+
+.notice-stamp {
+  position: absolute;
+  right: 14px; top: 13px;
+  z-index: 2;
+  padding: 3px 6px;
+  border: 1.4px solid var(--accent);
+  border-radius: 3px;
+  transform: rotate(3deg);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px; letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* The paper stops at the cut line. Everything below belongs to the tabs.
+   The cut is drawn as a repeating gradient rather than a dashed border, so
+   the dashes are long enough to read as a line somebody is meant to cut. */
+.notice-paper {
+  background-color: var(--paper);
+  background-image: repeating-linear-gradient(to right,
+    var(--accent) 0 7px, transparent 7px 13px);
+  background-size: 100% 2px;
+  background-position: left bottom;
+  background-repeat: repeat-x;
+  border-radius: 3px 3px 0 0;
+  padding: 15px 17px 15px;
+  text-align: center;
+}
+
+.kicker {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px; letter-spacing: 2.6px;
+  color: var(--paper-faint);
+}
+
+/* Set between two rules, thick over thin, the way a printed notice is set. */
+.notice-date {
+  margin-top: 7px;
+  padding: 6px 0 7px;
+  border-top: 2px solid var(--paper-ink);
+  border-bottom: 1px solid var(--paper-ink);
+  font-size: 32px; font-weight: 700; letter-spacing: -1.1px; line-height: 1;
+  color: var(--paper-ink);
+}
+
+.notice-sub {
+  display: block;
+  margin-top: 7px;
+  font-size: 13px;
+  color: var(--paper-sub);
+}
+
+.tear { display: flex; height: 84px; }
+
+.tear-tab {
+  flex: 1;
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  background-color: var(--paper);
+  border-radius: 0 0 2px 2px;
+}
+
+/* The cut between two tabs, same gradient standing up. */
+.tear-tab:not(:first-child),
+.tear-tab--torn:not(:first-child) i:last-child {
+  background-image: repeating-linear-gradient(to bottom,
+    var(--accent) 0 6px, transparent 6px 12px);
+  background-size: 2px 100%;
+  background-position: left top;
+  background-repeat: repeat-y;
+}
+
+.tear-tab b {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px; font-weight: 400; letter-spacing: 1.4px; line-height: 1.6;
+  text-align: center;
+  color: var(--accent);
+}
+
+/* A tab somebody already took. It has no paper of its own, so the board
+   shows through the gap. The two layers are the torn edge and the paper two
+   pixels above it, which is what gives the rip its thickness. */
+.tear-tab--torn { background-color: transparent; border-radius: 0; }
+.tear-tab--torn i { position: absolute; inset: 0; }
+/* The edge drops two pixels instead of the paper rising two pixels, so that
+   the cut line printed along the bottom of the sheet stays visible. */
+.tear-tab--torn i:first-child {
+  background-color: var(--paper-edge);
+  transform: translateY(2.5px);
+}
+.tear-tab--torn i:last-child { background-color: var(--paper); }
+
+/* Six ragged edges. Which one a tab gets comes from the id of the entry, so
+   a notice always tears the same way and two of them never look alike. */
+.tear-tab--torn[data-shape="0"] i { clip-path: polygon(0 0,100% 0,100% 38%,92% 30%,84% 44%,76% 33%,67% 46%,58% 31%,49% 43%,40% 29%,31% 41%,22% 32%,13% 45%,5% 34%,0 42%); }
+.tear-tab--torn[data-shape="1"] i { clip-path: polygon(0 0,100% 0,100% 29%,90% 41%,81% 28%,72% 40%,63% 27%,54% 38%,45% 26%,36% 39%,27% 30%,18% 42%,9% 31%,0 38%); }
+.tear-tab--torn[data-shape="2"] i { clip-path: polygon(0 0,100% 0,100% 45%,91% 33%,82% 47%,73% 35%,64% 48%,55% 34%,46% 46%,37% 32%,28% 44%,19% 35%,10% 47%,0 36%); }
+.tear-tab--torn[data-shape="3"] i { clip-path: polygon(0 0,100% 0,100% 33%,90% 25%,80% 40%,70% 28%,60% 42%,50% 27%,40% 39%,30% 26%,20% 38%,10% 29%,0 40%); }
+.tear-tab--torn[data-shape="4"] i { clip-path: polygon(0 0,100% 0,100% 44%,89% 31%,78% 46%,67% 33%,56% 45%,45% 30%,34% 43%,23% 32%,12% 46%,0 34%); }
+.tear-tab--torn[data-shape="5"] i { clip-path: polygon(0 0,100% 0,100% 27%,88% 39%,77% 26%,66% 38%,55% 25%,44% 37%,33% 28%,22% 40%,11% 29%,0 36%); }
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #1C1C21;
+    --paper-edge: #0C0C0F;
+    --paper-line: rgba(255, 255, 255, 0.16);
+    --paper-ink: #F4F4F6;
+    --paper-sub: #96969F;
+    --paper-faint: #6A6A73;
+  }
+  .notice-behind { background: rgba(255, 255, 255, 0.4); }
+}
+
+/* ------------------------------------------------- the Housing filter panel */
+
+/* Housing asks about ten things, which is far too many for a row of pills.
+   They live behind one button instead. The checkbox that opens the panel is
+   invisible and sits just above it, so the whole thing works with no
+   JavaScript, and the page comes back with the panel open whenever
+   something is already set. */
+
+.hsearch { margin-top: 10px; }
+
+.hbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+.fbtn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  font-size: 13px; font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.fbtn--on { background: var(--accent); border-color: var(--accent); color: #FFFFFF; }
+
+.fcount {
+  min-width: 18px; height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #FFFFFF;
+  color: var(--accent);
+  font-size: 11px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
+.panel { display: none; }
+#openfilters:checked ~ .panel { display: block; }
+
+.panel {
+  margin-top: 10px;
+  padding: 14px 15px 16px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+
+.panel-top { display: flex; justify-content: space-between; align-items: baseline; }
+.panel-top b { font-size: 16px; }
+
+.panel .input { height: 40px; font-size: 14px; }
+.panel .input + .flabel { margin-top: 15px; }
+
+.flabel {
+  display: block;
+  margin: 15px 0 7px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px; letter-spacing: 1.4px;
+  color: var(--faint);
+}
+
+.picks { display: flex; flex-wrap: wrap; gap: 5px; }
+
+/* The box itself is invisible and the word next to it is the button. */
+.pick span {
+  display: inline-block;
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: var(--tint);
+  font-size: 12px; font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.pick input:checked + span { background: var(--accent); color: #FFFFFF; }
+.pick input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.pair--tight { gap: 8px; margin-top: 8px; }
+.picks + .input { margin-top: 8px; }
+
+.found { margin: 9px 2px 0; font-size: 12px; color: var(--muted); }
+
+/* ------------------------------------------------ what a place really costs */
+
+.card-key { font-size: 13px; font-weight: 600; color: var(--accent); }
+
+.costs {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+
+.cost { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; font-size: 14px; }
+.cost--quiet { color: var(--muted); }
+.cost-rule { height: 1px; background: var(--line); margin: 8px 0; }
+.cost--sum { font-size: 16px; font-weight: 700; }
+.cost--note { padding-top: 6px; font-size: 12px; color: var(--faint); }
+
+.facts { margin-top: 16px; }
+
+.fact {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--hair);
+  font-size: 14px;
+}
+
+.fact:last-child { border-bottom: 0; }
+.fact svg { flex: none; color: var(--accent); }
+.fact > span { flex: 1; min-width: 0; color: var(--muted); }
+.fact b { font-weight: 600; }
+
+.block-head { display: block; margin-top: 18px; font-size: 14px; font-weight: 600; }
+.text--flush { margin-top: 8px; }
+
+@media (prefers-color-scheme: dark) {
+  .app[data-kind] .fbtn--on,
+  .app[data-kind] .pick input:checked + span { color: #0B0B0F; }
+}
+
+/* ------------------------------------------- the capsule under the tab bar */
+
+/* The active tab sits in a pane of frosted glass that slides across when you
+   move to another one. The colour stays on the icon where it belongs, so the
+   glass itself is neutral and only says where you are. */
+
+.glide {
+  position: absolute;
+  z-index: 0;
+  left: 4px; top: 8px;
+  width: calc((100% - 8px) / 5);
+  height: 48px;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 1px 4px rgba(0, 0, 0, 0.1);
+  /* Where it sits before any script has run, so it is never in the wrong
+     place even for a frame. app.js then measures the real tab and plays the
+     travel itself, which is why there is no transition here. One would
+     fire on every load as the measured pixels replace this calculation. */
+  transform: translateX(calc(var(--n, 0) * 100%));
+  pointer-events: none;
+}
+
+.tab { z-index: 1; }
+
+.tab svg { transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.tab[aria-current="page"] svg { transform: translateY(-1px) scale(1.06); }
+
+@media (prefers-color-scheme: dark) {
+  .glide {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.16);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+}
+
+/* Somebody who asked their phone for less movement gets none. */
+@media (prefers-reduced-motion: reduce) {
+  .tab svg { transition: none; }
 }
