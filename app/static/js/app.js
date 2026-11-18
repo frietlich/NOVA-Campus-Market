@@ -452,3 +452,221 @@
     t.addEventListener("animationend", () => t.remove(), { once: true });
   }, 3200);
 })();
+
+// The housing link on the new entry form. While you type it says which site
+// it recognised, offers to open it so you can check it is the right place,
+// and stops the form from going off with a link we would refuse anyway.
+(function housingLink() {
+  const box = document.querySelector(".linkfield");
+  if (!box) return;
+  const field = box.querySelector("input");
+  const status = box.querySelector(".linkfield-status");
+  const platforms = JSON.parse(box.dataset.platforms || "[]");
+  const names = box.dataset.names || "";
+  const hint = status.innerHTML;
+
+  function recognise(text) {
+    text = text.trim();
+    if (!text || /\s/.test(text)) return null;
+    let url;
+    try { url = new URL(text.includes("://") ? text : "https://" + text); }
+    catch (e) { return null; }
+    if (!/^https?:$/.test(url.protocol) || url.username || url.password) return null;
+    if (url.port && url.port !== "443" && url.port !== "80") return null;
+    const host = url.hostname.toLowerCase().replace(/\.$/, "");
+    for (const [domain, name] of platforms) {
+      if (host === domain || host.endsWith("." + domain)) {
+        url.protocol = "https:"; url.port = ""; url.hash = "";
+        return { name, href: url.toString() };
+      }
+    }
+    return null;
+  }
+
+  function update() {
+    const text = field.value.trim();
+    status.textContent = "";
+    if (!text) {
+      box.dataset.state = "";
+      status.innerHTML = hint;
+      field.setCustomValidity("");
+      return;
+    }
+    const found = recognise(text);
+    if (found) {
+      box.dataset.state = "ok";
+      field.setCustomValidity("");
+      const b = document.createElement("b");
+      b.textContent = "✓ " + found.name + " link.";
+      const open = document.createElement("a");
+      open.href = found.href; open.target = "_blank"; open.rel = "noopener noreferrer";
+      open.textContent = "Open it to check ↗";
+      status.append(b, " Students get a button to it. ", open);
+    } else {
+      box.dataset.state = "bad";
+      const msg = "That is not a link from a housing site we know. Use " + names + ".";
+      field.setCustomValidity(msg);
+      status.textContent = msg;
+    }
+  }
+
+  field.addEventListener("input", update);
+  field.addEventListener("paste", () => setTimeout(update, 0));
+  update();
+})();
+
+// The photo gallery on an entry: the counter, the dots and the arrows follow
+// whichever photo is in view, however it got there.
+(function gallery() {
+  const strip = document.querySelector("[data-gallery]");
+  if (!strip) return;
+  const hero = strip.closest(".hero");
+  const at = hero.querySelector("[data-gallery-at]");
+  const dots = Array.from(hero.querySelectorAll(".gallery-dots span"));
+  const prev = hero.querySelector(".gallery-nav--prev");
+  const next = hero.querySelector(".gallery-nav--next");
+  const total = strip.children.length;
+
+  function current() { return Math.round(strip.scrollLeft / strip.clientWidth); }
+  function go(i) {
+    i = Math.max(0, Math.min(total - 1, i));
+    strip.scrollTo({ left: i * strip.clientWidth });
+  }
+  function show() {
+    const i = current();
+    if (at) at.textContent = i + 1;
+    dots.forEach((d, n) => d.classList.toggle("on", n === i));
+    if (prev) prev.hidden = i === 0;
+    if (next) next.hidden = i === total - 1;
+  }
+
+  strip.addEventListener("scroll", () => window.requestAnimationFrame(show), { passive: true });
+  if (prev) prev.addEventListener("click", () => go(current() - 1));
+  if (next) next.addEventListener("click", () => go(current() + 1));
+  strip.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight") { e.preventDefault(); go(current() + 1); }
+    if (e.key === "ArrowLeft") { e.preventDefault(); go(current() - 1); }
+  });
+  show();
+})();
+
+// Autofill on the housing form: from the link, or from the pasted advert.
+// Whatever is found goes into the fields and lights up briefly, so the
+// student sees what changed and checks it before publishing.
+(function autofill() {
+  const box = document.querySelector(".autofill");
+  if (!box) return;
+  const link = document.getElementById("external_url");
+  const go = document.getElementById("autofill-go");
+  const paste = document.getElementById("autofill-paste");
+  const text = document.getElementById("autofill-text");
+  const textGo = document.getElementById("autofill-text-go");
+  const result = document.getElementById("autofill-result");
+  const linkBox = box.querySelector(".linkfield");
+
+  const NAMES = {
+    title: "title", category: "kind of place", place: "area", price: "rent",
+    bills_included: "bills", available_from: "move-in date",
+    months_min: "minimum stay", address: "address", description: "description",
+    features: "what the flat has",
+  };
+  const IDS = { bills_included: "bills" };
+
+  function say(message, kind) {
+    result.hidden = false;
+    result.className = "autofill-result" + (kind ? " autofill-result--" + kind : "");
+    result.textContent = message;
+  }
+
+  function mark(el) {
+    if (!el) return;
+    el.classList.remove("filled");
+    void el.offsetWidth;            // restart the animation
+    el.classList.add("filled");
+  }
+
+  function fill(fields) {
+    const done = [];
+    for (const [key, value] of Object.entries(fields)) {
+      if (key === "features") {
+        const boxes = Array.from(document.querySelectorAll('input[name="features"]'));
+        let any = false;
+        boxes.forEach((b) => {
+          if (value.includes(b.value) && !b.checked) {
+            b.checked = true; b.dispatchEvent(new Event("change", { bubbles: true }));
+            mark(b.closest(".opt")); any = true;
+          }
+        });
+        if (any) done.push(NAMES.features);
+        continue;
+      }
+      const el = document.getElementById(IDS[key] || key);
+      if (!el) continue;
+      if (key === "description" && el.value.trim()) continue;  // never overwrite their words
+      if (el.tagName === "SELECT" && !Array.from(el.options).some((o) => o.value === String(value))) continue;
+      el.value = value;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+      mark(el.closest(".prefixed") || el);
+      if (NAMES[key]) done.push(NAMES[key]);
+    }
+    return done;
+  }
+
+  async function ask(body, button) {
+    const label = button.textContent;
+    button.disabled = true;
+    button.textContent = "Reading the advert…";
+    try {
+      const res = await fetch("/new/autofill", { method: "POST", body });
+      return await res.json();
+    } catch (e) {
+      return { ok: false, reason: "unreachable" };
+    } finally {
+      button.textContent = label;
+      button.disabled = false;
+      syncButton();
+    }
+  }
+
+  function report(data) {
+    const where = data.site ? " from " + data.site : "";
+    if (data.ok) {
+      const done = fill(data.fields || {});
+      if (done.length) {
+        say("Filled in" + where + ": " + done.join(", ") + ". Check it below and add what is missing.", "ok");
+        return;
+      }
+    }
+    if (data.reason === "blocked" || data.reason === "unreachable") {
+      say((data.site || "That site") + " does not let apps read its adverts. No problem: open the advert, copy its text and paste it below.", "warn");
+      paste.open = true;
+      text.focus();
+    } else if (data.reason === "site") {
+      say("That link is not from a housing site we know.", "warn");
+    } else {
+      say("We could not find details in there. Fill in the form yourself, the link still goes on the entry.", "warn");
+    }
+  }
+
+  function syncButton() {
+    go.disabled = linkBox.dataset.state !== "ok";
+  }
+  link.addEventListener("input", syncButton);
+  syncButton();
+
+  go.addEventListener("click", async () => {
+    const body = new FormData();
+    body.append("url", link.value);
+    report(await ask(body, go));
+  });
+
+  textGo.addEventListener("click", async () => {
+    if (!text.value.trim()) { text.focus(); return; }
+    const body = new FormData();
+    body.append("text", text.value);
+    const data = await ask(body, textGo);
+    data.site = "the advert";
+    report(data);
+  });
+})();

@@ -117,14 +117,27 @@
   {% else %}
     <div class="hero">
       {% if photos %}
-        <img src="/static/uploads/{{ photos[0].filename }}" alt="">
+        {# All the photos side by side. Swipe on a phone, the arrows or the
+           keyboard on a laptop; the counter and the dots follow along. #}
+        <div class="gallery" data-gallery tabindex="0"
+             aria-label="Photos{% if photos | length > 1 %}, swipe for more{% endif %}">
+          {% for p in photos %}
+            <img src="/static/uploads/{{ p.filename }}" alt="Photo {{ loop.index }} of {{ photos | length }}"
+                 {% if not loop.first %}loading="lazy"{% endif %} draggable="false">
+          {% endfor %}
+        </div>
       {% else %}
         {{ art.cover(listing.type, listing.id) }}
       {% endif %}
       <a class="back" href="{{ tab.path }}" aria-label="Back to {{ tab.label }}">{{ icon.back() }}</a>
       {% if listing.owner_id != me.id %}{{ save_button(listing, saved, 'hero') }}{% endif %}
       {% if photos | length > 1 %}
-        <span class="count">1 / {{ photos | length }}</span>
+        <span class="count"><span data-gallery-at>1</span> / {{ photos | length }}</span>
+        <div class="gallery-dots" aria-hidden="true">
+          {% for p in photos %}<span{% if loop.first %} class="on"{% endif %}></span>{% endfor %}
+        </div>
+        <button class="gallery-nav gallery-nav--prev" type="button" aria-label="Previous photo" hidden>{{ icon.back(18) }}</button>
+        <button class="gallery-nav gallery-nav--next" type="button" aria-label="Next photo">{{ icon.back(18) }}</button>
       {% endif %}
     </div>
   {% endif %}
@@ -229,6 +242,22 @@
         </a>
       {% endif %}
 
+      {# The same place on a housing site. The button says which site and
+         shows its address before you tap, and it opens in a new tab so
+         Campus Market stays where you left it. #}
+      {% set other = HOUSING.platform_of(listing.external_url) %}
+      {% if other %}
+        <a class="elsewhere" href="{{ other.url }}" target="_blank"
+           rel="noopener noreferrer nofollow">
+          <span class="elsewhere-mark" aria-hidden="true">{{ other.name[0] }}</span>
+          <span class="elsewhere-text">
+            <b>See it on {{ other.name }}</b>
+            <span>More photos and details · {{ other.domain }}</span>
+          </span>
+          <span class="elsewhere-go">{{ icon.external(18) }}<span class="sr">opens in a new tab</span></span>
+        </a>
+      {% endif %}
+
       {% if listing.description %}
         <span class="block-head">About the place</span>
         <p class="text text--flush">{{ listing.description }}</p>
@@ -265,6 +294,68 @@
       this<span id="saves"{{ ' hidden' if not saves }}> · <span data-count>{{ saves }}</span>
       saved</span></p>
 
+    {# The queue. Whoever writes first is first, and everyone can see where
+       they stand without asking "is it still available?". Buyers only see
+       numbers, the owner sees the names, in order, each one a way into the
+       chat. Groups are left out: there several people can get a spot. #}
+    {% if listing.type != 'group' %}
+      {% set asked = queue | length %}
+      {% if listing.owner_id == me.id %}
+        <div class="queue">
+          <div class="queue-head">
+            <b>{% if asked %}{{ asked }} {{ 'student' if asked == 1 else 'students' }} asked, in order{% else %}Nobody has asked yet{% endif %}</b>
+            <span>{% if asked %}First to write is on top. When it is gone, close the entry and everyone sees it is taken.{% else %}Everyone who writes shows up here, first one on top.{% endif %}</span>
+          </div>
+          {% if asked %}
+            <div class="queue-rows">
+              {% for q in queue %}
+                <a class="queue-row" href="/chat/{{ q.conversation_id }}">
+                  <span class="queue-n">{{ loop.index }}</span>
+                  {{ av.avatar(q.name, q.photo, "sm") }}
+                  <span class="queue-who">
+                    <b class="truncate">{{ q.name }}</b>
+                    <span>wrote {{ q.first_at | ago }}</span>
+                  </span>
+                  <span class="queue-go">Chat</span>
+                </a>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      {% elif listing.status == 'open' %}
+        {% set shown = 9 %}
+        {% set spots = asked if my_place else asked + 1 %}
+        <div class="queue queue--buyer">
+          {# One dot per student who asked. Yours is the big one; before you
+             write it is dashed, the spot you would get. #}
+          {% set target = my_place or spots %}
+          {% set ghost = 'qd--ghost' if not my_place else '' %}
+          <div class="queue-dots" aria-hidden="true">
+            {% for n in range(1, [spots, shown] | min + 1) %}
+              <span class="qd {{ ('qd--me ' ~ ghost) if n == target else '' }}"></span>
+            {% endfor %}
+            {% if spots > shown %}
+              <span class="qd-more">+{{ spots - shown }}</span>
+              {% if target > shown %}<span class="qd qd--me {{ ghost }}"></span>{% endif %}
+            {% endif %}
+          </div>
+          <div class="queue-head">
+            {% if my_place %}
+              <b>You were the {{ my_place | ordinal }} to ask</b>
+              <span>{% if my_place == 1 %}Nobody wrote before you.{% else %}{{ my_place - 1 }} {{ 'student' if my_place == 2 else 'students' }} wrote before you.{% endif %}
+                {{ listing.owner_name.split(' ')[0] }} sees everyone in the order they wrote.</span>
+            {% elif asked %}
+              <b>{{ asked }} {{ 'student has' if asked == 1 else 'students have' }} asked already</b>
+              <span>Write now and you are {{ (asked + 1) | ordinal }} in line.</span>
+            {% else %}
+              <b>Nobody has asked yet</b>
+              <span>Write now and you are first in line.</span>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
+    {% endif %}
+
   </div>
 
   <div class="actionbar">
@@ -289,7 +380,7 @@
       <button class="btn btn--quiet" type="button" disabled>This one is gone</button>
     {% else %}
       <form method="post" action="/listing/{{ listing.id }}/chat">
-        <button class="btn" type="submit">Message {{ listing.owner_name.split(' ')[0] }}</button>
+        <button class="btn" type="submit">{% if my_place %}Open your chat{% else %}Message {{ listing.owner_name.split(' ')[0] }}{% endif %}</button>
       </form>
     {% endif %}
   </div>

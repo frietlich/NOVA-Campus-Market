@@ -54,9 +54,9 @@
          typed. The first one carries the two that decide everything, what
          it really costs and how far it is. #}
       <span class="card-key truncate">
-        {%- if l.bills_included -%}bills included
-        {%- elif l.bills_estimate -%}plus about {{ l.bills_estimate | money }}
-        {%- else -%}plus bills{%- endif -%}
+        {%- if l.bills_included -%}Bills included
+        {%- elif l.bills_estimate -%}Plus about {{ l.bills_estimate | money }} bills
+        {%- else -%}Plus bills{%- endif -%}
         {%- if l.minutes_campus %} · {{ l.minutes_campus }} min to campus{% endif -%}
       </span>
       <span class="card-info truncate">
@@ -65,7 +65,9 @@
         {%- elif l.category == 'studio' or l.category == 'whole_flat' %} · on your own{% endif -%}
         {%- if l.months_min %} · {{ l.months_min }} months min{% endif -%}
       </span>
-      <span class="card-owner truncate">{{ l.owner_name }} · {{ l.owner_programme | short }}</span>
+      {% set other = HOUSING.platform_of(l.external_url) %}
+      <span class="card-owner truncate">{{ l.owner_name }} · {{ l.owner_programme | short }}
+        {%- if other %} · <span class="card-also">Also on {{ other.name }}</span>{% endif %}</span>
     {% elif l.type == 'group' %}
       {# No course line here. The course is the heading above the block. #}
       {# The deadline leads, so it never gets cut off the end of the line. #}

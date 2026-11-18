@@ -254,6 +254,19 @@ templates.env.globals["SORT_OPTIONS"] = SORT_OPTIONS
 templates.env.globals["SORT_SHORT"] = SORT_SHORT
 templates.env.globals["PRICE_BANDS"] = PRICE_BANDS
 templates.env.globals["HOUSING"] = housing
+
+
+def ordinal(n):
+    """1st, 2nd, 3rd, 4th, and 11th, 12th, 13th the English way."""
+    n = int(n)
+    if 10 <= n % 100 <= 20:
+        end = "th"
+    else:
+        end = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{end}"
+
+
+templates.env.filters["ordinal"] = ordinal
 templates.env.globals["PRICE_SHORT"] = {key: name for key, name, _, _ in PRICE_BANDS}
 
 
@@ -907,11 +920,13 @@ def listing_detail(request: Request, listing_id: int):
     if row["owner_id"] != me["id"]:
         db.count_view(listing_id)
         row = db.get_listing(listing_id)
+    queue = db.interest_in(listing_id)
     return page(request, "detail.html", listing=row, photos=db.photos_of(listing_id),
                 tab=BY_KIND[row["type"]], me=me,
                 tabs=tear_tabs(row) if row["type"] == "group" else [],
                 saved=db.is_saved(me["id"], listing_id),
-                saves=db.save_count(listing_id))
+                saves=db.save_count(listing_id),
+                queue=queue, my_place=db.place_in_queue(queue, me["id"]))
 
 
 @app.post("/listing/{listing_id}/close")
@@ -978,6 +993,55 @@ def new_form(request: Request, kind: str = "housing", error: str = ""):
                 active=kind, my_courses=mine)
 
 
+@app.post("/new/autofill")
+def new_autofill(request: Request, url: str = Form(""), text: str = Form("")):
+    """Fill the housing form from an advert, by its link or by its pasted text.
+
+    Answers in JSON: the fields we could read, and how. With a link the
+    server fetches the page itself; sites that block robots (Idealista does)
+    get an honest "blocked", and the page then offers the paste instead.
+    Only links to the sites in housing.PLATFORMS are ever fetched.
+    """
+    import urllib.error
+    import urllib.request
+
+    if me_or_none(request) is None:
+        return JSONResponse({"ok": False, "reason": "login"}, status_code=401)
+
+    if text.strip():
+        fields = housing.parse_listing_text(text[:60000])
+        # The first real line of a copied advert is almost always its headline.
+        first = next((l.strip() for l in text.splitlines() if len(l.strip()) > 8), "")
+        if first and len(first) <= 120 and "€" not in first:
+            fields["title"] = housing._clean_title(first)
+        return JSONResponse({"ok": bool(fields), "how": "text", "fields": fields})
+
+    link = housing.clean_listing_url(url)
+    if not link:
+        return JSONResponse({"ok": False, "reason": "site"})
+    site = housing.platform_of(link)["name"]
+    req = urllib.request.Request(link, headers={
+        "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                       "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"),
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "en,pt;q=0.8",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=8) as res:
+            status = res.status
+            page = res.read(3_000_000).decode(res.headers.get_content_charset() or "utf-8",
+                                              "replace")
+    except urllib.error.HTTPError as e:
+        status, page = e.code, ""
+    except Exception:
+        return JSONResponse({"ok": False, "reason": "unreachable", "site": site})
+    if housing.looks_blocked(status, page):
+        return JSONResponse({"ok": False, "reason": "blocked", "site": site})
+    fields = housing.parse_listing_page(page)
+    return JSONResponse({"ok": bool(fields), "how": "link", "site": site,
+                         "fields": fields, "reason": "" if fields else "empty"})
+
+
 @app.post("/new")
 async def new_listing(request: Request,
                       kind: str = Form("housing"),
@@ -1002,6 +1066,7 @@ async def new_listing(request: Request,
                       minutes_campus: str = Form(""),
                       flatmates: str = Form(""),
                       features: List[str] = Form(default=[]),
+                      external_url: str = Form(""),
                       description: str = Form(""),
                       photos: List[UploadFile] = File(default=[])):
     me = me_or_none(request)
@@ -1023,6 +1088,13 @@ async def new_listing(request: Request,
     if kind == "housing" and not available_from.strip():
         return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
                     my_courses=mine, error="Say from when the place is free.")
+
+    link = housing.clean_listing_url(external_url) if kind == "housing" else None
+    if kind == "housing" and external_url.strip() and not link:
+        return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
+                    my_courses=mine,
+                    error="That link is not from a housing site we know. "
+                          "Use one from " + ", ".join(housing.PLATFORM_NAMES) + ".")
 
     if kind == "group" and not hand_in.strip():
         return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
@@ -1065,6 +1137,7 @@ async def new_listing(request: Request,
         minutes_campus=housing.whole_number(minutes_campus, 600) if kind == "housing" else None,
         flatmates=housing.whole_number(flatmates, 20) if kind == "housing" else None,
         features=housing.clean_features(features) if kind == "housing" else None,
+        external_url=link,
     )
 
     position = 0
