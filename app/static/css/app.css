@@ -14,6 +14,7 @@
   --fill: #E6E6EA;
   --fill-2: #EFEFF2;
   --line: rgba(0, 0, 0, 0.07);
+  --bad: #B3271B;
   --hair: rgba(0, 0, 0, 0.05);
   --tint: rgba(0, 0, 0, 0.05);
 
@@ -382,6 +383,20 @@ img { display: block; max-width: 100%; }
 }
 
 .input:focus, .textarea:focus { border-color: var(--accent); }
+
+.input:user-invalid, .input--bad { border-color: var(--bad); }
+.input:user-invalid:focus, .input--bad:focus { border-color: var(--bad); }
+
+/* The line under the password that says what is still missing. */
+.rules {
+  margin: 8px 2px 0;
+  font-size: 12px; line-height: 1.55;
+  color: var(--muted);
+}
+
+.rules--bad { color: var(--bad); font-weight: 600; }
+
+.note--big { font-size: 13px; }
 
 .textarea {
   height: 92px;
@@ -973,6 +988,7 @@ img { display: block; max-width: 100%; }
 /* ------------------------------------------------------------- the picking */
 
 .pick {
+  position: relative;
   cursor: pointer;
   border-bottom: 1px solid var(--line);
 }
@@ -994,10 +1010,32 @@ img { display: block; max-width: 100%; }
 }
 
 .scroller {
-  max-height: 300px;
+  position: relative;
+  max-height: 265px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+  background:
+    linear-gradient(var(--card) 40%, rgba(255, 255, 255, 0)) top / 100% 22px no-repeat local,
+    linear-gradient(rgba(255, 255, 255, 0), var(--card) 60%) bottom / 100% 22px no-repeat local,
+    radial-gradient(farthest-side at 50% 0, rgba(0, 0, 0, 0.11), rgba(0, 0, 0, 0)) top / 100% 8px no-repeat scroll,
+    radial-gradient(farthest-side at 50% 100%, rgba(0, 0, 0, 0.11), rgba(0, 0, 0, 0)) bottom / 100% 8px no-repeat scroll;
+  background-color: var(--card);
 }
+
+/* A bar that is always there. The one the system draws only appears
+   while a finger is moving, which is no use to somebody wondering whether
+   the list moves at all. */
+.scroller::-webkit-scrollbar { width: 10px; }
+.scroller::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.26);
+  background-clip: content-box;
+}
+.scroller::-webkit-scrollbar-track { background: transparent; }
 
 .empty-filter {
   margin: 16px 0 0;
@@ -1160,13 +1198,21 @@ img { display: block; max-width: 100%; }
 
 /* ------------------------------------------------------- the first screen */
 
+/* The one place the real logo appears in the app. The tile is the dark
+   plate the mark is drawn on, so what you see here is the same thing that
+   ends up on the home screen. The other gates keep the plain house. */
 .mark--brand {
-  background: linear-gradient(135deg, var(--c-housing), #0A66E8 55%, var(--c-item));
-  box-shadow: 0 8px 22px color-mix(in srgb, #0A66E8 30%, transparent);
+  width: 92px; height: 92px;
+  border-radius: 23px;
+  background: #0B0B0F;
+  box-shadow: 0 8px 22px rgba(11, 11, 15, 0.26);
 }
 
-.gate--start { padding-top: calc(var(--top) + 28px); }
-.gate--start h1 { margin-top: 18px; text-align: center; }
+.gate--start {
+  padding-top: calc(var(--top) + 26px);
+  padding-left: 20px; padding-right: 20px;
+}
+.gate--start h1 { margin-top: 16px; text-align: center; font-size: 26px; }
 .gate--start p.lead { text-align: center; }
 
 .kinds {
@@ -1187,26 +1233,56 @@ img { display: block; max-width: 100%; }
 .kind:nth-child(3) { animation-delay: 0.12s; }
 .kind:nth-child(4) { animation-delay: 0.18s; }
 
-.kind-icon {
-  width: 34px; height: 34px;
-  border-radius: 10px;
-  background: var(--k-soft); color: var(--k);
-  display: flex; align-items: center; justify-content: center;
+/* The icon stands on its own, no tile behind it. A tinted box around a
+   tinted icon washes the colour out twice over.
+
+   Written as .kind .kind-icon and not .kind-icon on purpose. The icon is a
+   span, so the rule for the grey subtitle below it, .kind span, is more
+   specific than a single class and would win. That is why these icons were
+   grey all along, the tile behind them only made them look coloured. */
+.kind .kind-icon {
+  display: flex;
+  color: var(--k);
 }
 .kind b { font-size: 15px; font-weight: 700; }
 .kind span { font-size: 12px; line-height: 1.35; color: var(--muted); }
 
-.steps {
-  list-style: none; margin: 22px 0 0; padding: 0;
-  display: flex; flex-direction: column; gap: 10px;
+/* How it works, as a line you follow from left to right. The line runs a
+   little past the first and the last ball, so it reads as a route and not
+   as three circles that happen to be in a row. The balls punch through it
+   with a border in the colour of the page behind them. */
+.way { position: relative; margin-top: 22px; }
+
+.way-line {
+  position: absolute;
+  left: 10px; right: 10px; top: 16px;
+  height: 2px;
+  background: var(--line);
 }
-.steps li { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--ink-2); }
-.steps .n {
-  width: 26px; height: 26px; flex: none;
+
+.way ol {
+  position: relative;
+  list-style: none; margin: 0; padding: 0;
+  display: flex;
+}
+
+.way li {
+  flex: 1; min-width: 0;
+  padding: 0 3px;
+  text-align: center;
+  font-size: 12px; line-height: 1.35;
+  color: var(--muted);
+}
+
+.ball {
+  width: 34px; height: 34px;
+  margin: 0 auto 9px;
+  border: 3px solid var(--bg);
   border-radius: 999px;
-  background: var(--accent-soft); color: var(--accent);
+  background: var(--accent);
+  color: #FFFFFF;
+  font-size: 14px; font-weight: 700;
   display: flex; align-items: center; justify-content: center;
-  font-size: 13px; font-weight: 700;
 }
 
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
@@ -1694,6 +1770,13 @@ img { display: block; max-width: 100%; }
 @media (prefers-color-scheme: dark) {
   .app[data-kind] .fbtn--on,
   .app[data-kind] .opt input:checked + span { color: #0B0B0F; }
+
+  /* The logo sits on near black, and so does the page, so the tile needs a
+     line around it or it stops being a tile and the four shapes just float. */
+  .mark--brand {
+    border: 1px solid rgba(255, 255, 255, 0.11);
+    box-shadow: none;
+  }
 }
 
 /* ------------------------------------------- the capsule under the tab bar */

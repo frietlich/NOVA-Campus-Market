@@ -49,6 +49,98 @@
   });
 })();
 
+// A dropdown whose first entry is only a hint. A browser draws the chosen
+// entry in the open list even when that entry is hidden, so the hint stood
+// there with a tick next to it as if it were a programme you could study.
+// The answer is to take it out of the list for as long as the list is open
+// and put it back if nothing was chosen, so the closed field still has
+// something to say.
+(function hintOption() {
+  document.querySelectorAll("select").forEach((picker) => {
+    const hint = picker.querySelector("option[data-hint]");
+    if (!hint) return;
+
+    const lift = () => {
+      if (!hint.parentNode || picker.value !== "") return;
+      hint.remove();
+      picker.selectedIndex = -1;
+    };
+    const drop = () => {
+      if (hint.parentNode || picker.value !== "") return;
+      picker.insertBefore(hint, picker.firstChild);
+      picker.selectedIndex = 0;
+    };
+
+    // mousedown and keydown both run before the list is drawn. change and
+    // blur are the two ways back out of it.
+    picker.addEventListener("mousedown", lift);
+    picker.addEventListener("keydown", lift);
+    picker.addEventListener("change", drop);
+    picker.addEventListener("blur", drop);
+  });
+})();
+
+// The password rules, checked while you type. Nothing turns red before the
+// first character, because a form that is red the moment it opens is not
+// telling you anything you did wrong.
+(function password() {
+  const field = document.getElementById("password");
+  const again = document.getElementById("password2");
+  const note = document.getElementById("pw-rules");
+  if (!field || !note) return;
+
+  const rules = note.textContent.trim();
+  const needs = [
+    [(v) => v.length >= 8, "8 characters"],
+    [(v) => /[A-Z]/.test(v), "a capital letter"],
+    [(v) => /[0-9]/.test(v), "a number"],
+    [(v) => /[^A-Za-z0-9]/.test(v), "a special character"],
+  ];
+
+  // a, b and c. The last one gets the and, which is how a person says it.
+  function spoken(parts) {
+    if (parts.length === 1) return parts[0];
+    return parts.slice(0, -1).join(", ") + " and " + parts[parts.length - 1];
+  }
+
+  function say(text, bad) {
+    note.textContent = text;
+    note.classList.toggle("rules--bad", Boolean(bad));
+  }
+
+  function check() {
+    const value = field.value;
+    const repeat = again ? again.value : "";
+
+    if (!value) {
+      field.classList.remove("input--bad");
+      if (again) again.classList.remove("input--bad");
+      say(rules, false);
+      return;
+    }
+
+    const missing = needs.filter((n) => !n[0](value)).map((n) => n[1]);
+    field.classList.toggle("input--bad", missing.length > 0);
+
+    if (missing.length) {
+      if (again) again.classList.remove("input--bad");
+      say("Still missing " + spoken(missing) + ".", true);
+      return;
+    }
+    if (repeat && repeat !== value) {
+      if (again) again.classList.add("input--bad");
+      say("The two passwords are not the same.", true);
+      return;
+    }
+    if (again) again.classList.remove("input--bad");
+    say(repeat ? "That password works." : rules, false);
+  }
+
+  field.addEventListener("input", check);
+  if (again) again.addEventListener("input", check);
+  check();
+})();
+
 // The course list is long, so it filters while you type and keeps a count.
 (function courses() {
   const field = document.getElementById("filter");
@@ -63,6 +155,26 @@
   const missingProgramme = document.getElementById("no-programme-courses");
   const courseHeadings = list.querySelectorAll(".course-heading");
 
+  // What a course is to the programme you picked, in the order you want to
+  // read them. Your own compulsory ones first, then the ones you may choose,
+  // then everything else the school lets you sit in on.
+  const RANK = { MANDATORY: 0, EXCLUSIVE_ELECTIVE: 1, ELECTIVE: 2, OUT_PROGRAM: 3 };
+  const SAYS = {
+    MANDATORY: "mandatory",
+    EXCLUSIVE_ELECTIVE: "elective",
+    ELECTIVE: "elective",
+    OUT_PROGRAM: "outside your programme",
+  };
+
+  // Read once. There are a couple of hundred rows and the list is sorted
+  // again on every change of programme, so reading the same text out of the
+  // same attribute each time would be hundreds of needless reads.
+  const sheet = rows.map((row, place) => ({
+    row: row,
+    place: place,
+    types: JSON.parse(row.dataset.programmes || "{}"),
+  }));
+
   function count() {
     const n = rows.filter((r) => r.querySelector("input").checked).length;
     picked.textContent = n === 1 ? "1 picked" : n + " picked";
@@ -74,20 +186,39 @@
     if (visible.length) visible[visible.length - 1].classList.add("last");
   }
 
+  // Put the rows in the order of that programme. Inside one rank they keep
+  // the order they arrived in, which is alphabetical, so the list never
+  // jumps about for no reason.
+  let sortedFor = null;
+  function reorder(programme) {
+    if (programme === sortedFor) return;
+    sortedFor = programme;
+    const rank = (entry) => {
+      const seat = programme ? RANK[entry.types[programme]] : undefined;
+      return seat === undefined ? 9 : seat;
+    };
+    const order = sheet.slice().sort(
+      (a, b) => rank(a) - rank(b) || a.place - b.place);
+    const box = document.createDocumentFragment();
+    order.forEach((entry) => box.appendChild(entry.row));
+    list.appendChild(box);
+  }
+
   const updateFilter = () => {
     const q = field.value.trim().toLowerCase();
     let shown = 0;
     const programme = programmePicker
       ? (programmePicker.value === "CEMS Master in Management" ? cemsPicker.value : programmePicker.value)
       : null;
-    rows.forEach((row) => {
+    if (programmePicker) reorder(programme);
+    sheet.forEach((entry) => {
+      const row = entry.row;
       let fitsProgramme = true;
       if (programmePicker) {
-        const programmeTypes = JSON.parse(row.dataset.programmes || "{}");
-        fitsProgramme = Boolean(programme && programmeTypes[programme]);
+        const type = programme ? entry.types[programme] : null;
+        fitsProgramme = Boolean(type);
         const badge = row.querySelector(".course-type");
-        if (badge) badge.textContent = fitsProgramme
-          ? " · " + programmeTypes[programme].toLowerCase().replaceAll("_", " ") : "";
+        if (badge) badge.textContent = type ? " · " + (SAYS[type] || "") : "";
       }
       const hit = fitsProgramme && (!q || row.dataset.text.includes(q));
       row.hidden = !hit;
@@ -100,11 +231,12 @@
       }
       heading.hidden = !siblings.some((row) => !row.hidden);
     });
-    if (missingProgramme && programmePicker) {
-      missingProgramme.hidden = Boolean(programme);
-    }
+    const waiting = Boolean(programmePicker) && !programme;
+    if (missingProgramme) missingProgramme.hidden = !waiting;
     list.hidden = shown === 0;
-    nothing.hidden = shown !== 0;
+    // Nothing matches is only worth saying once there is a programme to
+    // match inside. Before that the line above already says what to do.
+    nothing.hidden = shown !== 0 || waiting;
     lastLine();
   };
   field.addEventListener("input", updateFilter);

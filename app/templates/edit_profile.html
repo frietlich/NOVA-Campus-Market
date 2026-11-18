@@ -32,7 +32,7 @@
     <label class="label" for="programme">Programme</label>
     <select class="input" id="programme" name="programme" required>
       {% if not current %}
-        <option value="" selected disabled>Pick your programme</option>
+        <option value="" data-hint selected disabled hidden>Pick your programme</option>
       {% endif %}
       {% for group, names in PROGRAMME_GROUPS %}
         <optgroup label="{{ group }}">
@@ -47,8 +47,8 @@
     <div id="cems-base" data-cems="{{ CEMS }}" {% if current != CEMS %}hidden{% endif %}>
       <label class="label" for="cems_programme">Your master alongside CEMS</label>
       <select class="input" id="cems_programme" name="cems_programme">
-        <option value="" {% if not (me.cems and me.programme) %}selected{% endif %}
-                disabled>Pick your programme</option>
+        <option value="" data-hint {% if not (me.cems and me.programme) %}selected{% endif %}
+                disabled hidden>Pick your programme</option>
         {% for n in masters %}
           <option value="{{ n }}" {% if n == me.programme and me.cems %}selected{% endif %}>{{ n }}</option>
         {% endfor %}

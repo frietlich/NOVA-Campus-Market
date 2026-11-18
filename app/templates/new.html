@@ -52,7 +52,7 @@
 
       <label class="label" for="category">What is it for</label>
       <select class="input" id="category" name="category" required>
-        <option value="" selected disabled>Pick a category</option>
+        <option value="" data-hint selected disabled hidden>Pick a category</option>
         {% for key, name in CATEGORIES_FOR['ticket'] %}
           <option value="{{ key }}">{{ name }}</option>
         {% endfor %}
@@ -104,7 +104,7 @@
       {% if tab.kind == 'item' %}
         <label class="label" for="category">What is it</label>
         <select class="input" id="category" name="category" required>
-          <option value="" selected disabled>Pick a category</option>
+          <option value="" data-hint selected disabled hidden>Pick a category</option>
           {% for key, name in CATEGORIES_FOR['item'] %}
             <option value="{{ key }}">{{ name }}</option>
           {% endfor %}
@@ -118,7 +118,7 @@
            whether somebody even looks are asked here. #}
         <label class="label" for="category">Kind of place</label>
         <select class="input" id="category" name="category" required>
-          <option value="" selected disabled>Pick one</option>
+          <option value="" data-hint selected disabled hidden>Pick one</option>
           {% for key, name in HOUSING.KINDS %}
             <option value="{{ key }}">{{ name }}</option>
           {% endfor %}
@@ -126,7 +126,7 @@
 
         <label class="label" for="place">Area</label>
         <select class="input" id="place" name="place" required>
-          <option value="" selected disabled>Pick one</option>
+          <option value="" data-hint selected disabled hidden>Pick one</option>
           {% for key, name in HOUSING.AREAS %}
             <option value="{{ key }}">{{ name }}</option>
           {% endfor %}

@@ -26,9 +26,13 @@
     <input class="input" id="name" name="name" type="text" required maxlength="60"
            placeholder="Marco C." value="{{ f.name }}">
 
+    {# The first option is only there to give the closed field something to
+       say. It carries data-hint so the script can lift it out of the list
+       while the list is open, because a browser draws the chosen option even
+       when it is hidden, tick and all. #}
     <label class="label" for="programme">Programme</label>
     <select class="input" id="programme" name="programme" required>
-      <option value="" {% if not f.programme %}selected{% endif %} disabled>Pick your programme</option>
+      <option value="" data-hint {% if not f.programme %}selected{% endif %} disabled hidden>Pick your programme</option>
       {% for group, names in PROGRAMME_GROUPS %}
         <optgroup label="{{ group }}">
           {% for n in names %}
@@ -41,32 +45,38 @@
     <div id="cems-base" data-cems="{{ CEMS }}" {% if f.programme != CEMS %}hidden{% endif %}>
       <label class="label" for="cems_programme">Your master alongside CEMS</label>
       <select class="input" id="cems_programme" name="cems_programme">
-        <option value="" selected disabled>Pick your programme</option>
+        <option value="" data-hint selected disabled hidden>Pick your programme</option>
         {% for n in masters %}
           <option value="{{ n }}" {% if n == f.cems_programme %}selected{% endif %}>{{ n }}</option>
         {% endfor %}
       </select>
     </div>
 
+    {# The pattern is the same door policy the server keeps, an address that
+       ends in the school domain, so the field says no before the page has to
+       be sent to find out. #}
     <label class="label" for="email">Nova e-mail</label>
     <input class="input" id="email" name="email" type="email" required
            inputmode="email" autocapitalize="none" autocomplete="email"
+           maxlength="64" pattern="[^@\s]+@[Nn][Oo][Vv][Aa][Ss][Bb][Ee]\.[Pp][Tt]"
+           title="Your address has to end in @novasbe.pt"
            placeholder="58412@novasbe.pt" value="{{ f.email }}">
 
     <label class="label" for="password">Password</label>
     <input class="input" id="password" name="password" type="password" required
-           autocomplete="new-password" maxlength="30">
+           autocomplete="new-password" minlength="8" maxlength="30">
 
     <label class="label" for="password2">Repeat password</label>
     <input class="input" id="password2" name="password2" type="password" required
-           autocomplete="new-password" maxlength="30">
+           autocomplete="new-password" minlength="8" maxlength="30">
 
-    <p class="note" style="text-align: left; margin: 8px 2px 0">{{ PASSWORD_RULES }}</p>
+    <p class="rules" id="pw-rules">{{ PASSWORD_RULES }}</p>
 
     <label class="label" for="filter">Your courses</label>
     <div class="search" style="margin-bottom: 8px">
       {{ icon.search() }}
-      <input id="filter" type="search" placeholder="Course name or code" autocomplete="off">
+      <input id="filter" type="search" maxlength="60"
+             placeholder="Course name or code" autocomplete="off">
     </div>
 
     <p class="note" id="no-programme-courses" hidden>Select a programme to see its official courses.</p>
@@ -86,15 +96,14 @@
     <p class="empty-filter" id="nothing" hidden>No course matches that.</p>
 
     <p class="note" style="text-align: left; margin: 8px 2px 0">
-      <span id="picked">0 picked</span>. Groups then shows you only these. You can
-      change them any time.
+      <span id="picked">0 picked</span>. You can change them any time.
     </p>
 
     <div style="height: 26px"></div>
 
     <button class="btn" type="submit">Send me the code</button>
-    <p class="note" style="padding-bottom: calc(var(--foot) + 20px)">
-      We send a 6-digit code to your Nova address to check it is really yours.
+    <p class="note note--big" style="padding-bottom: calc(var(--foot) + 20px)">
+      We send a code to verify your e-mail address.
     </p>
 
   </form>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="256" viewBox="0 0 1200 256">
+  <title>Campus Market</title>
+  <mask id="stubw"><rect x="272" y="130" width="120" height="120" rx="28" fill="#FFFFFF"/><circle cx="272" cy="190" r="19" fill="#000000"/><circle cx="392" cy="190" r="19" fill="#000000"/></mask>
+  <g transform="scale(0.5)">
+    <rect width="512" height="512" rx="112" fill="#0B0B0F"/>
+    <path d="M180 120 232 162v60a20 20 0 0 1-20 20h-64a20 20 0 0 1-20-20v-60z" fill="#19B9A6" stroke="#19B9A6" stroke-width="16" stroke-linejoin="round"/>
+    <rect x="272" y="130" width="120" height="120" rx="28" fill="#FF6B52" mask="url(#stubw)"/>
+    <path d="M120 304a22 22 0 0 1 22-22h42l56 56v44a22 22 0 0 1-22 22h-76a22 22 0 0 1-22-22z" fill="#9A7CFF"/>
+    <circle cx="332" cy="342" r="58" fill="#E8A33D"/>
+  </g>
+  <text x="300" y="158" font-family="-apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', sans-serif" font-size="96" font-weight="700" letter-spacing="-2" fill="#0B0B0F">Campus Market</text>
+</svg>

@@ -6,52 +6,52 @@
   <div class="gate gate--start">
 
     <div class="brand">
-      <div class="mark mark--brand">{{ icon.house(28, 1.8) }}</div>
+      <div class="mark mark--brand">{{ icon.logo(66) }}</div>
       <span>CAMPUS MARKET</span>
     </div>
 
-    <h1>Nova students only</h1>
-    <p class="lead">
-      Everything the 40 WhatsApp groups were for, in one place, from students
-      you share a campus with.
-    </p>
+    <h1>Nova SBE students only</h1>
 
-    {# The four tabs, so a new student sees what is inside before signing up. #}
+    {# The four tabs, so somebody sees what is inside before signing up.
+       There is no paragraph above them on purpose. The four names say what
+       the app is faster than a sentence about it would. #}
     <div class="kinds">
       <div class="kind" data-kind="housing">
-        <span class="kind-icon">{{ icon.house(20, 1.9) }}</span>
+        <span class="kind-icon">{{ icon.house(28, 2.1) }}</span>
         <b>Housing</b><span>Rooms, sublets and lease takeovers</span>
       </div>
       <div class="kind" data-kind="ticket">
-        <span class="kind-icon">{{ icon.ticket(20, 1.9) }}</span>
-        <b>Tickets</b><span>Parties, concerts and games, by day</span>
+        <span class="kind-icon">{{ icon.ticket(28, 2.1) }}</span>
+        <b>Tickets</b><span>Parties, concerts and more</span>
       </div>
       <div class="kind" data-kind="item">
-        <span class="kind-icon">{{ icon.bag(20, 1.9) }}</span>
+        <span class="kind-icon">{{ icon.bag(28, 2.1) }}</span>
         <b>Market</b><span>Bikes, desks, books and more</span>
       </div>
       <div class="kind" data-kind="group">
-        <span class="kind-icon">{{ icon.people(20, 1.9) }}</span>
-        <b>Groups</b><span>A free spot in a project group</span>
+        <span class="kind-icon">{{ icon.people(28, 2.1) }}</span>
+        <b>Groups</b><span>Find people for your group work</span>
       </div>
     </div>
 
-    {# The whole journey in three lines. #}
-    <ol class="steps">
-      <li><span class="n">1</span>Find what you need, or put up your own</li>
-      <li><span class="n">2</span>Message the student who posted it</li>
-      <li><span class="n">3</span>Done? The entry closes and disappears</li>
-    </ol>
+    {# How it works, as a line you follow from left to right. The last step
+       is the one that is worth saying, because an entry closing itself is
+       the thing no group chat does. #}
+    <div class="way">
+      <span class="way-line" aria-hidden="true"></span>
+      <ol>
+        <li><span class="ball">1</span>Find it or put up your own</li>
+        <li><span class="ball">2</span>Message the student directly</li>
+        <li><span class="ball">3</span>Agreed, the entry disappears</li>
+      </ol>
+    </div>
 
     <div class="grow" style="min-height: 24px"></div>
 
     <a class="btn" href="/join">Create an account</a>
     <a class="btn btn--quiet" href="/login" style="margin-top: 10px">Log in</a>
 
-    <p class="note">
-      You need a <strong>novasbe.pt</strong> address.
-      <a class="link link--quiet" href="/dev">Development login</a>
-    </p>
+    <p class="note"><a class="link link--quiet" href="/dev">Development login</a></p>
 
   </div>
 </div>
