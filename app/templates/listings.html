@@ -108,8 +108,8 @@
           </label>
         </div>
 
-        <div class="panel">
-          <div class="panel-top">
+        <div class="hpanel">
+          <div class="hpanel-top">
             <b>Filters</b>
             <a class="link" href="/housing{% if q %}?q={{ q | urlencode }}{% endif %}">Clear all</a>
           </div>
@@ -118,9 +118,9 @@
           <input class="input" type="date" name="movein" value="{{ hs.movein }}">
 
           <span class="flabel">RENT PER MONTH</span>
-          <div class="picks">
+          <div class="opts">
             {% for key, name, low, high in HOUSING.RENT_BANDS %}
-              <label class="pick"><input class="sr" type="radio" name="rent" value="{{ key }}"{{ ' checked' if hs.rent == key }}><span>{{ name }}</span></label>
+              <label class="opt"><input class="sr" type="radio" name="rent" value="{{ key }}"{{ ' checked' if hs.rent == key }}><span>{{ name }}</span></label>
             {% endfor %}
           </div>
           <div class="pair pair--tight">
@@ -129,41 +129,41 @@
           </div>
 
           <span class="flabel">KIND OF PLACE</span>
-          <div class="picks">
-            <label class="pick"><input class="sr" type="radio" name="cat" value=""{{ ' checked' if not hs.kind }}><span>Any</span></label>
+          <div class="opts">
+            <label class="opt"><input class="sr" type="radio" name="cat" value=""{{ ' checked' if not hs.kind }}><span>Any</span></label>
             {% for key, name in HOUSING.KINDS %}
-              <label class="pick"><input class="sr" type="radio" name="cat" value="{{ key }}"{{ ' checked' if hs.kind == key }}><span>{{ name }}</span></label>
+              <label class="opt"><input class="sr" type="radio" name="cat" value="{{ key }}"{{ ' checked' if hs.kind == key }}><span>{{ name }}</span></label>
             {% endfor %}
           </div>
 
           <span class="flabel">AREA</span>
-          <div class="picks">
-            <label class="pick"><input class="sr" type="radio" name="area" value=""{{ ' checked' if not hs.area }}><span>Anywhere</span></label>
+          <div class="opts">
+            <label class="opt"><input class="sr" type="radio" name="area" value=""{{ ' checked' if not hs.area }}><span>Anywhere</span></label>
             {% for key, name in HOUSING.AREAS %}
-              <label class="pick"><input class="sr" type="radio" name="area" value="{{ key }}"{{ ' checked' if hs.area == key }}><span>{{ name }}</span></label>
+              <label class="opt"><input class="sr" type="radio" name="area" value="{{ key }}"{{ ' checked' if hs.area == key }}><span>{{ name }}</span></label>
             {% endfor %}
           </div>
 
           <span class="flabel">TO CAMPUS</span>
-          <div class="picks">
+          <div class="opts">
             {% for key, name, cap in HOUSING.CAMPUS_BANDS %}
-              <label class="pick"><input class="sr" type="radio" name="mins" value="{{ key }}"{{ ' checked' if hs.mins == key }}><span>{{ name }}</span></label>
+              <label class="opt"><input class="sr" type="radio" name="mins" value="{{ key }}"{{ ' checked' if hs.mins == key }}><span>{{ name }}</span></label>
             {% endfor %}
           </div>
           <input class="input" type="number" name="minsx" min="1" max="600" value="{{ hs.minsx }}" placeholder="or type minutes">
 
           <span class="flabel">STAY FOR</span>
-          <div class="picks">
+          <div class="opts">
             {% for key, name, cap in HOUSING.STAY_BANDS %}
-              <label class="pick"><input class="sr" type="radio" name="stay" value="{{ key }}"{{ ' checked' if hs.stay == key }}><span>{{ name }}</span></label>
+              <label class="opt"><input class="sr" type="radio" name="stay" value="{{ key }}"{{ ' checked' if hs.stay == key }}><span>{{ name }}</span></label>
             {% endfor %}
           </div>
 
           <span class="flabel">MUST HAVE</span>
-          <div class="picks">
-            <label class="pick"><input class="sr" type="checkbox" name="has" value="bills"{{ ' checked' if hs.bills }}><span>Bills included</span></label>
+          <div class="opts">
+            <label class="opt"><input class="sr" type="checkbox" name="has" value="bills"{{ ' checked' if hs.bills }}><span>Bills included</span></label>
             {% for key, name, pic in HOUSING.FEATURES %}
-              <label class="pick"><input class="sr" type="checkbox" name="has" value="{{ key }}"{{ ' checked' if key in hs.picked }}><span>{{ name }}</span></label>
+              <label class="opt"><input class="sr" type="checkbox" name="has" value="{{ key }}"{{ ' checked' if key in hs.picked }}><span>{{ name }}</span></label>
             {% endfor %}
           </div>
 

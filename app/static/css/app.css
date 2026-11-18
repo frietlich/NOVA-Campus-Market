@@ -1609,10 +1609,10 @@ img { display: block; max-width: 100%; }
   display: inline-flex; align-items: center; justify-content: center;
 }
 
-.panel { display: none; }
-#openfilters:checked ~ .panel { display: block; }
+.hpanel { display: none; }
+#openfilters:checked ~ .hpanel { display: block; }
 
-.panel {
+.hpanel {
   margin-top: 10px;
   padding: 14px 15px 16px;
   background: var(--card);
@@ -1620,11 +1620,11 @@ img { display: block; max-width: 100%; }
   border-radius: var(--r-card);
 }
 
-.panel-top { display: flex; justify-content: space-between; align-items: baseline; }
-.panel-top b { font-size: 16px; }
+.hpanel-top { display: flex; justify-content: space-between; align-items: baseline; }
+.hpanel-top b { font-size: 16px; }
 
-.panel .input { height: 40px; font-size: 14px; }
-.panel .input + .flabel { margin-top: 15px; }
+.hpanel .input { height: 40px; font-size: 14px; }
+.hpanel .input + .flabel { margin-top: 15px; }
 
 .flabel {
   display: block;
@@ -1634,10 +1634,12 @@ img { display: block; max-width: 100%; }
   color: var(--faint);
 }
 
-.picks { display: flex; flex-wrap: wrap; gap: 5px; }
+.opts { display: flex; flex-wrap: wrap; gap: 5px; }
 
-/* The box itself is invisible and the word next to it is the button. */
-.pick span {
+/* The box itself is invisible and the word next to it is the button. It is
+   called opt and not pick, because pick already belongs to the rows in the
+   course list, and two meanings for one name is how a page breaks. */
+.opt span {
   display: inline-block;
   padding: 6px 11px;
   border-radius: 999px;
@@ -1647,11 +1649,11 @@ img { display: block; max-width: 100%; }
   white-space: nowrap;
 }
 
-.pick input:checked + span { background: var(--accent); color: #FFFFFF; }
-.pick input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.opt input:checked + span { background: var(--accent); color: #FFFFFF; }
+.opt input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .pair--tight { gap: 8px; margin-top: 8px; }
-.picks + .input { margin-top: 8px; }
+.opts + .input { margin-top: 8px; }
 
 .found { margin: 9px 2px 0; font-size: 12px; color: var(--muted); }
 
@@ -1691,7 +1693,7 @@ img { display: block; max-width: 100%; }
 
 @media (prefers-color-scheme: dark) {
   .app[data-kind] .fbtn--on,
-  .app[data-kind] .pick input:checked + span { color: #0B0B0F; }
+  .app[data-kind] .opt input:checked + span { color: #0B0B0F; }
 }
 
 /* ------------------------------------------- the capsule under the tab bar */

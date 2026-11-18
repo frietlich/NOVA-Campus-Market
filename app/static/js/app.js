@@ -205,10 +205,13 @@
 // the slide happens on arrival. The page works out which tab you came from
 // and plays the capsule travelling from there.
 //
-// The final position is set first and the travel is a separate animation on
-// top. That order matters. If the page is in the background its animations
-// are throttled, and this way the capsule is simply in the right place with
-// no movement, instead of being stranded where it started.
+// Two things are deliberate. The final position is set first and the travel
+// is an animation on top, so a throttled page still leaves the capsule in
+// the right place rather than stranded where it started. And a measurement
+// of zero is thrown away, because a page sitting in a background tab is not
+// laid out at all and every rectangle in it comes back empty. Writing that
+// down would shrink the capsule to a dot in the top left corner, which is
+// exactly what it used to do.
 (function tabglide() {
   const bar = document.querySelector(".tabbar");
   const glide = bar && bar.querySelector(".glide");
@@ -231,16 +234,6 @@
     };
   }
 
-  function place(n) {
-    const box = boxOf(n);
-    glide.style.left = "0px";
-    glide.style.top = "0px";
-    glide.style.width = box.w + "px";
-    glide.style.height = box.h + "px";
-    glide.style.transform = "translate(" + box.x + "px," + box.y + "px)";
-    return box;
-  }
-
   // Which tab you came from. A reload, a listing or the first visit all
   // count as no journey, and then the capsule simply sits still.
   let from = -1;
@@ -254,24 +247,64 @@
   }
 
   const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const seen = document.visibilityState === "visible";
-  const to = place(here);
+  let arrived = false;
 
-  // Nothing to animate for a page nobody is looking at. A hidden tab stops
-  // handing out frames, so the capsule would hang at the start of the
-  // journey instead of arriving.
-  if (from >= 0 && from !== here && !still && seen && glide.animate) {
-    const was = boxOf(from);
-    glide.animate(
-      [{ transform: "translate(" + was.x + "px," + was.y + "px)" },
-       { transform: "translate(" + to.x + "px," + to.y + "px)" }],
-      // A touch of overshoot at the end. A straight slide reads as a cheap
-      // animation, the small settle is what makes it feel physical.
-      { duration: 420, easing: "cubic-bezier(0.34, 1.56, 0.64, 1)" }
-    );
+  function settle() {
+    const to = boxOf(here);
+    if (!to.w) return;   // no layout yet, leave what the stylesheet placed
+
+    glide.style.left = "0px";
+    glide.style.top = "0px";
+    glide.style.width = to.w + "px";
+    glide.style.height = to.h + "px";
+    glide.style.transform = "translate(" + to.x + "px," + to.y + "px)";
+
+    if (arrived) return;
+    arrived = true;
+
+    if (from >= 0 && from !== here && !still && glide.animate
+        && document.visibilityState === "visible") {
+      const was = boxOf(from);
+      const run = glide.animate(
+        [{ transform: "translate(" + was.x + "px," + was.y + "px)" },
+         { transform: "translate(" + to.x + "px," + to.y + "px)" }],
+        // A touch of overshoot at the end. A straight slide reads as a cheap
+        // animation, the small settle is what makes it feel physical.
+        { duration: 420, easing: "cubic-bezier(0.34, 1.56, 0.64, 1)" }
+      );
+      run.finished.catch(() => {});
+
+      // A page put in the background has its animations frozen where they
+      // stand, and ours would stand on the tab you came from. This timer is
+      // frozen with it and goes off the moment the page is awake again, so
+      // the capsule lands instead of sitting on the wrong tab. On a page
+      // nobody left alone, the animation is long over before it fires.
+      setTimeout(() => {
+        if (run.playState === "running") run.finish();
+      }, 1200);
+    }
   }
 
-  window.addEventListener("resize", () => place(here));
+  settle();
+
+  // The layout can turn up later than this script does. A tab in the
+  // background is not laid out until somebody looks at it, a window can
+  // change size, and a page can come back out of the browser's cache. Each
+  // of those is a moment the measurement is worth taking again.
+  if (window.ResizeObserver) new ResizeObserver(settle).observe(bar);
+
+  document.addEventListener("visibilitychange", () => {
+    // A page that is put in the background has its animations frozen where
+    // they stand, which for us is the tab you came from. Jumping them to
+    // the end first means the capsule is on the right tab the moment you
+    // look again, whether or not the browser ever resumes them.
+    if (document.hidden) {
+      glide.getAnimations().forEach((run) => run.finish());
+    }
+    settle();
+  });
+  window.addEventListener("pageshow", settle);
+  window.addEventListener("resize", settle);
 })();
 
 // The confirmation after publishing or closing fades away on its own, and the
