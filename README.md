@@ -35,10 +35,12 @@ you are in. Whoever skips the courses is asked once right after the code. After 
 in at `/login` with the address and the password. Forgotten passwords go
 through `/forgot`, which sends a fresh code.
 
-Without a mail account the code is printed in the terminal where the server
-runs. Copy it from there. With one, it arrives by e-mail, see below.
+Email verification requires a configured SMTP sender. Missing mail settings
+produce a delivery error. For private local development, explicitly enable
+CAMPUS_SECURITY_DEMO=1 in .env. Set a random CAMPUS_SECRET in all environments.
+See docs/security-review.md for installation, tests and deployment checks.
 
-The quick one is at `/dev`. Pick any fake student and you are that person. Use
+In explicit local demo mode, the quick one is at `/dev`. Pick any fake student and you are that person. Use
 this while building. It goes away once we are happy with the real one.
 
 The student you are by default is Marco C., `58412@novasbe.pt`. Every demo
@@ -80,7 +82,7 @@ building and a small test. For the real launch we want a proper provider.
 
 A 6-digit code is only a million possibilities, so it gets three limits.
 
-* It works for 15 minutes.
+* It works for 10 minutes.
 * After 5 wrong tries it is dead and a new one has to be sent.
 * A new one is sent at most once a minute per address.
 
@@ -282,7 +284,7 @@ A real map on the page instead of a link out, which needs a mapping library,
 an API key and a way to turn an address into coordinates. Tests, one file per
 area, which is the biggest single gap against the plan. Filters for Housing
 the way Market has them. Editing an entry you already put up. The mail
-provider, so the 6-digit code arrives by e-mail instead of in the terminal.
+provider, so the 6-digit code arrives by e-mail. Codes are never printed in the terminal.
 
 ## Rules we agreed on
 
@@ -307,3 +309,8 @@ Students can select predefined courses on **My courses** and at signup. They can
 create a course. Unsupported programmes have no predefined offerings yet.
 The existing seed command still **deletes the local database**, so do not run it on
 real or shared data. This branch does not change other contributors' code.
+
+## Verification and security
+
+See [Security review](docs/security-review.md) for the test commands, required
+environment settings and deployment checks.

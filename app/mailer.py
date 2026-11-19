@@ -4,9 +4,7 @@ The settings come from the file .env in the project folder, which is never
 put into git. Copy .env.example to .env and fill it in. For a Gmail account
 that means an app password, not the normal one. See the README.
 
-When no mail account is set up, nothing is sent and the code is printed in
-the terminal where the server runs, exactly as before. That keeps the app
-working for everybody who builds on it without a mail account.
+Missing SMTP settings return a delivery error. Codes are never printed.
 """
 
 import os
@@ -76,9 +74,7 @@ def send_code(to, code, why="join"):
     why is "join", "login" or "reset" and only changes the wording.
     """
     if not is_set_up():
-        print(f"\n  no mail account set up, the {why} code for {to} is {code}\n",
-              flush=True)
-        return True
+        return False
 
     s = settings()
     msg = EmailMessage()
@@ -88,7 +84,7 @@ def send_code(to, code, why="join"):
     msg.set_content(
         f"{LINES.get(why, LINES['join'])}\n\n"
         f"    {code}\n\n"
-        "It works for 15 minutes.\n\n"
+        "It works for 10 minutes.\n\n"
         "If you did not ask for this, ignore this e-mail. Nobody can get in\n"
         "without the code.\n"
     )

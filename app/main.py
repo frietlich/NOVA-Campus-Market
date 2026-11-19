@@ -12,7 +12,7 @@ from typing import List
 from urllib.parse import quote, urlencode
 
 from fastapi import FastAPI, Form, Query, Request, UploadFile, File
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -24,7 +24,10 @@ mailer.load_env()
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 UPLOADS = os.path.join(HERE, "static", "uploads")
-SECRET = os.environ.get("CAMPUS_SECRET") or "change-me-before-you-deploy"
+LOCAL_DEMO = os.environ.get("CAMPUS_SECURITY_DEMO") == "1"
+SECRET = os.environ.get("CAMPUS_SECRET", "")
+if len(SECRET) < 32:
+    raise RuntimeError("Set CAMPUS_SECRET to at least 32 random characters.")
 
 # The four tabs. Everything about a tab is in this one list.
 TABS = [
@@ -67,7 +70,7 @@ FRESH_DAYS = 7
 FRESH_MAX = 10
 
 app = FastAPI(title="Campus Market")
-app.add_middleware(SessionMiddleware, secret_key=SECRET, max_age=60 * 60 * 24 * 30)
+
 app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
 
 templates = Jinja2Templates(directory=os.path.join(HERE, "templates"))
@@ -478,7 +481,10 @@ def page(request, template, **values):
 
 def me_or_none(request):
     user_id = request.session.get("user_id")
-    return db.get_user(user_id) if user_id else None
+    user = db.get_user(user_id) if user_id else None
+    if user and user["verified"] and db.is_nova_email(user["email"]):
+        return user
+    return None
 
 
 def go(path):
@@ -510,8 +516,14 @@ def send_code(user, why):
     age = db.code_age(user["id"])
     if age is not None and age < RESEND_SECONDS:
         return ""
-    code = db.new_code(user["id"])
+    if not mailer.is_set_up():
+        return "Email delivery is not configured. Please contact the app team."
+    try:
+        code = db.new_code(user["id"], why)
+    except ValueError as error:
+        return str(error)
     if not mailer.send_code(user["email"], code, why):
+        db.cancel_code(user["id"], code, why)
         return "We could not send the e-mail. Try again in a minute."
     return ""
 
@@ -636,11 +648,11 @@ def verify(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = F
     if not user_id:
         return go("/start")
     code = "".join([d1, d2, d3, d4, d5, d6]).strip()
-    result = db.check_code(user_id, code)
+    result = db.check_code(user_id, code, "join")
     if result != "ok":
         return page(request, "verify.html", pending=db.get_user(user_id),
                     error=CODE_ERRORS[result])
-    request.session.pop("pending_id", None)
+    request.session.clear()
     request.session["user_id"] = user_id
     # Whoever skipped the courses on the way in gets asked once now, so that
     # Groups is already theirs the first time they open it.
@@ -674,6 +686,8 @@ def login_form(request: Request):
 
 @app.post("/login")
 def login(request: Request, email: str = Form(""), password: str = Form("")):
+    if not db.is_nova_email(email) or not 1 <= len(password) <= 128:
+        return page(request, "login.html", email=email, error="That e-mail and password do not go together.")
     user = db.get_user_by_email(email)
 
     # The same answer whether the address is unknown or the password is wrong,
@@ -684,7 +698,7 @@ def login(request: Request, email: str = Form(""), password: str = Form("")):
 
     if not user["verified"]:
         request.session["pending_id"] = user["id"]
-        problem = send_code(user, "login")
+        problem = send_code(user, "join")
         return go(verify_url(problem))
 
     request.session.clear()
@@ -746,7 +760,7 @@ def reset(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = Fo
     wrong = passwords.problem(password)
     if wrong:
         return fail(wrong)
-    result = db.check_code(user_id, "".join([d1, d2, d3, d4, d5, d6]).strip())
+    result = db.check_code(user_id, "".join([d1, d2, d3, d4, d5, d6]).strip(), "reset")
     if result != "ok":
         return fail(CODE_ERRORS[result])
 
@@ -761,11 +775,19 @@ def reset(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = Fo
 @app.get("/dev")
 def dev_form(request: Request):
     """Development login. Delete this page once the real one works."""
-    return page(request, "dev.html", users=db.all_users())
+    if not LOCAL_DEMO:
+        return HTMLResponse("Not found", status_code=404)
+    return page(request, "dev.html", users=[user for user in db.all_users()
+                if user["verified"] and db.is_nova_email(user["email"])])
 
 
 @app.post("/dev")
 def dev_login(request: Request, user_id: int = Form(...)):
+    if not LOCAL_DEMO:
+        return HTMLResponse("Not found", status_code=404)
+    user = db.get_user(user_id)
+    if not user or not user["verified"] or not db.is_nova_email(user["email"]):
+        return HTMLResponse("Access refused", status_code=403)
     request.session.clear()
     request.session["user_id"] = user_id
     return go("/housing")
@@ -1032,6 +1054,30 @@ async def new_listing(request: Request,
         return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
                     my_courses=mine, error="A ticket needs the date of the event.")
 
+    from decimal import Decimal, InvalidOperation
+    try:
+        if price.strip():
+            amount = Decimal(price)
+            if not amount.is_finite() or amount < 0 or amount > 100000:
+                raise ValueError
+        if quantity.strip() and (not quantity.isascii() or not quantity.isdigit()
+                                 or not 1 <= int(quantity) <= 100):
+            raise ValueError
+        if len(title.strip()) > 100 or len(description) > 2000 or len(info) > 300:
+            raise ValueError
+        if kind == "group" and int(course_id) not in {course["id"] for course in mine}:
+            raise ValueError
+        if event_date.strip():
+            datetime.strptime(event_date, "%Y-%m-%d")
+    except (ValueError, InvalidOperation):
+        return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
+                    my_courses=mine, error="Check the price, quantity, course and date.")
+    # Decode every photo before creating the listing, so invalid files cannot create a partial entry.
+    image_names = []
+    for upload in (photos or []) if kind != "ticket" else []:
+        if upload and upload.filename:
+            image_names.append(await save_image(upload))
+
     listing_id = db.create_listing(
         owner_id=me["id"],
         kind=kind,
@@ -1067,18 +1113,8 @@ async def new_listing(request: Request,
         features=housing.clean_features(features) if kind == "housing" else None,
     )
 
-    position = 0
-    for upload in (photos or []) if kind != "ticket" else []:
-        if not upload or not upload.filename:
-            continue
-        ext = os.path.splitext(upload.filename)[1].lower()
-        if ext not in (".jpg", ".jpeg", ".png", ".webp", ".heic"):
-            continue
-        name = f"{uuid.uuid4().hex}{ext}"
-        with open(os.path.join(UPLOADS, name), "wb") as out:
-            out.write(await upload.read())
+    for position, name in enumerate(image_names):
         db.add_photo(listing_id, name, position)
-        position += 1
 
     return go(f"/listing/{listing_id}?done=published")
 
@@ -1094,14 +1130,25 @@ def is_picture(upload):
 
 
 async def save_image(upload):
-    """Write one uploaded picture to the uploads folder. Gives back its name."""
-    if not is_picture(upload):
+    from io import BytesIO
+    from PIL import Image, ImageOps, UnidentifiedImageError
+    from fastapi import HTTPException
+    if not upload or not upload.filename:
         return None
-    ext = os.path.splitext(upload.filename)[1].lower()
-    name = f"{uuid.uuid4().hex}{ext}"
-    with open(os.path.join(UPLOADS, name), "wb") as out:
-        out.write(await upload.read())
-    return name
+    data = await upload.read(5_000_001)
+    if len(data) > 5_000_000:
+        raise HTTPException(400, "Images must be under 5 MB.")
+    try:
+        with Image.open(BytesIO(data), formats=["JPEG", "PNG", "WEBP"]) as picture:
+            if picture.width * picture.height > 20_000_000:
+                raise HTTPException(400, "Image dimensions are too large.")
+            picture = ImageOps.exif_transpose(picture).convert("RGB")
+            picture.thumbnail((1400, 1400))
+            name = uuid.uuid4().hex + ".jpg"
+            picture.save(os.path.join(UPLOADS, name), "JPEG", quality=85)
+            return name
+    except (OSError, UnidentifiedImageError, Image.DecompressionBombError):
+        raise HTTPException(400, "Upload a valid JPEG, PNG or WebP image.") from None
 
 
 # -------------------------------------------------------------------- chats
@@ -1242,3 +1289,32 @@ def profile(request: Request):
                 my_courses=db.courses_of(me["id"]),
                 saved=db.saved_listings(me["id"]),
                 chat_count=len(db.conversations_of(me["id"])), me=me)
+
+
+@app.middleware("http")
+async def security_checks(request, call_next):
+    from urllib.parse import urlsplit
+    if request.url.path.startswith("/static/uploads/") and me_or_none(request) is None:
+        return HTMLResponse("Sign in required", status_code=403)
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        if request.url.path in ("/login", "/join", "/forgot", "/verify", "/verify/resend", "/forgot/reset"):
+            from hashlib import sha256
+            address = request.client.host if request.client else "unknown"
+            key = sha256(f"{request.url.path}:{address}".encode()).hexdigest()
+            if not db.take_security_attempt(key, limit=20):
+                return HTMLResponse("Too many attempts. Please wait ten minutes.", status_code=429)
+        origin = request.headers.get("origin") or request.headers.get("referer")
+        source = urlsplit(origin) if origin else None
+        if not source or source.scheme != request.url.scheme or source.netloc != request.url.netloc:
+            return HTMLResponse("Request origin refused", status_code=403)
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "same-origin"
+    response.headers["Content-Security-Policy"] = "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    response.headers["Cache-Control"] = "no-store"
+    if not LOCAL_DEMO:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
+    return response
+
+
+app.add_middleware(SessionMiddleware, secret_key=SECRET, max_age=60 * 60 * 8, https_only=not LOCAL_DEMO, same_site="lax")
