@@ -219,3 +219,24 @@ def test_missing_production_secret_refuses_start(world):
                           capture_output=True,text=True,timeout=20)
     assert result.returncode!=0
     assert "Set CAMPUS_SECRET" in result.stderr
+
+@pytest.mark.parametrize("estimate", ["invalid", "-5", "NaN", "Infinity"])
+def test_invalid_housing_bills_are_rejected(world, estimate):
+    users, clients = world
+    before = len(db.listings_of_user(users[0]))
+    response = clients[0].post("/new", data={
+        "kind":"housing", "title":"Test room", "price":"400", "bills_estimate":estimate,
+    }, headers=ORIGIN)
+    assert response.status_code == 200
+    assert len(db.listings_of_user(users[0])) == before
+
+def test_housing_fields_survive_valid_publication(world):
+    users, clients = world
+    response = clients[0].post("/new", data={
+        "kind":"housing", "title":"New room", "price":"400", "bills_estimate":"35",
+        "category":"room", "flatmates":"2", "available_from":"2027-02-01",
+    }, headers=ORIGIN, follow_redirects=False)
+    assert response.status_code == 303
+    row = db.listings_of_user(users[0])[0]
+    assert row["flatmates"] == 2
+    assert row["bills_estimate"] == 35

@@ -1056,6 +1056,8 @@ async def new_listing(request: Request,
 
     from decimal import Decimal, InvalidOperation
     try:
+        if len(price) > 32 or len(bills_estimate) > 32:
+            raise ValueError
         if price.strip():
             amount = Decimal(price)
             if not amount.is_finite() or amount < 0 or amount > 100000:
@@ -1067,8 +1069,16 @@ async def new_listing(request: Request,
             raise ValueError
         if kind == "group" and int(course_id) not in {course["id"] for course in mine}:
             raise ValueError
-        if event_date.strip():
-            datetime.strptime(event_date, "%Y-%m-%d")
+        for entered_date in (event_date, hand_in, available_from):
+            if entered_date.strip():
+                datetime.strptime(entered_date.strip(), "%Y-%m-%d")
+        if kind == "housing" and bills_estimate.strip():
+            estimate = Decimal(bills_estimate)
+            if not estimate.is_finite() or not 0 <= estimate <= 100000:
+                raise ValueError
+        if kind == "group" and group_size.strip():
+            if not group_size.isascii() or not group_size.isdigit() or not 1 <= int(group_size) <= 100:
+                raise ValueError
     except (ValueError, InvalidOperation):
         return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
                     my_courses=mine, error="Check the price, quantity, course and date.")
