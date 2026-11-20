@@ -31,9 +31,10 @@ Two ways, and both work right now.
 
 The real one starts at `/start`. Create an account with a `novasbe.pt` address
 and a password, tick the courses you are taking, confirm the 6-digit code, and
-you are in. Whoever skips the courses is asked once right after the code. After that you sign
-in at `/login` with the address and the password. Forgotten passwords go
-through `/forgot`, which sends a fresh code.
+you are in. The courses are not compulsory on the way in. Whoever leaves them
+blank lands in the app all the same, and Groups asks for them itself the first
+time it is opened. After that you sign in at `/login` with the address and the
+password. Forgotten passwords go through `/forgot`, which sends a fresh code.
 
 Without a mail account the code is printed in the terminal where the server
 runs. Copy it from there. With one, it arrives by e-mail, see below.

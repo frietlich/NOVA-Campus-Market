@@ -6,12 +6,14 @@ Start it with   uvicorn app.main:app --reload   from the project folder.
 
 import os
 import re
+import unicodedata
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import List
 from urllib.parse import quote, urlencode
 
 from fastapi import FastAPI, Form, Query, Request, UploadFile, File
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -35,7 +37,7 @@ TABS = [
     {"kind": "item", "label": "Market", "path": "/market",
      "placeholder": "Bike, desk, textbooks"},
     {"kind": "group", "label": "Groups", "path": "/groups",
-     "placeholder": "Course or hand in date"},
+     "placeholder": "Course or date"},
 ]
 BY_KIND = {t["kind"]: t for t in TABS}
 
@@ -247,6 +249,11 @@ templates.env.globals["TAB_ORDER"] = [t["kind"] for t in TABS] + ["chats"]
 templates.env.globals["PROGRAMME_GROUPS"] = programmes.GROUPS
 templates.env.globals["CEMS"] = programmes.CEMS
 templates.env.globals["PASSWORD_RULES"] = passwords.RULES
+templates.env.globals["NAME_MAX"] = db.NAME_MAX
+templates.env.globals["EMAIL_MAX"] = db.EMAIL_LENGTH
+templates.env.globals["EMAIL_DIGITS"] = db.EMAIL_DIGITS
+templates.env.globals["EMAIL_PATTERN"] = db.EMAIL_PATTERN
+templates.env.globals["EMAIL_DOMAIN"] = db.EMAIL_DOMAIN
 templates.env.globals["CATEGORIES_FOR"] = categories.FOR_KIND
 templates.env.globals["CONDITIONS"] = categories.CONDITION
 templates.env.globals["CONDITION_LABELS"] = categories.CONDITION_LABELS
@@ -279,8 +286,17 @@ def fresh_rows(rows):
 # The tear off tabs under a group notice. The row holds between five and
 # seven of them whatever the group really is, because fewer looks broken and
 # more looks like a comb. The true numbers are printed on the paper anyway.
-TABS_MIN = 5
-TABS_MAX = 7
+# A group notice always has five tabs along the bottom, whatever size the
+# group is. The hanging ones are the spots still free and the rest are drawn
+# already torn off, so a notice with one spot left looks like a notice late
+# in the day. More than five free still shows five, because what the picture
+# says is that there is room, not exactly how much.
+# Nobody hands in group work in a crowd, and a title that long is a
+# description. Both are here so the form and the check cannot drift apart.
+GROUP_MAX = 20
+TITLE_MAX = 60
+
+TEAR_TABS = 5
 TEAR_SHAPES = 6
 
 
@@ -292,12 +308,10 @@ def tear_tabs(listing):
     id of the entry, so the same notice always tears the same way and two
     notices next to each other do not.
     """
-    size = listing["group_size"] or listing["quantity"] or TABS_MIN
-    slots = max(TABS_MIN, min(TABS_MAX, size))
-    hanging = max(0, min(listing["quantity"] or 0, slots))
-    return [{"hanging": n >= slots - hanging,
+    hanging = max(0, min(listing["quantity"] or 0, TEAR_TABS))
+    return [{"hanging": n >= TEAR_TABS - hanging,
              "shape": (listing["id"] + n) % TEAR_SHAPES}
-            for n in range(slots)]
+            for n in range(TEAR_TABS)]
 
 
 def by_course(rows):
@@ -305,14 +319,34 @@ def by_course(rows):
 
     Groups has no date to read it by and no categories. The course is what
     you are looking for, so two entries for the same course belong under one
-    heading. The rows arrive sorted by course, so walking them once is enough.
+    heading.
+
+    The blocks are then put in order of how soon their next deadline is, and
+    not by the name of the course. In group work the date is the whole point,
+    and sorting by name buried a thing due in two days under a course that
+    happens to start with an F. A course whose dates have all passed sinks to
+    the bottom, because nobody can join those any more.
     """
-    blocks = []
+    far = "9999"
+    blocks, seen = [], {}
     for row in rows:
         name = row["course_name"] or "No course"
-        if not blocks or blocks[-1]["head"] != name:
-            blocks.append({"head": name, "rows": []})
-        blocks[-1]["rows"].append(row)
+        block = seen.get(name)
+        if block is None:
+            block = seen[name] = {"head": name, "rows": []}
+            blocks.append(block)
+        block["rows"].append(row)
+
+    today = datetime.now().astimezone().date().isoformat()
+    def gone(row):
+        return bool(row["hand_in"]) and row["hand_in"] < today
+
+    for block in blocks:
+        block["rows"].sort(key=lambda r: (gone(r), r["hand_in"] or far, r["id"]))
+        soon = [r["hand_in"] for r in block["rows"]
+                if r["hand_in"] and not gone(r)]
+        block["soon"] = min(soon) if soon else far
+    blocks.sort(key=lambda b: (b["soon"], b["head"]))
     return blocks
 
 
@@ -423,6 +457,31 @@ def link_maker(path, params):
 PER_DAY = 4
 
 
+def plain(text):
+    """A piece of text boiled down so two spellings of it meet.
+
+    Lower case, accents off, punctuation out, runs of spaces to one. Urban
+    Beach, urban beach, Urban-Beach and URBAN BEACH all come out the same.
+    It will still miss two people who name a place differently, and that is
+    the harmless way round, because then it simply does not bundle.
+    """
+    text = unicodedata.normalize("NFKD", (text or "").strip().lower())
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    return " ".join("".join(c if c.isalnum() else " " for c in text).split())
+
+
+def event_key(row):
+    """What makes two tickets the same event.
+
+    The same day at the same time at the same place, whatever their owners
+    called the listing. The tickets tab folds a day's listings with this, and
+    the chats tab puts the people you asked about one party together with it.
+    One function, so the app can never give two answers to the same question.
+    """
+    return ((row["event_date"] or ""), (row["event_time"] or ""),
+            plain(row["place"]))
+
+
 def by_day(rows, open_day=None):
     """Turn a flat list of tickets into one block per day.
 
@@ -441,7 +500,7 @@ def by_day(rows, open_day=None):
     for day in days:
         events, seen = [], {}
         for row in day["all"]:
-            key = (row["event_time"] or "", (row["place"] or "").strip().lower())
+            key = event_key(row)
             if key in seen:
                 seen[key]["extra"] += 1
             else:
@@ -467,18 +526,73 @@ def by_day(rows, open_day=None):
     return days
 
 
+@app.exception_handler(RequestValidationError)
+async def bad_address(request: Request, error: RequestValidationError):
+    """An address that does not fit its route shows the Not here page.
+
+    /listing/abc and /student/abc used to answer with the raw error the
+    framework builds, which is a wall of JSON in the middle of the app. Only
+    a GET whose problem is in the path is turned into a page. Anything else,
+    above all a form that was filled in wrongly, keeps the old answer, so the
+    pages that read those errors still get what they expect.
+    """
+    im_pfad = all(e.get("loc", ("",))[0] == "path" for e in error.errors())
+    if request.method == "GET" and im_pfad:
+        return page(request, "missing.html", active="")
+    return JSONResponse({"detail": error.errors()}, status_code=422)
+
+
 def page(request, template, **values):
-    """Render a template with the things every page needs."""
+    """Render a template with the things every page needs.
+
+    Nothing here is ever kept by the browser. Every page carries live state,
+    how many messages are unread, which entries are still open, and a page
+    taken out of the browser's store shows the state you left and not the one
+    there is. Going back after reading a chat used to bring back the dot you
+    had just cleared. It also means none of this stays on the machine after
+    somebody logs out, which on a shared laptop is worth the extra request.
+    """
     me = me_or_none(request)
     values.setdefault("me", me)
     values.setdefault("unread", db.unread_total(me["id"]) if me else 0)
     values.setdefault("active", "")
-    return templates.TemplateResponse(request, template, values)
+    answer = templates.TemplateResponse(request, template, values)
+    answer.headers["Cache-Control"] = "no-store"
+    return answer
+
+
+def speculative(request):
+    """True when the browser is fetching this ahead of anybody asking for it.
+
+    Browsers load a link before it is clicked so the tap feels instant. That
+    is welcome for a page, but opening a chat marks its messages read, and a
+    guess must not clear something nobody has looked at. Chats were losing
+    their unread mark while the list was merely sitting on screen.
+    """
+    said = (request.headers.get("sec-purpose", "")
+            + " " + request.headers.get("purpose", "")).lower()
+    return "prefetch" in said or "prerender" in said
 
 
 def me_or_none(request):
     user_id = request.session.get("user_id")
     return db.get_user(user_id) if user_id else None
+
+
+def waiting_or_none(request, key):
+    """The account a half finished sign up or reset points at, or None.
+
+    A session outlives the row it names. An account can be deleted while a
+    browser still has the page open, and then the id in the cookie leads
+    nowhere. Every route that reads one of these keys comes through here, so
+    a stale one is thrown away and the person starts again, instead of the
+    None travelling further in and breaking the page.
+    """
+    user_id = request.session.get(key)
+    user = db.get_user(user_id) if user_id else None
+    if user is None:
+        request.session.pop(key, None)
+    return user
 
 
 def go(path):
@@ -499,6 +613,13 @@ CODE_ERRORS = {
 
 def verify_url(error=""):
     return "/verify?error=" + quote(error) if error else "/verify"
+
+
+def reset_url(error="", sent=False):
+    """The page for setting a new password, with something to say or not."""
+    if error:
+        return "/forgot/reset?error=" + quote(error)
+    return "/forgot/reset?sent=1" if sent else "/forgot/reset"
 
 
 def send_code(user, why):
@@ -574,6 +695,8 @@ async def join(request: Request,
 
     if not name.strip():
         return fail("Please put in your name.")
+    if len(name.strip()) > db.NAME_MAX:
+        return fail(f"A name can be at most {db.NAME_MAX} characters.")
 
     # CEMS is never the programme itself, so the form has to say which master
     # it sits on top of.
@@ -585,7 +708,8 @@ async def join(request: Request,
         return fail("Please pick a programme from the list.")
 
     if not db.is_nova_email(email):
-        return fail("Only a novasbe.pt address can join.")
+        return fail(f"Your Nova address is your {db.EMAIL_DIGITS} digit student "
+                    f"number and {db.EMAIL_DOMAIN}, like {db.EMAIL_HINT}.")
 
     if password != password2:
         return fail("The two passwords are not the same.")
@@ -623,39 +747,38 @@ async def join(request: Request,
 
 @app.get("/verify")
 def verify_form(request: Request, error: str = ""):
-    user_id = request.session.get("pending_id")
-    if not user_id:
+    pending = waiting_or_none(request, "pending_id")
+    if pending is None:
         return go("/start")
-    return page(request, "verify.html", pending=db.get_user(user_id), error=error)
+    return page(request, "verify.html", pending=pending, error=error)
 
 
 @app.post("/verify")
 def verify(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = Form(""),
            d4: str = Form(""), d5: str = Form(""), d6: str = Form("")):
-    user_id = request.session.get("pending_id")
-    if not user_id:
+    pending = waiting_or_none(request, "pending_id")
+    if pending is None:
         return go("/start")
+    user_id = pending["id"]
     code = "".join([d1, d2, d3, d4, d5, d6]).strip()
     result = db.check_code(user_id, code)
     if result != "ok":
-        return page(request, "verify.html", pending=db.get_user(user_id),
+        return page(request, "verify.html", pending=pending,
                     error=CODE_ERRORS[result])
     request.session.pop("pending_id", None)
     request.session["user_id"] = user_id
-    # Whoever skipped the courses on the way in gets asked once now, so that
-    # Groups is already theirs the first time they open it.
-    if not db.courses_of(user_id):
-        return go("/courses?back=/housing")
+    # Straight in. Whoever left the courses blank is not stopped for them
+    # here. Groups says so itself the first time it is opened, and the
+    # profile has the list whenever they want it.
     return go("/housing")
 
 
 @app.post("/verify/resend")
 def resend(request: Request):
-    user_id = request.session.get("pending_id")
-    if not user_id:
+    user = waiting_or_none(request, "pending_id")
+    if user is None:
         return go("/start")
-    user = db.get_user(user_id)
-    age = db.code_age(user_id)
+    age = db.code_age(user["id"])
     if age is not None and age < RESEND_SECONDS:
         wait = int(RESEND_SECONDS - age) + 1
         return go(verify_url(f"Wait {wait} seconds, then ask again."))
@@ -722,21 +845,36 @@ def forgot(request: Request, email: str = Form("")):
 
 
 @app.get("/forgot/reset")
-def reset_form(request: Request):
-    user_id = request.session.get("reset_id")
-    if not user_id:
+def reset_form(request: Request, error: str = "", sent: int = 0):
+    user = waiting_or_none(request, "reset_id")
+    if user is None:
         return go("/forgot")
-    return page(request, "reset.html", pending=db.get_user(user_id))
+    return page(request, "reset.html", pending=user, error=error, sent=sent)
+
+
+@app.post("/forgot/reset/resend")
+def reset_resend(request: Request):
+    """Another code for somebody already on the page, without sending them
+    back to the form that asks for an address they have just given."""
+    user = waiting_or_none(request, "reset_id")
+    if user is None:
+        return go("/forgot")
+    age = db.code_age(user["id"])
+    if age is not None and age < RESEND_SECONDS:
+        wait = int(RESEND_SECONDS - age) + 1
+        return go(reset_url(f"Wait {wait} seconds, then ask again."))
+    problem = send_code(user, "reset")
+    return go(reset_url(problem) if problem else reset_url(sent=True))
 
 
 @app.post("/forgot/reset")
 def reset(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = Form(""),
           d4: str = Form(""), d5: str = Form(""), d6: str = Form(""),
           password: str = Form(""), password2: str = Form("")):
-    user_id = request.session.get("reset_id")
-    if not user_id:
+    user = waiting_or_none(request, "reset_id")
+    if user is None:
         return go("/forgot")
-    user = db.get_user(user_id)
+    user_id = user["id"]
 
     def fail(message):
         return page(request, "reset.html", pending=user, error=message)
@@ -1012,6 +1150,11 @@ async def new_listing(request: Request,
 
     mine = db.courses_of(me["id"]) if kind == "group" else []
 
+    if len(title.strip()) > TITLE_MAX:
+        return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
+                    my_courses=db.courses_of(me["id"]) if kind == "group" else [],
+                    error=f"A title can be at most {TITLE_MAX} characters.")
+
     if not title.strip():
         return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
                     my_courses=mine, error="An entry needs a title.")
@@ -1026,7 +1169,27 @@ async def new_listing(request: Request,
 
     if kind == "group" and not hand_in.strip():
         return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
-                    my_courses=mine, error="A group entry needs the hand in date.")
+                    my_courses=mine, error="A group entry needs the date the group has to be together.")
+
+    # You are in your own group, so the free seats can never be the whole
+    # group. Three of three free would mean nobody is in it.
+    if kind == "group":
+        size = int(group_size) if group_size.strip().isdigit() else 0
+        free = int(quantity) if quantity.strip().isdigit() else 0
+        if size < 2 or size > GROUP_MAX:
+            return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
+                        my_courses=mine,
+                        error=f"A group is between 2 and {GROUP_MAX} people.")
+        if free < 1 or free >= size:
+            return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
+                        my_courses=mine,
+                        error=f"With a group of {size} you can offer at most "
+                              f"{size - 1} spots, because one of them is yours.")
+        if hand_in.strip() < datetime.now().astimezone().date().isoformat():
+            return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
+                        my_courses=mine,
+                        error="That date has passed. Pick the last day somebody "
+                              "can still join.")
 
     if kind == "ticket" and not event_date.strip():
         return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
@@ -1106,12 +1269,211 @@ async def save_image(upload):
 
 # -------------------------------------------------------------------- chats
 
+# How many chats a block shows before it offers the rest behind a line. It is
+# a floor and not a ceiling, because every unread chat is shown whatever the
+# count says. Forty people writing about one ticket are forty rows, and that
+# is right, they are all waiting on you.
+SHOW_AT_LEAST = 4
+
+
+def bundle_key(row):
+    """What two conversations must share to be about the same thing.
+
+    Only a ticket and a group spot can be asked of several people at once,
+    because several students sell a ticket to one party and several groups
+    look for someone in one course. A room and a desk exist once, so a
+    conversation about one never joins another. None means it stands alone.
+    """
+    if row["kind"] == "ticket":
+        # Nothing to go on is not the same as going on nothing. Without a day
+        # and a place two tickets would share an empty key and be thrown
+        # together although nobody said they belong together.
+        if not (row["event_date"] and plain(row["place"])):
+            return None
+        return ("ticket",) + event_key(row)
+    if row["kind"] == "group" and row["course_id"]:
+        return ("group", row["course_id"])
+    return None
+
+
+def bundle_heading(row):
+    """The line over a bundle, taken from what the bundle is keyed on."""
+    if row["kind"] == "ticket":
+        parts = [row["place"], short_date(row["event_date"])]
+        said = " \u00b7 ".join(p for p in parts if p)
+        if said:
+            return said
+    if row["course_name"]:
+        return row["course_name"]
+    return row["title"]
+
+
+def dress(block):
+    """Fill in what every block needs, whichever side it is on.
+
+    Newest message first inside the block, the same order a messenger uses.
+    Unread is not pulled to the top on purpose: an order that changes when
+    you read something moves the row out from under your thumb.
+
+    Whether a block stands open is the one thing that does follow unread. A
+    block with something waiting shows every chat, because that is how you
+    find it. A settled one with more than a couple of chats folds into its
+    own heading, so a list of finished conversations does not bury the one
+    that wants you.
+    """
+    chats = block["chats"]
+    # Newest message first and nothing else, the way a messenger has always
+    # done it. Writing to somebody lifts them just as receiving does, because
+    # both make their last message the newest one. Unread is a mark on a row,
+    # not a place in the order, so reading something never shuffles the list
+    # under your thumb.
+    chats.sort(key=lambda r: (r["last_at"] or "", r["id"]), reverse=True)
+    block["unread"] = sum(r["unread"] for r in chats)
+    block["total"] = len(chats)
+    block["at"] = chats[0]["last_at"] or ""
+
+    # What is on show runs from the top down to the last unread chat, and
+    # never stops before the fourth. Down to it and not just at it, so there
+    # is never a hole in the middle: reading nine of ten still leaves all ten
+    # standing, because the tenth is still waiting under them.
+    waiting = [n for n, r in enumerate(chats) if r["unread"]]
+    cut = max(SHOW_AT_LEAST, (waiting[-1] + 1) if waiting else 0)
+    block["show_ids"] = {r["id"] for r in chats[:cut]}
+    block["rest"] = max(0, block["total"] - cut)
+    return block
+
+
+def block_key(row, bundle=None):
+    """A name for a block that survives the list being built again.
+
+    The browser remembers which blocks you had open, and it has to find the
+    same block afterwards even though the order may have changed and the
+    unread may be gone. The position in the list is useless for that, the
+    thing the block is about is not.
+    """
+    if bundle is None:
+        return "l%s" % row["listing_id"]
+    return "b" + "|".join(str(part) for part in bundle)
+
+
+def selling_blocks(rows):
+    """One block per entry of yours, with everyone who wrote about it.
+
+    Newest message first, the way a messenger orders anything. Reading does
+    not move a block, because reading leaves the last message where it was,
+    so the list only ever rearranges when something actually arrives. That is
+    the one time you want it to.
+    """
+    blocks = {}
+    for row in rows:
+        block = blocks.get(row["listing_id"])
+        if block is None:
+            block = blocks[row["listing_id"]] = {"listing": row, "chats": []}
+        block["chats"].append(row)
+    out = [dress(b) for b in blocks.values()]
+    for block in out:
+        block["key"] = block_key(block["listing"])
+    out.sort(key=lambda b: (b["at"] or "", b["listing"]["listing_id"]),
+             reverse=True)
+    return out
+
+
+def bundles_of(rows):
+    """The things you asked more than one person about.
+
+    These are the only groups worth offering as a filter. Asking one person
+    about one room is not a group, it is a chat. The label is the place and
+    the day for an event and the course for a group spot, which is what the
+    bundle is keyed on anyway.
+    """
+    found = {}
+    for row in rows:
+        key = bundle_key(row)
+        if key is None:
+            continue
+        here = found.get(key)
+        if here is None:
+            here = found[key] = {"key": block_key(row, key), "kind": row["kind"],
+                                 "label": bundle_heading(row), "count": 0,
+                                 "unread": 0, "at": row["last_at"] or ""}
+            here["raw"] = key
+        here["count"] += 1
+        here["unread"] += row["unread"]
+        here["at"] = max(here["at"], row["last_at"] or "")
+    ready = [b for b in found.values() if b["count"] > 1]
+    ready.sort(key=lambda b: b["at"], reverse=True)
+    return ready
+
+
+def matches(row, words):
+    """Does this conversation answer to what was typed in the search box?"""
+    if not words:
+        return True
+    hay = " ".join(plain(str(part)) for part in
+                   (row["other_name"], row["title"], row["last_body"],
+                    row["course_name"], row["place"]) if part)
+    return all(word in hay for word in words)
+
+
 @app.get("/chats")
-def chats(request: Request):
+def chats(request: Request, side: str = "", kind: str = "", bundle: str = "",
+          q: str = ""):
     me = me_or_none(request)
     if me is None:
         return go("/start")
-    return page(request, "chats.html", conversations=db.conversations_of(me["id"]),
+    rows = db.conversations_of(me["id"])
+    mine = [r for r in rows if r["owner_id"] == me["id"]]
+    theirs = [r for r in rows if r["owner_id"] != me["id"]]
+
+    # Which side you were on is remembered, so opening a chat and coming
+    # back does not quietly put you on the other one.
+    if side not in ("sell", "buy"):
+        side = request.session.get("chats_side", "buy")
+    side = "sell" if side == "sell" else "buy"
+    here = mine if side == "sell" else theirs
+
+    # A remembered side with nothing in it is not worth opening while the
+    # other one has something to read, so the list goes where the chats are.
+    if not here and (theirs if side == "sell" else mine):
+        side = "buy" if side == "sell" else "sell"
+        here = mine if side == "sell" else theirs
+    request.session["chats_side"] = side
+
+    # Only the tabs that have something on this side, and on the asking side
+    # also the things you wrote to several people about. A filter that is
+    # sure to give you nothing is a button not worth pressing.
+    kinds = [t for t in TABS if any(r["kind"] == t["kind"] for r in here)]
+    bundles = bundles_of(here) if side == "buy" else []
+    if kind not in {t["kind"] for t in kinds}:
+        kind = ""
+    if bundle not in {b["key"] for b in bundles}:
+        bundle = ""
+    # One filter at a time. A bundle already says which tab it is in.
+    if bundle:
+        kind = ""
+        keyed = {b["key"]: b["raw"] for b in bundles}[bundle]
+        here = [r for r in here if bundle_key(r) == keyed]
+    elif kind:
+        here = [r for r in here if r["kind"] == kind]
+
+    words = [w for w in plain(q).split() if w]
+    if words:
+        here = [r for r in here if matches(r, words)]
+
+    if side == "sell":
+        blocks = selling_blocks(here)
+        chats_flat = []
+    else:
+        blocks = []
+        chats_flat = sorted(here, key=lambda r: (r["last_at"] or "", r["id"]),
+                            reverse=True)
+
+    return page(request, "chats.html", blocks=blocks, chats=chats_flat,
+                side=side, kind=kind, bundle=bundle, q=q,
+                kinds=kinds, bundles=bundles,
+                has_sell=bool(mine), has_buy=bool(theirs),
+                unread_sell=sum(r["unread"] for r in mine),
+                unread_buy=sum(r["unread"] for r in theirs),
                 active="chats", me=me)
 
 
@@ -1123,7 +1485,8 @@ def chat(request: Request, conv_id: int):
     conv = db.get_conversation(conv_id)
     if not db.can_see_conversation(conv, me["id"]):
         return page(request, "missing.html", active="chats")
-    db.mark_read(conv_id, me["id"])
+    if not speculative(request):
+        db.mark_read(conv_id, me["id"])
     other_id = conv["starter_id"] if conv["owner_id"] == me["id"] else conv["owner_id"]
     return page(request, "chat.html", conv=conv, other=db.get_user(other_id),
                 messages=db.messages_of(conv_id), active="chats", me=me)
@@ -1151,6 +1514,25 @@ def edit_page(request, me, error="", form_name=None, current=None):
                 masters=programmes.MASTER)
 
 
+@app.get("/student/{user_id}")
+def student(request: Request, user_id: int):
+    """Somebody else, as far as another student may see them.
+
+    Name, programme and what they have up. No address, no e-mail, nothing
+    they did not put up themselves.
+    """
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    if user_id == me["id"]:
+        return go("/profile")
+    them = db.get_user(user_id)
+    if them is None or not them["verified"]:
+        return page(request, "missing.html", me=me)
+    open_rows = [l for l in db.listings_of_user(user_id) if l["status"] == "open"]
+    return page(request, "student.html", them=them, open_rows=open_rows, me=me)
+
+
 @app.get("/profile/edit")
 def profile_edit_form(request: Request):
     me = me_or_none(request)
@@ -1171,6 +1553,10 @@ async def profile_edit(request: Request,
 
     if not name.strip():
         return edit_page(request, me, "Your name cannot be empty.",
+                         form_name=name, current=programme)
+    if len(name.strip()) > db.NAME_MAX:
+        return edit_page(request, me,
+                         f"A name can be at most {db.NAME_MAX} characters.",
                          form_name=name, current=programme)
 
     # CEMS is never the programme itself. It is a yes next to a real master,

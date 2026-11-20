@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% import "partials/icons.html" as icon %}
-{% block title %}Forgot your password{% endblock %}
+{% block title %} · Forgot your password{% endblock %}
 {% block body %}
 <div class="app">
   <form class="gate" method="post" action="/forgot">
 
     <div class="brand">
-      <div class="mark">{{ icon.house(28, 1.8) }}</div>
+      <div class="mark mark--brand">{{ icon.logo(66) }}</div>
       <span>CAMPUS MARKET</span>
     </div>
 
@@ -24,7 +24,7 @@
     <div class="grow"></div>
 
     <button class="btn" type="submit">Send me the code</button>
-    <p class="note"><a class="link link--quiet" href="/login">Back to log in</a></p>
+    <a class="btn btn--quiet" href="/login" style="margin-top: 10px">Back to log in</a>
 
   </form>
 </div>

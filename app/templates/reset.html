@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% import "partials/icons.html" as icon %}
-{% block title %}Set a new password{% endblock %}
+{% block title %} · Set a new password{% endblock %}
 {% block body %}
 <div class="app">
   <form class="gate" method="post" action="/forgot/reset">
 
     <div class="brand">
-      <div class="mark">{{ icon.house(28, 1.8) }}</div>
+      <div class="mark mark--brand">{{ icon.logo(66) }}</div>
       <span>CAMPUS MARKET</span>
     </div>
 
@@ -14,6 +14,7 @@
     <p class="lead">We sent a 6-digit code to <strong>{{ pending.email }}</strong></p>
 
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    {% if sent %}<div class="said">We sent you a new code.</div>{% endif %}
 
     <span class="cap">6-digit code</span>
     <div class="code" id="code">
@@ -23,21 +24,25 @@
       {% endfor %}
     </div>
 
-    <span class="cap" style="margin-top: 22px">New password</span>
-    <input class="input" name="password" type="password" required
-           autocomplete="new-password" maxlength="30">
+    <div class="again">
+      <button class="link" type="submit" formaction="/forgot/reset/resend"
+              formnovalidate>Send a new code</button>
+    </div>
+
+    <span class="cap" style="margin-top: 14px">New password</span>
+    <input class="input" id="password" name="password" type="password" required
+           autocomplete="new-password" minlength="8" maxlength="30">
+
+    <p class="rules" id="pw-rules">{{ PASSWORD_RULES }}</p>
 
     <span class="cap" style="margin-top: 18px">Repeat the new password</span>
-    <input class="input" name="password2" type="password" required
-           autocomplete="new-password" maxlength="30">
+    <input class="input" id="password2" name="password2" type="password" required
+           autocomplete="new-password" minlength="8" maxlength="30">
 
-    <p class="note" style="text-align: left; margin: 10px 2px 0">{{ PASSWORD_RULES }}</p>
-
-    <div class="grow"></div>
+    <div class="grow" style="min-height: 38px"></div>
 
     <button class="btn" type="submit">Save and log in</button>
-    <p class="note"><a class="link link--quiet" href="/forgot">Send a new code</a>
-      · <a class="link link--quiet" href="/login">Back to log in</a></p>
+    <a class="btn btn--quiet" href="/login" style="margin-top: 10px">Back to log in</a>
 
   </form>
 </div>

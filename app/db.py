@@ -5,6 +5,7 @@ If you need something the app cannot do yet, add a function here first.
 """
 
 import os
+import re
 import secrets
 import sqlite3
 from datetime import datetime, timezone
@@ -14,7 +15,36 @@ DB_PATH = os.environ.get("CAMPUS_DB", os.path.join(os.path.dirname(HERE), "campu
 SCHEMA_PATH = os.path.join(HERE, "schema.sql")
 
 TYPES = ("housing", "ticket", "item", "group")
+
+# A Nova address is a five digit student number and the school domain. That
+# is the only shape there is, so the check is the whole shape and not only
+# the ending, and the field can say no before anything is sent.
 EMAIL_DOMAIN = "@novasbe.pt"
+EMAIL_DIGITS = 5
+EMAIL_LENGTH = EMAIL_DIGITS + len(EMAIL_DOMAIN)
+EMAIL_SHAPE = re.compile(r"[0-9]{%d}%s" % (EMAIL_DIGITS, re.escape(EMAIL_DOMAIN)))
+EMAIL_HINT = "0" * EMAIL_DIGITS + EMAIL_DOMAIN
+
+
+def _either_case(text):
+    """A word written so an input pattern matches it whichever case it is in.
+
+    An input element has no way of being told to ignore case, so each letter
+    becomes the pair of itself, and novasbe comes out as [Nn][Oo][Vv] and so
+    on. Built from the domain above so there is still only one of it.
+    """
+    return "".join("[%s%s]" % (c.upper(), c.lower()) if c.isalpha()
+                   else re.escape(c) for c in text)
+
+
+# The same shape, written the way the form field wants it.
+EMAIL_PATTERN = r"[0-9]{%d}%s" % (EMAIL_DIGITS, _either_case(EMAIL_DOMAIN))
+
+# How long a name in the app may be. Long enough for a full Portuguese name,
+# because both parents' names run along in one and thirty characters cut a
+# good many students off in the middle of their own. Nothing is lost by
+# being generous here, since every place a name is shown truncates it.
+NAME_MAX = 40
 
 # A code is good for this long, and for this many wrong guesses. After that a
 # new one has to be sent. Without the limit a script could simply try all one
@@ -81,7 +111,7 @@ def now():
 
 def is_nova_email(email):
     """True only for a Nova address. This is the whole door policy."""
-    return bool(email) and email.strip().lower().endswith(EMAIL_DOMAIN)
+    return bool(email) and bool(EMAIL_SHAPE.fullmatch(email.strip().lower()))
 
 
 def get_user(user_id):
@@ -251,6 +281,49 @@ SORTS = {
 }
 
 
+MONTHS = {"jan": "01", "feb": "02", "mar": "03", "apr": "04", "may": "05",
+          "jun": "06", "jul": "07", "aug": "08", "sep": "09", "oct": "10",
+          "nov": "11", "dec": "12"}
+
+
+def date_hint(search):
+    """A piece of an ISO date built from what somebody typed, or None.
+
+    Dates are kept as 2026-12-05 and nobody types that. They type Dec, or
+    5 Dec, or 05.12, so this turns those into -12- and -12-05, which a plain
+    text search can then look for in a date column. Anything it cannot read
+    gives back None and the search carries on without it.
+    """
+    text = (search or "").strip().lower()
+    if not text:
+        return None
+    # Already written the way it is stored, so hand it straight on.
+    if re.fullmatch(r"\d{4}-\d{2}(-\d{2})?|\d{2}-\d{2}", text):
+        return text
+    month = day = None
+    for piece in re.split(r"[^a-z0-9]+", text):
+        if not piece:
+            continue
+        if piece[:3] in MONTHS:
+            month = MONTHS[piece[:3]]
+        elif piece.isdigit() and len(piece) <= 2:
+            number = int(piece)
+            if 1 <= number <= 31:
+                day = f"{number:02d}"
+            if month is None and 1 <= number <= 12 and day != f"{number:02d}":
+                month = f"{number:02d}"
+        elif piece.isdigit() and len(piece) == 4:
+            return None  # a year on its own is no help, the data is one year
+    # 05.12 and 5/12 are day then month here, the way they are written around
+    # the school, so the second number wins as the month.
+    parts = [p for p in re.split(r"[^0-9]+", text) if p.isdigit() and len(p) <= 2]
+    if month is None and len(parts) == 2:
+        day, month = f"{int(parts[0]):02d}", f"{int(parts[1]):02d}"
+    if month is None:
+        return None
+    return f"-{month}-{day}" if day else f"-{month}-"
+
+
 def listings_of_type(kind, search="", only_for=None, category=None, sort=None,
                      min_price=None, max_price=None, free_only=False,
                      condition=None, free_from=None, area=None,
@@ -328,9 +401,16 @@ def listings_of_type(kind, search="", only_for=None, category=None, sort=None,
         args.append(only_for)
 
     if search.strip():
-        where += (" AND (l.title LIKE ? OR l.info LIKE ? OR l.description LIKE ?"
-                  " OR c.name LIKE ? OR c.code LIKE ?)")
+        # The dates are in here too, so Dec or 5 Dec finds the group that has
+        # to be together by then without the page needing a date picker.
+        parts = ("l.title LIKE ? OR l.info LIKE ? OR l.description LIKE ?"
+                 " OR c.name LIKE ? OR c.code LIKE ?")
         args += [f"%{search.strip()}%"] * 5
+        hint = date_hint(search)
+        if hint:
+            parts += " OR l.hand_in LIKE ? OR l.event_date LIKE ?"
+            args += [f"%{hint}%"] * 2
+        where += f" AND ({parts})"
 
     conn = connect()
     if kind == "housing":
@@ -644,6 +724,15 @@ def conversations_of(user_id):
     conn = connect()
     rows = conn.execute(
         "SELECT c.id, c.listing_id, c.starter_id, l.title, l.type AS kind, l.owner_id,"
+        # What the chats tab needs to put conversations in order and in
+        # blocks. The three event fields answer whether two tickets are the
+        # same party, the course answers the same for a group spot, and
+        # created_at keeps your own entries in a fixed order.
+        "       l.price, l.status, l.created_at AS listing_at,"
+        "       l.event_date, l.event_time, l.place, l.course_id,"
+        "       (SELECT name FROM courses k WHERE k.id = l.course_id) AS course_name,"
+        "       (SELECT COALESCE(official_code, code) FROM courses k"
+        "         WHERE k.id = l.course_id) AS course_code,"
         "       CASE WHEN l.owner_id = ? THEN c.starter_id ELSE l.owner_id END AS other_id,"
         "       (SELECT name FROM users u WHERE u.id ="
         "           CASE WHEN l.owner_id = ? THEN c.starter_id ELSE l.owner_id END"
