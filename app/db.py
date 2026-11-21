@@ -873,9 +873,13 @@ def devices_of(user_id):
 
 
 def prefs_of(user_id):
-    """{area: {"on": bool, "q": str, "cat": str}} for all four areas."""
-    prefs = {area: {"on": area == "messages", "q": "", "cat": ""}
-             for area in NOTIFY_AREAS}
+    """{area: {"on": bool, ...}} for all four areas. All on until switched off.
+
+    For the three tabs this is the main switch. What actually rings is a
+    saved search or a watched event; switching the area off silences all of
+    them at once without throwing them away.
+    """
+    prefs = {area: {"on": True, "q": "", "cat": ""} for area in NOTIFY_AREAS}
     conn = connect()
     for row in conn.execute("SELECT * FROM notify_prefs WHERE user_id = ?", (user_id,)):
         if row["area"] in prefs:
@@ -901,12 +905,54 @@ def set_pref(user_id, area, on, q=None, cat=None):
     conn.close()
 
 
-def watchers_of(kind):
-    """Everyone who turned on notifications for new entries of this kind."""
+def watch_search(user_id, kind, params, label):
+    """Save one search. params is the JSON string, label the readable one."""
+    conn = connect()
+    with conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO watched_searches (user_id, kind, params, label,"
+            " created_at) VALUES (?, ?, ?, ?, ?)",
+            (user_id, kind, params, label[:120], now()))
+    conn.close()
+
+
+def unwatch_search(user_id, kind=None, params=None, watch_id=None):
+    """Forget one saved search, by the search itself or by its row."""
+    conn = connect()
+    with conn:
+        if watch_id is not None:
+            conn.execute("DELETE FROM watched_searches WHERE id = ? AND user_id = ?",
+                         (watch_id, user_id))
+        else:
+            conn.execute("DELETE FROM watched_searches WHERE user_id = ? AND kind = ?"
+                         " AND params = ?", (user_id, kind, params))
+    conn.close()
+
+
+def is_watching_search(user_id, kind, params):
+    conn = connect()
+    row = conn.execute("SELECT 1 FROM watched_searches WHERE user_id = ? AND kind = ?"
+                       " AND params = ?", (user_id, kind, params)).fetchone()
+    conn.close()
+    return row is not None
+
+
+def searches_watched(user_id):
+    """Every search a student saved, Tickets first, then Housing, then Market."""
     conn = connect()
     rows = conn.execute(
-        "SELECT user_id, q, cat FROM notify_prefs WHERE area = ? AND is_on = 1",
-        (kind,)).fetchall()
+        "SELECT * FROM watched_searches WHERE user_id = ? ORDER BY"
+        " CASE kind WHEN 'ticket' THEN 0 WHEN 'housing' THEN 1 ELSE 2 END, created_at",
+        (user_id,)).fetchall()
+    conn.close()
+    return rows
+
+
+def search_watchers(kind):
+    """Every saved search on one tab, with whose it is."""
+    conn = connect()
+    rows = conn.execute("SELECT user_id, params FROM watched_searches WHERE kind = ?",
+                        (kind,)).fetchall()
     conn.close()
     return rows
 

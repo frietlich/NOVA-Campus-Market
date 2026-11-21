@@ -26,6 +26,8 @@
   'reopened': 'It is back up and visible again.',
   'watching': 'You will hear when somebody else sells a ticket for this event.',
   'unwatched': 'No more notifications for this event.',
+  'search-on': 'Search saved. You will hear when something new fits it.',
+  'search-off': 'No more notifications for this search.',
 } -%}
 {%- set done = request.query_params.get('done') if request else None -%}
 {%- if done in TOASTS -%}

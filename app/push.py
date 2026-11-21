@@ -7,11 +7,14 @@ send to that address, and the phone shows it.
 Who gets what:
 
     messages   a new message in one of your chats             on by default
-    ticket     a new ticket, matching what you searched for   off until you ask
-    housing    a new place, the same                          off until you ask
-    item       a new thing in Market, the same                off until you ask
+    ticket     a new ticket for a saved search or a watched event
+    housing    a new place for a saved search
+    item       a new thing in Market for a saved search
 
-Each of the four can be turned off on its own at /profile/notifications.
+A saved search is the bell on a tab: it keeps every filter that was set, and
+a student can save as many as they like. A watched event is the bell on one
+ticket. Each of the four areas can be switched off at /profile/notifications,
+which silences it without throwing the searches away.
 
 It needs a key pair of our own (VAPID), which proves to Apple and Google that
 the notification comes from us. Make one with
@@ -35,9 +38,9 @@ from . import db
 
 AREAS = [
     ("messages", "New messages",      "When somebody writes to you in a chat."),
-    ("ticket",   "New tickets",       "When a ticket goes up that matches your search."),
-    ("housing",  "New housing",       "When a place goes up that matches your search."),
-    ("item",     "New in Market",     "When something goes up that matches your search."),
+    ("ticket",   "Tickets",           "Your saved searches and the events you watch."),
+    ("housing",  "Housing",           "Your saved searches."),
+    ("item",     "Market",            "Your saved searches."),
 ]
 AREA_LABELS = {key: name for key, name, _ in AREAS}
 
@@ -123,19 +126,6 @@ def send(user_id, title, body, url):
 
 # ------------------------------------------------------------ who gets what
 
-def matches(listing, q, cat):
-    """True when a new entry fits what somebody was searching for.
-
-    Every word they searched for has to be in it somewhere, the same as the
-    search box on the tab. An empty search means everything.
-    """
-    if cat and (listing["category"] or "") != cat:
-        return False
-    text = " ".join(str(listing[k] or "") for k in
-                    ("title", "description", "place", "address", "info")).lower()
-    return all(word in text for word in (q or "").lower().split())
-
-
 def _money(value):
     if value is None:
         return ""
@@ -152,12 +142,14 @@ def new_message(conv, sender_id, body):
     return send(receiver, f"{name} · {conv['title']}", body, f"/chat/{conv['id']}")
 
 
-def new_listing(listing, event_key=None):
+def new_listing(listing, event_key=None, search_finds=None):
     """Tell everyone who wants to hear about this new entry. Once each.
 
     First whoever watches this very event, when it is a ticket and event_key
-    says which event it is. Then whoever watches the tab with a search the
-    entry fits. Nobody hears about their own entry, and nobody twice.
+    says which event it is. Then whoever saved a search on this tab that
+    finds the entry; search_finds(kind, params, listing_id) runs that search
+    the way the tab does. Nobody hears about their own entry, nobody twice,
+    and nobody who switched the area off.
     """
     kind = listing["type"]
     if kind not in WHAT:
@@ -170,17 +162,21 @@ def new_listing(listing, event_key=None):
     url = f"/listing/{listing['id']}"
     told = {listing["owner_id"]}
     reached = 0
+
+    def wants(user_id):
+        return user_id not in told and db.prefs_of(user_id)[kind]["on"]
+
     if kind == "ticket" and event_key and listing["event_date"]:
         for user_id in db.event_watchers(event_key(listing)):
-            if user_id not in told:
+            if wants(user_id):
                 told.add(user_id)
                 reached += send(user_id, f"Another ticket: {listing['title']}", body, url)
-    for watcher in db.watchers_of(kind):
-        if watcher["user_id"] in told:
-            continue
-        if matches(listing, watcher["q"], watcher["cat"]):
-            told.add(watcher["user_id"])
-            reached += send(watcher["user_id"], f"{WHAT[kind]}: {listing['title']}", body, url)
+    if search_finds:
+        for watcher in db.search_watchers(kind):
+            user_id = watcher["user_id"]
+            if wants(user_id) and search_finds(kind, watcher["params"], listing["id"]):
+                told.add(user_id)
+                reached += send(user_id, f"{WHAT[kind]}: {listing['title']}", body, url)
     return reached
 
 

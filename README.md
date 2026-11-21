@@ -329,15 +329,17 @@ Push notifications on the lock screen, the standard every browser speaks, so
 there is no app store and no paid service. `app/push.py` decides who hears
 about what:
 
-    New messages     a message in one of your chats        on by default
-    New tickets      a ticket that matches your search     off until you ask
-    New housing      a place that matches your search      off until you ask
-    New in Market    a thing that matches your search      off until you ask
+    Messages    a message in one of your chats
+    Tickets     a new ticket for a saved search or a watched event
+    Housing     a new place for a saved search
+    Market      a new thing for a saved search
 
-The bell next to your picture on Tickets, Housing and Market turns the tab on
-for whatever you are searching for right now, so the bell on "party" only
-rings for parties. Every area can be switched off at `/profile/notifications`,
-which also has the button that asks the browser and a test notification.
+A saved search is the bell next to your picture on Tickets, Housing and
+Market. It keeps every filter that is set, on Housing the whole panel (area,
+rent, move in, stay, minutes to campus, bills, features), on Market category,
+price and condition. A new entry is checked by running exactly the search the
+tab runs, so it rings for what the list would show and nothing else. Save as
+many as you like; tapping the bell on the same search again forgets it.
 
 For one particular event there is a bell on the ticket itself: "Notify me
 about more tickets". It rings when somebody else puts up a ticket for the same
@@ -345,7 +347,11 @@ day, time and place, whatever they call it, the same rule the Tickets tab uses
 to fold a day. A student can watch as many events as they like. All of them
 are listed under "Events you watch" in the notification settings, each with
 Remove, and past events drop off by themselves. Nobody is told twice when an
-event bell and a tab bell both fit.
+event bell and a saved search both fit.
+
+`/profile/notifications` lists the saved searches and the watched events, each
+with Remove, and has one switch per area that silences it without throwing
+anything away. It also has the button that asks the browser, and a test.
 
 It needs a key pair of our own. Make one with `python -m app.push keys` and put
 its lines into `.env`. Without them nothing about notifications is shown.

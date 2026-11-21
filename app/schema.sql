@@ -170,3 +170,19 @@ CREATE TABLE IF NOT EXISTS event_watches (
     UNIQUE (user_id, event_date, event_time, place_key)
 );
 CREATE INDEX IF NOT EXISTS idx_event_watches_event ON event_watches (event_date, event_time, place_key);
+
+-- One search a student wants to hear about, with every filter it had: tell
+-- me when something new goes up that this search would find. params is the
+-- search as it stood in the address of the tab, so a new entry is checked
+-- with exactly the search the tab itself runs. label is the readable version
+-- for the list in the settings. As many per tab as they like.
+CREATE TABLE IF NOT EXISTS watched_searches (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id),
+    kind       TEXT    NOT NULL,                 -- ticket, housing or item
+    params     TEXT    NOT NULL,                 -- JSON, keys sorted
+    label      TEXT    NOT NULL,
+    created_at TEXT    NOT NULL,
+    UNIQUE (user_id, kind, params)
+);
+CREATE INDEX IF NOT EXISTS idx_watched_searches_kind ON watched_searches (kind);

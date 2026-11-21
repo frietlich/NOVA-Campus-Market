@@ -4,6 +4,7 @@ Every page lives here. The database is only reached through db.py.
 Start it with   uvicorn app.main:app --reload   from the project folder.
 """
 
+import json
 import os
 import re
 import unicodedata
@@ -443,6 +444,122 @@ def housing_search(cat, sort, rent, rmin, rmax, mins, minsx, stay, area,
             "low": low, "high": high, "minutes": minutes, "bills": bills,
             "features": feats, "months": housing.STAY_BY_KEY[stay][2],
             "on": on, "summary": ", ".join(parts)}
+
+
+# --------------------------------------------------------- saved searches
+
+# The filters of each tab that a saved search keeps. Sort order and the open
+# day are left out, they change how the list looks, not what is in it.
+SEARCH_KEYS = {
+    "ticket": ("q", "cat"),
+    "item": ("q", "cat", "price", "cond"),
+    "housing": ("q", "cat", "rent", "rmin", "rmax", "mins", "minsx", "stay",
+                "area", "movein", "has"),
+}
+
+
+def search_of(kind, query):
+    """The search on a tab as one JSON string, the same whoever wrote the address.
+
+    query is the address's query part, as a string or as the request's own
+    query parameters. Empty filters are dropped and the keys sorted, so the
+    same search is always the same string.
+    """
+    from urllib.parse import parse_qs
+    if isinstance(query, str):
+        values = parse_qs(query, keep_blank_values=False)
+        get = lambda k: (values.get(k) or [""])[0]
+        get_all = lambda k: values.get(k) or []
+    else:
+        get, get_all = (lambda k: query.get(k) or ""), query.getlist
+    found = {}
+    for key in SEARCH_KEYS.get(kind, ()):
+        if key == "has":
+            picked = sorted({v.strip() for v in get_all("has") if v.strip()})
+            if picked:
+                found["has"] = picked
+        elif get(key).strip():
+            found[key] = get(key).strip()[:80]
+    if kind == "housing":
+        # Keep only what the panel itself would keep.
+        hs = housing_search(found.get("cat", ""), "", found.get("rent", ""),
+                            found.get("rmin", ""), found.get("rmax", ""),
+                            found.get("mins", ""), found.get("minsx", ""),
+                            found.get("stay", ""), found.get("area", ""),
+                            found.get("movein", ""), found.get("has", []))
+        if not hs["kind"]:
+            found.pop("cat", None)
+    else:
+        if found.get("cat") and not categories.is_valid(found["cat"], kind):
+            found.pop("cat")
+        if found.get("price") not in (None, *BY_BAND):
+            found.pop("price")
+        if found.get("cond") and found["cond"] not in categories.CONDITION_LABELS:
+            found.pop("cond")
+    return json.dumps(found, sort_keys=True, ensure_ascii=False)
+
+
+def search_label(kind, params):
+    """A saved search in words, for the list in the settings."""
+    p = json.loads(params)
+    parts = [f"\u201c{p['q']}\u201d"] if p.get("q") else []
+    if kind == "housing":
+        hs = housing_search(p.get("cat", ""), "", p.get("rent", ""), p.get("rmin", ""),
+                            p.get("rmax", ""), p.get("mins", ""), p.get("minsx", ""),
+                            p.get("stay", ""), p.get("area", ""), p.get("movein", ""),
+                            p.get("has", []))
+        if hs["kind"]:
+            parts.append(housing.KIND_LABELS[hs["kind"]])
+        if hs["area"]:
+            parts.append(housing.AREA_LABELS[hs["area"]])
+        if hs["low"] is not None and hs["high"] is not None:
+            parts.append(f"{money(hs['low'])} to {money(hs['high'])}")
+        elif hs["high"] is not None:
+            parts.append(f"up to {money(hs['high'])}")
+        elif hs["low"] is not None:
+            parts.append(f"from {money(hs['low'])}")
+        if hs["movein"]:
+            parts.append("free from " + pretty_date(hs["movein"]))
+        if hs["minutes"]:
+            parts.append(f"max {hs['minutes']} min to campus")
+        if hs["stay"]:
+            parts.append(housing.STAY_LABELS[hs["stay"]].lower())
+        if hs["bills"]:
+            parts.append("bills included")
+        parts += [housing.FEATURE_LABELS[f].lower() for f in hs["features"]]
+    else:
+        if p.get("cat"):
+            parts.append(categories.label(p["cat"]))
+        if p.get("price"):
+            parts.append(BY_BAND[p["price"]][1].lower())
+        if p.get("cond"):
+            parts.append(categories.CONDITION_LABELS[p["cond"]].lower())
+    return " · ".join(parts) if parts else "Everything new"
+
+
+def search_rows(kind, params):
+    """The open entries a saved search finds, the way the tab finds them."""
+    p = json.loads(params)
+    if kind == "housing":
+        hs = housing_search(p.get("cat", ""), "", p.get("rent", ""), p.get("rmin", ""),
+                            p.get("rmax", ""), p.get("mins", ""), p.get("minsx", ""),
+                            p.get("stay", ""), p.get("area", ""), p.get("movein", ""),
+                            p.get("has", []))
+        return db.listings_of_type(
+            kind, p.get("q", ""), category=hs["kind"], min_price=hs["low"],
+            max_price=hs["high"], price_inclusive=True, free_from=hs["movein"] or None,
+            area=hs["area"], max_minutes=hs["minutes"], max_months=hs["months"],
+            bills_included=hs["bills"], features=hs["features"])
+    band = BY_BAND[p.get("price", "")]
+    return db.listings_of_type(kind, p.get("q", ""), category=p.get("cat") or None,
+                               min_price=band[2], max_price=band[3],
+                               free_only=p.get("price") == "free",
+                               condition=p.get("cond") or None)
+
+
+def search_finds(kind, params, listing_id):
+    """True when this saved search would show this entry on the tab."""
+    return any(row["id"] == listing_id for row in search_rows(kind, params))
 
 
 def link_maker(path, params):
@@ -981,7 +1098,8 @@ def tab_page(request, kind, q, scope="mine", cat="", day="", sort="",
                 days=days, blocks=blocks, cat=cat, open_day=day, fresh=fresh,
                 sort=sort, price=price, cond=cond, bands=PRICE_BANDS, hs=hs,
                 link=link_maker(tab["path"], params),
-                watching=db.prefs_of(me["id"]).get(kind),
+                watching=(kind in SEARCH_KEYS and db.is_watching_search(
+                    me["id"], kind, search_of(kind, request.query_params))),
                 here=str(request.url.path) + (f"?{request.url.query}" if request.url.query else ""))
 
 
@@ -1288,7 +1406,8 @@ async def new_listing(request: Request,
         position += 1
 
     # Everyone watching this tab hears about it, after the page has answered.
-    background.add_task(push.new_listing, db.get_listing(listing_id), event_key)
+    background.add_task(push.new_listing, db.get_listing(listing_id), event_key,
+                        search_finds)
     return go(f"/listing/{listing_id}?done=published")
 
 
@@ -1728,7 +1847,8 @@ def notifications_form(request: Request, done: str = ""):
         return go("/start")
     return page(request, "notifications.html", me=me, prefs=db.prefs_of(me["id"]),
                 areas=push.AREAS, devices=len(db.devices_of(me["id"])), done=done,
-                events=db.events_watched(me["id"]))
+                events=db.events_watched(me["id"]), searches=db.searches_watched(me["id"]),
+                tab_names={t["kind"]: t["label"] for t in TABS})
 
 
 @app.post("/profile/notifications")
@@ -1770,20 +1890,33 @@ def notify_event_remove(request: Request, watch_id: int = Form(0)):
 
 
 @app.post("/notify/watch")
-def notify_watch(request: Request, kind: str = Form(""), on: str = Form("1"),
-                 q: str = Form(""), cat: str = Form(""), back: str = Form("")):
-    """The bell on a tab: tell me about new entries like the ones I see now."""
+def notify_watch(request: Request, kind: str = Form(""), back: str = Form("")):
+    """The bell on a tab: save the search on screen, or forget it again."""
     me = me_or_none(request)
     if me is None:
         return go("/start")
-    if kind not in ("ticket", "housing", "item"):
+    if kind not in SEARCH_KEYS:
         return go("/profile/notifications")
-    if on == "1":
-        db.set_pref(me["id"], kind, True, q, cat)
-    else:
-        db.set_pref(me["id"], kind, False)
     # Only ever back to a page of our own.
-    return go(back if back.startswith("/") and not back.startswith("//") else BY_KIND[kind]["path"])
+    back = back if back.startswith("/") and not back.startswith("//") else BY_KIND[kind]["path"]
+    params = search_of(kind, back.partition("?")[2])
+    if db.is_watching_search(me["id"], kind, params):
+        db.unwatch_search(me["id"], kind, params)
+        done = "search-off"
+    else:
+        db.watch_search(me["id"], kind, params, search_label(kind, params))
+        done = "search-on"
+    return go(back + ("&" if "?" in back else "?") + "done=" + done)
+
+
+@app.post("/notify/search/remove")
+def notify_search_remove(request: Request, watch_id: int = Form(0)):
+    """Forget one saved search, from the list in the settings."""
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    db.unwatch_search(me["id"], watch_id=watch_id)
+    return go("/profile/notifications?done=removed-search")
 
 
 @app.get("/profile")

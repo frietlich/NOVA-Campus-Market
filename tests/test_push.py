@@ -44,10 +44,20 @@ class PushTests(unittest.TestCase):
                                        place="Lux Frágil")
         return db.get_listing(listing_id)
 
-    def test_messages_are_on_and_the_rest_off_by_default(self):
+    def test_every_area_is_on_until_switched_off(self):
         prefs = db.prefs_of(self.buyer)
         self.assertEqual({area: p["on"] for area, p in prefs.items()},
-                         {"messages": True, "ticket": False, "housing": False, "item": False})
+                         {"messages": True, "ticket": True, "housing": True, "item": True})
+
+    def save(self, user, kind, query):
+        from app.main import search_label, search_of
+        params = search_of(kind, query)
+        db.watch_search(user, kind, params, search_label(kind, params))
+        return params
+
+    def announce(self, listing_id):
+        from app.main import event_key, search_finds
+        push.new_listing(db.get_listing(listing_id), event_key, search_finds)
 
     def test_a_new_message_reaches_the_other_person_only(self):
         listing = self.ticket()
@@ -64,26 +74,71 @@ class PushTests(unittest.TestCase):
         push.new_message(conv, self.buyer, "Hello")
         self.assertEqual(self.sent, [])
 
-    def test_a_new_ticket_reaches_whoever_watches_tickets(self):
-        db.set_pref(self.buyer, "ticket", True, "", "")
-        db.set_pref(self.other, "housing", True, "", "")
-        db.set_pref(self.seller, "ticket", True, "", "")     # the seller is never told
-        push.new_listing(self.ticket())
-        self.assertEqual(self.receivers(), [self.buyer])
+    def test_nobody_hears_anything_without_a_saved_search(self):
+        self.announce(self.ticket()["id"])
+        self.assertEqual(self.sent, [])
+
+    def test_several_ticket_searches_and_only_what_fits(self):
+        self.save(self.buyer, "ticket", "q=halloween")
+        self.save(self.buyer, "ticket", "cat=concert")
+        self.save(self.other, "ticket", "q=football")
+        self.save(self.seller, "ticket", "")                 # the seller is never told
+        self.announce(self.ticket()["id"])
+        self.assertEqual(self.receivers(), [self.buyer])     # once, though two searches
         self.assertTrue(self.sent[0][1]["title"].startswith("New ticket: Halloween"))
 
-    def test_only_what_matches_the_search(self):
-        db.set_pref(self.buyer, "ticket", True, "halloween lux", "")
-        db.set_pref(self.other, "ticket", True, "", "concert")
-        push.new_listing(self.ticket())
+    def test_a_housing_search_keeps_every_filter(self):
+        self.save(self.buyer, "housing", "area=carcavelos&rmax=600&has=wifi&cat=shared_flat")
+        self.save(self.other, "housing", "area=lisboa")
+        cheap = db.create_listing(self.seller, "housing", "Room near the beach", price=550,
+                                  category="shared_flat", place="carcavelos",
+                                  available_from="2030-01-01", features="wifi,desk")
+        self.announce(cheap)
+        self.assertEqual(self.receivers(), [self.buyer])
+        self.sent.clear()
+        dear = db.create_listing(self.seller, "housing", "Room near the beach", price=900,
+                                 category="shared_flat", place="carcavelos",
+                                 available_from="2030-01-01", features="wifi")
+        no_wifi = db.create_listing(self.seller, "housing", "Room", price=500,
+                                    category="shared_flat", place="carcavelos",
+                                    available_from="2030-01-01", features="desk")
+        self.announce(dear)
+        self.announce(no_wifi)
+        self.assertEqual(self.sent, [])
+
+    def test_a_market_search_keeps_price_and_condition(self):
+        self.save(self.buyer, "item", "q=bike&price=50&cond=used")
+        fits = db.create_listing(self.seller, "item", "City bike", price=40,
+                                 category="sports", condition="used")
+        too_dear = db.create_listing(self.seller, "item", "Road bike", price=200,
+                                     category="sports", condition="used")
+        self.announce(too_dear)
+        self.assertEqual(self.sent, [])
+        self.announce(fits)
         self.assertEqual(self.receivers(), [self.buyer])
 
-    def test_turning_an_area_off_keeps_the_search_for_later(self):
-        db.set_pref(self.buyer, "ticket", True, "party", "")
+    def test_the_same_search_is_saved_once_however_it_was_written(self):
+        from app.main import search_of
+        self.assertEqual(search_of("housing", "has=wifi&area=parede&has=desk&sort=low&q="),
+                         search_of("housing", "area=parede&has=desk&has=wifi"))
+        self.save(self.buyer, "ticket", "q=party")
+        self.save(self.buyer, "ticket", "q=party&day=2030-01-01")
+        self.assertEqual(len(db.searches_watched(self.buyer)), 1)
+
+    def test_a_search_has_a_label_in_words(self):
+        from app.main import search_label, search_of
+        label = search_label("housing", search_of("housing", "q=sea&area=cascais&rmax=800&has=wifi"))
+        self.assertIn("Cascais", label)
+        self.assertIn("€800", label)
+        self.assertIn("wifi", label.lower())
+        self.assertEqual(search_label("item", search_of("item", "")), "Everything new")
+
+    def test_switching_an_area_off_keeps_the_searches(self):
+        self.save(self.buyer, "ticket", "q=halloween")
         db.set_pref(self.buyer, "ticket", False)
-        push.new_listing(self.ticket())
+        self.announce(self.ticket()["id"])
         self.assertEqual(self.sent, [])
-        self.assertEqual(db.prefs_of(self.buyer)["ticket"]["q"], "party")
+        self.assertEqual(len(db.searches_watched(self.buyer)), 1)
 
     def test_a_device_that_is_gone_is_forgotten(self):
         with mock.patch.object(push, "_webpush", return_value=False):
@@ -125,9 +180,9 @@ class PushTests(unittest.TestCase):
         from app.main import event_key
         brunch = self.event("Brunch Electronik", "2030-06-07", "14:00", "Tapada da Ajuda")
         db.watch_event(self.buyer, event_key(brunch), brunch["title"], brunch["place"])
-        db.set_pref(self.buyer, "ticket", True, "", "")
-        push.new_listing(self.event("Brunch", "2030-06-07", "14:00", "Tapada da Ajuda",
-                                    owner=self.other), event_key)
+        self.save(self.buyer, "ticket", "")
+        self.announce(self.event("Brunch", "2030-06-07", "14:00", "Tapada da Ajuda",
+                                 owner=self.other)["id"])
         self.assertEqual(self.receivers(), [self.buyer])
 
     def test_an_event_can_be_removed_and_past_ones_go_by_themselves(self):
@@ -172,18 +227,30 @@ class PageTests(unittest.TestCase):
         db.DB_PATH = self.original
         self.temp.cleanup()
 
-    def test_the_bell_saves_the_search(self):
+    def test_the_bell_saves_the_search_and_forgets_it_again(self):
         answer = self.client.post("/notify/watch", data={
-            "kind": "ticket", "on": "1", "q": "party", "cat": "concert",
-            "back": "/tickets?q=party"}, follow_redirects=False)
-        self.assertEqual(answer.headers["location"], "/tickets?q=party")
-        self.assertEqual(db.prefs_of(self.user)["ticket"],
-                         {"on": True, "q": "party", "cat": "concert"})
+            "kind": "housing", "back": "/housing?area=parede&rmax=700"}, follow_redirects=False)
+        self.assertEqual(answer.headers["location"], "/housing?area=parede&rmax=700&done=search-on")
+        self.assertEqual(len(db.searches_watched(self.user)), 1)
+        page = self.client.get("/housing?area=parede&rmax=700").text
+        self.assertIn("bell--on", page)
+        self.assertNotIn("bell--on", self.client.get("/housing?area=lisboa").text)
+        settings = self.client.get("/profile/notifications").text
+        self.assertIn("Parede", settings)
+        self.client.post("/notify/watch", data={"kind": "housing",
+                                                "back": "/housing?rmax=700&area=parede"})
+        self.assertEqual(db.searches_watched(self.user), [])
+
+    def test_a_search_can_be_removed_in_the_settings(self):
+        self.client.post("/notify/watch", data={"kind": "item", "back": "/market?q=bike"})
+        watch_id = db.searches_watched(self.user)[0]["id"]
+        self.client.post("/notify/search/remove", data={"watch_id": watch_id})
+        self.assertEqual(db.searches_watched(self.user), [])
 
     def test_the_bell_never_sends_you_off_the_site(self):
         answer = self.client.post("/notify/watch", data={
-            "kind": "ticket", "on": "1", "back": "//evil.example"}, follow_redirects=False)
-        self.assertEqual(answer.headers["location"], "/tickets")
+            "kind": "ticket", "back": "//evil.example"}, follow_redirects=False)
+        self.assertTrue(answer.headers["location"].startswith("/tickets"))
 
     def test_the_settings_page_switches_each_area(self):
         self.client.post("/profile/notifications", data={"on": ["housing", "item"]})

@@ -11,19 +11,17 @@
       <h1>{{ tab.label }}</h1>
       <div class="head-actions">
         {% if PUSH_ON() and tab.kind in ('ticket', 'housing', 'item') %}
-          {# The bell: tell me when something new goes up here, narrowed to
-             whatever I am searching for right now. #}
-          {% set on = watching and watching.on %}
+          {# The bell: save the search on screen, with every filter that is
+             set, and tell me when something new fits it. Tapped again on the
+             same search, it forgets it. #}
           <form method="post" action="/notify/watch" data-push-ask>
             <input type="hidden" name="kind" value="{{ tab.kind }}">
-            <input type="hidden" name="on" value="{{ '0' if on else '1' }}">
-            <input type="hidden" name="q" value="{{ q }}">
-            <input type="hidden" name="cat" value="{{ cat }}">
+            <input type="hidden" name="on" value="{{ '0' if watching else '1' }}">
             <input type="hidden" name="back" value="{{ here }}">
-            <button class="plus bell {{ 'bell--on' if on }}" type="submit"
-                    aria-pressed="{{ 'true' if on else 'false' }}"
-                    title="{% if on %}Notifications on{% if watching.q or watching.cat %} for {{ watching.q }}{{ ' · ' if watching.q and watching.cat }}{{ watching.cat }}{% endif %}. Tap to turn off.{% else %}Notify me about new {{ tab.label | lower }}{% if q or cat %} like these{% endif %}{% endif %}"
-                    aria-label="{% if on %}Turn off notifications for {{ tab.label }}{% else %}Notify me about new {{ tab.label }}{% endif %}">{{ icon.bell(20, 1.8) }}</button>
+            <button class="plus bell {{ 'bell--on' if watching }}" type="submit"
+                    aria-pressed="{{ 'true' if watching else 'false' }}"
+                    title="{% if watching %}You get notifications for this search. Tap to stop.{% else %}Notify me about new {{ tab.label | lower }} for this search{% endif %}"
+                    aria-label="{% if watching %}Stop notifications for this search{% else %}Notify me about new {{ tab.label }} for this search{% endif %}">{{ icon.bell(20, 1.8) }}</button>
           </form>
         {% endif %}
         <a href="/profile" aria-label="Your profile">{{ av.avatar(me.name, me.photo) }}</a>
