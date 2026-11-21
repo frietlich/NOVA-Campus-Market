@@ -10,6 +10,22 @@
     <div class="head">
       <h1>{{ tab.label }}</h1>
       <div class="head-actions">
+        {% if PUSH_ON() and tab.kind in ('ticket', 'housing', 'item') %}
+          {# The bell: tell me when something new goes up here, narrowed to
+             whatever I am searching for right now. #}
+          {% set on = watching and watching.on %}
+          <form method="post" action="/notify/watch" data-push-ask>
+            <input type="hidden" name="kind" value="{{ tab.kind }}">
+            <input type="hidden" name="on" value="{{ '0' if on else '1' }}">
+            <input type="hidden" name="q" value="{{ q }}">
+            <input type="hidden" name="cat" value="{{ cat }}">
+            <input type="hidden" name="back" value="{{ here }}">
+            <button class="plus bell {{ 'bell--on' if on }}" type="submit"
+                    aria-pressed="{{ 'true' if on else 'false' }}"
+                    title="{% if on %}Notifications on{% if watching.q or watching.cat %} for {{ watching.q }}{{ ' · ' if watching.q and watching.cat }}{{ watching.cat }}{% endif %}. Tap to turn off.{% else %}Notify me about new {{ tab.label | lower }}{% if q or cat %} like these{% endif %}{% endif %}"
+                    aria-label="{% if on %}Turn off notifications for {{ tab.label }}{% else %}Notify me about new {{ tab.label }}{% endif %}">{{ icon.bell(20, 1.8) }}</button>
+          </form>
+        {% endif %}
         <a href="/profile" aria-label="Your profile">{{ av.avatar(me.name, me.photo) }}</a>
         <a class="plus" href="/new?kind={{ tab.kind }}" aria-label="New {{ tab.label }} entry">{{ icon.plus() }}</a>
       </div>

@@ -810,8 +810,8 @@ def unread_total(user_id):
 
 # ------------------------------------------------------------- screenshots
 
-def take_ai_read(user_id, limit):
-    """Count one screenshot read for today. False once the limit is reached.
+def take_ai_read(user_id, limit, pictures=1):
+    """Count screenshots read today. False when they would go over the limit.
 
     Counted before the read, so a student who keeps retrying a failing
     screenshot still stops at the limit.
@@ -823,12 +823,89 @@ def take_ai_read(user_id, limit):
             row = conn.execute(
                 "SELECT count FROM ai_reads WHERE user_id = ? AND day = ?",
                 (user_id, day)).fetchone()
-            if row and row["count"] >= limit:
+            if (row["count"] if row else 0) + pictures > limit:
                 return False
             conn.execute(
-                "INSERT INTO ai_reads (user_id, day, count) VALUES (?, ?, 1)"
-                " ON CONFLICT(user_id, day) DO UPDATE SET count = count + 1",
-                (user_id, day))
+                "INSERT INTO ai_reads (user_id, day, count) VALUES (?, ?, ?)"
+                " ON CONFLICT(user_id, day) DO UPDATE SET count = count + ?",
+                (user_id, day, pictures, pictures))
             return True
     finally:
         conn.close()
+
+
+# ------------------------------------------------------------ notifications
+
+NOTIFY_AREAS = ("messages", "ticket", "housing", "item")
+
+
+def save_device(user_id, endpoint, p256dh, auth):
+    """Remember one device for push. The same device again just moves owner."""
+    conn = connect()
+    with conn:
+        conn.execute(
+            "INSERT INTO push_devices (endpoint, user_id, p256dh, auth, created_at)"
+            " VALUES (?, ?, ?, ?, ?) ON CONFLICT(endpoint) DO UPDATE SET"
+            " user_id = excluded.user_id, p256dh = excluded.p256dh,"
+            " auth = excluded.auth",
+            (endpoint, user_id, p256dh, auth, now()))
+    conn.close()
+
+
+def drop_device(endpoint, user_id=None):
+    """Forget a device, because it said goodbye or the push service did."""
+    conn = connect()
+    with conn:
+        if user_id is None:
+            conn.execute("DELETE FROM push_devices WHERE endpoint = ?", (endpoint,))
+        else:
+            conn.execute("DELETE FROM push_devices WHERE endpoint = ? AND user_id = ?",
+                         (endpoint, user_id))
+    conn.close()
+
+
+def devices_of(user_id):
+    conn = connect()
+    rows = conn.execute("SELECT * FROM push_devices WHERE user_id = ?",
+                        (user_id,)).fetchall()
+    conn.close()
+    return rows
+
+
+def prefs_of(user_id):
+    """{area: {"on": bool, "q": str, "cat": str}} for all four areas."""
+    prefs = {area: {"on": area == "messages", "q": "", "cat": ""}
+             for area in NOTIFY_AREAS}
+    conn = connect()
+    for row in conn.execute("SELECT * FROM notify_prefs WHERE user_id = ?", (user_id,)):
+        if row["area"] in prefs:
+            prefs[row["area"]] = {"on": bool(row["is_on"]), "q": row["q"], "cat": row["cat"]}
+    conn.close()
+    return prefs
+
+
+def set_pref(user_id, area, on, q=None, cat=None):
+    """Turn one area on or off. q and cat of None keep what was there."""
+    if area not in NOTIFY_AREAS:
+        raise ValueError(f"unknown area {area}")
+    old = prefs_of(user_id)[area]
+    q = old["q"] if q is None else q.strip()[:80]
+    cat = old["cat"] if cat is None else cat.strip()[:30]
+    conn = connect()
+    with conn:
+        conn.execute(
+            "INSERT INTO notify_prefs (user_id, area, is_on, q, cat) VALUES (?, ?, ?, ?, ?)"
+            " ON CONFLICT(user_id, area) DO UPDATE SET is_on = excluded.is_on,"
+            " q = excluded.q, cat = excluded.cat",
+            (user_id, area, 1 if on else 0, q, cat))
+    conn.close()
+
+
+def watchers_of(kind):
+    """Everyone who turned on notifications for new entries of this kind."""
+    conn = connect()
+    rows = conn.execute(
+        "SELECT user_id, q, cat FROM notify_prefs WHERE area = ? AND is_on = 1",
+        (kind,)).fetchall()
+    conn.close()
+    return rows

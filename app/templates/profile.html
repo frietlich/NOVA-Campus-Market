@@ -54,6 +54,18 @@
       </a>
     </div>
 
+    {% if PUSH_ON() %}
+    <span class="section">NOTIFICATIONS</span>
+    <div class="rows">
+      <a class="row" href="/profile/notifications">
+        <div class="row-body">
+          <span class="row-name" style="color: var(--accent)">Notifications</span>
+          <span class="row-meta">Messages, new tickets, housing and Market</span>
+        </div>
+      </a>
+    </div>
+    {% endif %}
+
     <span class="section">MY ENTRIES</span>
 
     {% if mine %}

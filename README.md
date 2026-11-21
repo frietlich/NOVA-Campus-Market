@@ -95,7 +95,8 @@ predictable by design. All of it lives in `db.new_code` and `db.check_code`.
     app/programmes.py  the list of programmes the school offers
     app/passwords.py   the password rules and how a password is stored
     app/ticket_import.py  filling the ticket form from the link to the event
-    app/ticket_screenshot.py  the same from a screenshot, read by Claude
+    app/screenshots.py the ticket or housing form from screenshots, read by Claude
+    app/push.py        push notifications, who gets what, and sending them
     app/mailer.py      sending the 6-digit code, and reading .env
     app/categories.py  what a ticket can be for
     app/schema.sql     the five tables
@@ -305,21 +306,45 @@ it in. `tests/test_ticket_import.py` covers all of it without going online.
 The time on a page is turned into Lisbon time, summer and winter, because the
 sites write it in UTC.
 
-## A ticket from a screenshot
+## Tickets and housing from screenshots
 
-Shotgun, Resident Advisor, a ticket app or an Instagram story cannot be read
-by link. A screenshot of the event can: `app/ticket_screenshot.py` sends it to
-Claude Opus (`claude-opus-5-5` at medium effort, and only that model), which answers in a fixed JSON form, and the ticket
-form fills itself in the same way as from a link.
+Shotgun, Resident Advisor, Idealista, Imovirtual, a ticket app or an Instagram
+story cannot be read by link. Screenshots can: `app/screenshots.py` sends them to
+Claude Opus (`claude-opus-5-5` at medium effort, and only that model), which answers in a fixed JSON form, and the form
+fills itself in the same way as from a link. A housing advert rarely fits on
+one screen, so up to four screenshots go in together and are read as one.
 
 * Switched on by `ANTHROPIC_API_KEY` in `.env`. Without a key the button is not
   shown at all.
-* About one cent per screenshot. Every student gets 20 a day (`ai_reads`).
+* About one cent per screenshot. Every student gets 20 pictures a day (`ai_reads`).
 * The picture is shrunk to a small JPEG, sent once and thrown away. It is
   never saved, because a ticket screenshot often has the QR code on it.
-* Claude is told to read only the event, never QR codes, ticket numbers or
-  names, and to leave a field empty rather than guess.
-* `tests/test_ticket_screenshot.py` never calls Claude, it answers for it.
+* Claude is told to read only the event or the place, never QR codes, ticket
+  numbers, names or phone numbers, and to leave a field empty rather than guess.
+* `tests/test_screenshots.py` never calls Claude, it answers for it.
+
+## Notifications
+
+Push notifications on the lock screen, the standard every browser speaks, so
+there is no app store and no paid service. `app/push.py` decides who hears
+about what:
+
+    New messages     a message in one of your chats        on by default
+    New tickets      a ticket that matches your search     off until you ask
+    New housing      a place that matches your search      off until you ask
+    New in Market    a thing that matches your search      off until you ask
+
+The bell next to your picture on Tickets, Housing and Market turns the tab on
+for whatever you are searching for right now, so the bell on "party" only
+rings for parties. Every area can be switched off at `/profile/notifications`,
+which also has the button that asks the browser and a test notification.
+
+It needs a key pair of our own. Make one with `python -m app.push keys` and put
+its lines into `.env`. Without them nothing about notifications is shown.
+
+On an iPhone it works only from the icon on the home screen and over https,
+so test it there once the app is deployed. On a laptop, Chrome, Edge and
+Firefox show it on http://127.0.0.1:8000 already.
 
 ## Not now, but worth knowing
 

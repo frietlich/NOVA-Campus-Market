@@ -127,3 +127,28 @@ CREATE TABLE IF NOT EXISTS ai_reads (
     count   INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (user_id, day)
 );
+
+-- One phone or browser that agreed to get notifications. A student can have
+-- several. The three values come from the browser and are what the push
+-- service needs to reach exactly that device.
+CREATE TABLE IF NOT EXISTS push_devices (
+    endpoint   TEXT    PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id),
+    p256dh     TEXT    NOT NULL,
+    auth       TEXT    NOT NULL,
+    created_at TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_push_devices_user ON push_devices (user_id);
+
+-- What a student wants to hear about, one row per area: messages, ticket,
+-- housing or item. No row means the default: messages on, the rest off.
+-- For the three tabs, q and cat narrow it down to what they were searching
+-- for when they turned it on, so "party" only rings for parties.
+CREATE TABLE IF NOT EXISTS notify_prefs (
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    area    TEXT    NOT NULL,
+    is_on   INTEGER NOT NULL,
+    q       TEXT    NOT NULL DEFAULT '',
+    cat     TEXT    NOT NULL DEFAULT '',
+    PRIMARY KEY (user_id, area)
+);

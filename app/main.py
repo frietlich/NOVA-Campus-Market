@@ -12,15 +12,15 @@ from datetime import datetime, timedelta, timezone
 from typing import List
 from urllib.parse import quote, urlencode
 
-from fastapi import FastAPI, Form, Query, Request, UploadFile, File
+from fastapi import BackgroundTasks, FastAPI, Form, Query, Request, UploadFile, File
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import (categories, db, housing, mailer, passwords, programmes,
-               ticket_import, ticket_screenshot)
+from . import (categories, db, housing, mailer, passwords, programmes, push,
+               screenshots, ticket_import)
 
 # .env first, so CAMPUS_SECRET and the mail account can live in it.
 mailer.load_env()
@@ -262,7 +262,10 @@ templates.env.globals["SORT_OPTIONS"] = SORT_OPTIONS
 templates.env.globals["SORT_SHORT"] = SORT_SHORT
 templates.env.globals["PRICE_BANDS"] = PRICE_BANDS
 templates.env.globals["HOUSING"] = housing
-templates.env.globals["SCREENSHOTS_ON"] = ticket_screenshot.is_set_up
+templates.env.globals["SCREENSHOTS_ON"] = screenshots.is_set_up
+templates.env.globals["SCREENSHOTS_MAX"] = screenshots.MAX_IMAGES
+templates.env.globals["PUSH_ON"] = push.is_set_up
+templates.env.globals["PUSH_KEY"] = push.public_key
 templates.env.globals["PRICE_SHORT"] = {key: name for key, name, _, _ in PRICE_BANDS}
 
 
@@ -977,7 +980,9 @@ def tab_page(request, kind, q, scope="mine", cat="", day="", sort="",
                 active=kind, me=me, scope=scope, my_courses=mine,
                 days=days, blocks=blocks, cat=cat, open_day=day, fresh=fresh,
                 sort=sort, price=price, cond=cond, bands=PRICE_BANDS, hs=hs,
-                link=link_maker(tab["path"], params))
+                link=link_maker(tab["path"], params),
+                watching=db.prefs_of(me["id"]).get(kind),
+                here=str(request.url.path) + (f"?{request.url.query}" if request.url.query else ""))
 
 
 @app.get("/housing")
@@ -1130,26 +1135,31 @@ def new_ticket_autofill(request: Request, url: str = Form("")):
     return JSONResponse(ticket_import.autofill(url))
 
 
-@app.post("/new/ticket-screenshot")
-def new_ticket_screenshot(request: Request, screenshot: UploadFile = File(None)):
-    """Fill the ticket form from a screenshot of the event, read by Claude.
+@app.post("/new/screenshot")
+def new_from_screenshots(request: Request, kind: str = Form(""),
+                         screenshots_: List[UploadFile] = File(default=[], alias="screenshots")):
+    """Fill the ticket or housing form from screenshots, read by Claude.
 
-    Same JSON as the link. The picture is only read, never stored, and each
-    student has a daily limit because every read costs money.
+    Same JSON as the link. The pictures are only read, never stored, and each
+    student has a daily limit because every picture costs money.
     """
     me = me_or_none(request)
     if me is None:
         return JSONResponse({"ok": False, "reason": "login"}, status_code=401)
-    if not ticket_screenshot.is_set_up():
+    if not screenshots.is_set_up():
         return JSONResponse({"ok": False, "reason": "setup"})
-    if not db.take_ai_read(me["id"], ticket_screenshot.READS_PER_DAY):
+    files = [f for f in screenshots_ if f and f.filename]
+    if len(files) > screenshots.MAX_IMAGES:
+        return JSONResponse({"ok": False, "reason": "many"})
+    if not db.take_ai_read(me["id"], screenshots.READS_PER_DAY, max(1, len(files))):
         return JSONResponse({"ok": False, "reason": "limit"})
-    data = screenshot.file.read(ticket_screenshot.MAX_UPLOAD + 1) if screenshot else b""
-    return JSONResponse(ticket_screenshot.read(data))
+    pictures = [f.file.read(screenshots.MAX_UPLOAD + 1) for f in files]
+    return JSONResponse(screenshots.read(kind, pictures))
 
 
 @app.post("/new")
 async def new_listing(request: Request,
+                      background: BackgroundTasks,
                       kind: str = Form("housing"),
                       title: str = Form(""),
                       price: str = Form(""),
@@ -1275,6 +1285,8 @@ async def new_listing(request: Request,
         db.add_photo(listing_id, name, position)
         position += 1
 
+    # Everyone watching this tab hears about it, after the page has answered.
+    background.add_task(push.new_listing, db.get_listing(listing_id))
     return go(f"/listing/{listing_id}?done=published")
 
 
@@ -1525,14 +1537,16 @@ def chat(request: Request, conv_id: int):
 
 
 @app.post("/chat/{conv_id}")
-def chat_send(request: Request, conv_id: int, body: str = Form("")):
+def chat_send(request: Request, background: BackgroundTasks, conv_id: int,
+              body: str = Form("")):
     me = me_or_none(request)
     if me is None:
         return go("/start")
     conv = db.get_conversation(conv_id)
     if not db.can_see_conversation(conv, me["id"]):
         return page(request, "missing.html", active="chats")
-    db.send_message(conv_id, me["id"], body)
+    if db.send_message(conv_id, me["id"], body):
+        background.add_task(push.new_message, conv, me["id"], body.strip())
     return go(f"/chat/{conv_id}")
 
 
@@ -1648,6 +1662,99 @@ def password_change(request: Request, current: str = Form(""),
 
     db.set_password(me["id"], passwords.hash_password(password))
     return go("/profile")
+
+
+# --------------------------------------------------------- notifications
+
+@app.get("/sw.js")
+def service_worker():
+    """The service worker has to come from the top of the site, or it may
+    only look after the pages below /static."""
+    return FileResponse(os.path.join(HERE, "static", "js", "sw.js"),
+                        media_type="application/javascript",
+                        headers={"Cache-Control": "no-cache"})
+
+
+@app.post("/push/device")
+async def push_device(request: Request):
+    """The browser said yes to notifications. Remember this device."""
+    me = me_or_none(request)
+    if me is None:
+        return JSONResponse({"ok": False}, status_code=401)
+    try:
+        data = await request.json()
+        endpoint, keys = data["endpoint"], data["keys"]
+        p256dh, auth = keys["p256dh"], keys["auth"]
+    except (ValueError, KeyError, TypeError):
+        return JSONResponse({"ok": False}, status_code=400)
+    if not (isinstance(endpoint, str) and endpoint.startswith("https://")
+            and len(endpoint) < 1000 and isinstance(p256dh, str) and len(p256dh) < 200
+            and isinstance(auth, str) and len(auth) < 100):
+        return JSONResponse({"ok": False}, status_code=400)
+    db.save_device(me["id"], endpoint, p256dh, auth)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/push/device/forget")
+async def push_device_forget(request: Request):
+    me = me_or_none(request)
+    if me is None:
+        return JSONResponse({"ok": False}, status_code=401)
+    try:
+        endpoint = (await request.json())["endpoint"]
+    except (ValueError, KeyError, TypeError):
+        return JSONResponse({"ok": False}, status_code=400)
+    db.drop_device(str(endpoint), me["id"])
+    return JSONResponse({"ok": True})
+
+
+@app.post("/push/test")
+def push_test(request: Request):
+    """A notification to yourself, to see that it works on this phone."""
+    me = me_or_none(request)
+    if me is None:
+        return JSONResponse({"ok": False}, status_code=401)
+    reached = push.send(me["id"], "Campus Market",
+                        "Notifications work on this device.", "/profile/notifications")
+    return JSONResponse({"ok": reached > 0, "reached": reached})
+
+
+@app.get("/profile/notifications")
+def notifications_form(request: Request, done: str = ""):
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    return page(request, "notifications.html", me=me, prefs=db.prefs_of(me["id"]),
+                areas=push.AREAS, devices=len(db.devices_of(me["id"])), done=done)
+
+
+@app.post("/profile/notifications")
+async def notifications_save(request: Request):
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    form = await request.form()
+    on = set(form.getlist("on"))
+    for area in db.NOTIFY_AREAS:
+        db.set_pref(me["id"], area, area in on)
+    return go("/profile/notifications?done=saved")
+
+
+@app.post("/notify/watch")
+def notify_watch(request: Request, kind: str = Form(""), on: str = Form("1"),
+                 q: str = Form(""), cat: str = Form(""), back: str = Form("")):
+    """The bell on a tab: tell me about new entries like the ones I see now."""
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    if kind not in ("ticket", "housing", "item"):
+        return go("/profile/notifications")
+    if on == "1":
+        db.set_pref(me["id"], kind, True, q, cat)
+    else:
+        db.set_pref(me["id"], kind, False)
+    # Only ever back to a page of our own.
+    return go(back if back.startswith("/") and not back.startswith("//") else BY_KIND[kind]["path"])
 
 
 @app.get("/profile")

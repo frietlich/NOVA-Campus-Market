@@ -631,50 +631,72 @@
   }, 3200);
 })();
 
-// A ticket from the link to the event. The server reads the event page and
-// sends back what it found, and those fields are filled in and marked blue,
-// so the seller sees at a glance what came from the link and checks it.
-(function ticketLink() {
-  const box = document.getElementById("ticket-link");
+// The form from somewhere else: a ticket from the link to the event or from
+// screenshots, a place from screenshots of the advert. The server reads it
+// and sends back what it found, and those fields are filled in and marked,
+// so the student sees at a glance what came from where and checks it.
+(function autofill() {
+  const box = document.getElementById("autofill");
   if (!box) return;
-  const input = document.getElementById("ticket_url");
-  const go = document.getElementById("ticket-link-go");
-  const status = document.getElementById("ticket-link-status");
+  const kind = box.dataset.kind;
+  const most = Number(box.dataset.max) || 4;
+  const input = document.getElementById("autofill_url");
+  const go = document.getElementById("autofill-go");
+  const shot = document.getElementById("autofill_shot");
+  const shotLabel = document.getElementById("autofill-shot-label");
+  const status = document.getElementById("autofill-status");
   const form = box.closest("form");
-  const start = status.textContent.trim();
+  const start = status.textContent.replace(/\s+/g, " ").trim();
 
-  const say = (text, kind) => {
+  const say = (text, how) => {
     status.textContent = text;
-    status.classList.toggle("is-ok", kind === "ok");
-    status.classList.toggle("is-bad", kind === "bad");
+    status.classList.toggle("is-ok", how === "ok");
+    status.classList.toggle("is-bad", how === "bad");
   };
 
   const REASONS = {
     site: "That link is not from a ticket site we know. Try Luma, DICE, Xceed, BOL or Eventbrite.",
-    blocked: "{site} does not let apps read its pages. Please type it in.",
+    blocked: "{site} does not let apps read its pages. Take a screenshot instead, or type it in.",
     unreachable: "{site} did not answer. Check the link, or type it in.",
-    empty: "We opened the page but found no event on it. Please type it in.",
+    empty: kind === "housing"
+      ? "We found no housing advert in that. Please type it in."
+      : "We found no event in that. Please type it in.",
     login: "Log in again, then try once more.",
     setup: "Screenshots are not switched on yet. Please type it in.",
     picture: "That file is not a screenshot we can read. Use a PNG or JPEG.",
+    many: `At most ${most} screenshots at once.`,
     limit: "That is all the screenshots for today. Please type it in.",
     claude: "Claude could not read it just now. Try again in a minute, or type it in.",
   };
-  const NAMES = { title: "title", category: "category", event_date: "date",
-                  event_time: "time", place: "venue", address: "address",
-                  price: "price" };
+  const NAMES = { title: "title", category: kind === "housing" ? "kind of place" : "category",
+                  event_date: "date", event_time: "time",
+                  place: kind === "housing" ? "area" : "venue", address: "address",
+                  price: kind === "housing" ? "rent" : "price",
+                  bills_included: "bills", bills_estimate: "bills estimate",
+                  deposit_months: "deposit", available_from: "free from",
+                  months_min: "minimum stay", flatmates: "flatmates",
+                  features: "features", description: "description" };
 
-  // What the last link filled in. A second link first takes back whatever the
-  // first one put there and nobody has touched since, so nothing from the
-  // wrong event is left behind.
+  // What the last fill put in. The next one first takes back whatever is
+  // still untouched, so nothing from the wrong event or flat is left behind.
   let lastFilled = [];
+  const mark = (field, target) => {
+    target.classList.add("is-filled");
+    const clear = () => target.classList.remove("is-filled");
+    field.addEventListener("input", clear, { once: true });
+    field.addEventListener("change", clear, { once: true });
+  };
   const takeBack = () => {
-    lastFilled.forEach(({ field, hint }) => {
-      if (!field.classList.contains("is-filled")) return;
-      if (hint && !hint.parentNode) field.insertBefore(hint, field.firstChild);
-      field.value = "";
-      if (hint) field.selectedIndex = 0;
-      field.classList.remove("is-filled");
+    lastFilled.forEach(({ field, hint, target, before }) => {
+      if (!target.classList.contains("is-filled")) return;
+      if (field.type === "checkbox") {
+        field.checked = false;
+      } else {
+        if (hint && !hint.parentNode) field.insertBefore(hint, field.firstChild);
+        field.value = before;
+        if (hint) field.selectedIndex = 0;
+      }
+      target.classList.remove("is-filled");
     });
     lastFilled = [];
   };
@@ -683,28 +705,43 @@
     takeBack();
     const done = [];
     Object.entries(fields).forEach(([name, value]) => {
+      if (Array.isArray(value)) {
+        // A row of tick boxes, like what a flat comes with.
+        let any = false;
+        value.forEach((one) => {
+          const box = form.querySelector(`input[type="checkbox"][name="${name}"][value="${one}"]`);
+          if (!box || box.checked) return;
+          box.checked = true;
+          const target = box.closest(".opt") || box;
+          mark(box, target);
+          lastFilled.push({ field: box, target });
+          any = true;
+        });
+        if (any) done.push(NAMES[name] || name);
+        return;
+      }
       const field = form.querySelector(`[name="${name}"]`);
-      if (!field || value === null || value === "") return;
+      if (!field || value === null) return;
+      const before = field.value;
       if (field.tagName === "SELECT") {
         const option = field.querySelector(`option[value="${value}"]`);
         if (!option) return;
         const hint = field.querySelector("option[data-hint]");
         if (hint) hint.remove();
         field.value = value;
-        lastFilled.push({ field, hint });
+        lastFilled.push({ field, hint, target: field, before: "" });
       } else {
+        if (value === "") return;
         field.value = String(value);
-        lastFilled.push({ field, hint: null });
+        lastFilled.push({ field, hint: null, target: field, before });
       }
-      field.classList.add("is-filled");
-      field.addEventListener("input", () => field.classList.remove("is-filled"), { once: true });
-      field.addEventListener("change", () => field.classList.remove("is-filled"), { once: true });
+      mark(field, field);
       done.push(NAMES[name] || name);
     });
     return done;
   };
 
-  // One answer, from a link or a screenshot, goes into the form the same way.
+  // One answer, from a link or from screenshots, goes into the form the same way.
   const show = (data) => {
     if (!data.ok) {
       say((REASONS[data.reason] || REASONS.empty).replace("{site}", data.site || "That site"), "bad");
@@ -712,22 +749,25 @@
     }
     const done = fill(data.fields || {});
     let text = `Filled in from ${data.site}: ${done.join(", ")}.`;
-    if ("price" in (data.fields || {})) text += " The price is what the ticket cost there, change it to yours.";
+    if (kind === "ticket" && "price" in (data.fields || {})) {
+      text += " The price is what the ticket cost there, change it to yours.";
+    }
     say(text + " Check it before publishing.", "ok");
   };
 
-  const shot = document.getElementById("ticket_shot");
-  const shotLabel = document.getElementById("ticket-shot-label");
   if (shot) {
     shot.addEventListener("change", async () => {
-      const file = shot.files[0];
-      if (!file) return;
+      const files = [...shot.files];
+      if (!files.length) return;
+      if (files.length > most) { say(REASONS.many, "bad"); shot.value = ""; return; }
       shotLabel.classList.add("is-busy");
-      say("Claude is reading your screenshot…");
+      say(files.length === 1 ? "Claude is reading your screenshot…"
+                             : `Claude is reading your ${files.length} screenshots…`);
       try {
         const body = new FormData();
-        body.append("screenshot", file);
-        const res = await fetch("/new/ticket-screenshot", { method: "POST", body });
+        body.append("kind", kind);
+        files.forEach((file) => body.append("screenshots", file));
+        const res = await fetch("/new/screenshot", { method: "POST", body });
         show(await res.json());
       } catch (e) {
         say("Something went wrong. Please type it in.", "bad");
@@ -738,6 +778,7 @@
     });
   }
 
+  if (!input) return;
   const run = async () => {
     const url = input.value.trim();
     if (!url) { say("Paste the link to the event first.", "bad"); input.focus(); return; }
@@ -759,4 +800,111 @@
     if (e.key === "Enter") { e.preventDefault(); run(); }
   });
   input.addEventListener("input", () => { if (!input.value) say(start); });
+})();
+
+// Push notifications. The browser is only asked after a tap, never on its
+// own, and the device is then handed to the server, which sends to it.
+(function notifications() {
+  const meta = document.querySelector('meta[name="push-key"]');
+  if (!meta) return;
+  const key = meta.content;
+  const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  const standalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  const iphone = /iPhone|iPad|iPod/.test(navigator.userAgent);
+
+  const bytes = (base64) => {
+    const padded = (base64 + "=".repeat((4 - (base64.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/");
+    return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
+  };
+
+  const tell = (subscription) => fetch("/push/device", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(subscription.toJSON()),
+  });
+
+  // Gives back "on", "denied" or "unsupported".
+  const enable = async () => {
+    if (!supported) return "unsupported";
+    const answer = await Notification.requestPermission();
+    if (answer !== "granted") return "denied";
+    const registration = await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.ready;
+    const subscription = (await registration.pushManager.getSubscription())
+      || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytes(key) });
+    await tell(subscription);
+    return "on";
+  };
+
+  // A device that said yes before is handed over again on every visit, so it
+  // stays with whoever is logged in and survives a new address from the browser.
+  if (supported && Notification.permission === "granted") {
+    navigator.serviceWorker.register("/sw.js")
+      .then((registration) => registration.pushManager.getSubscription())
+      .then((subscription) => subscription && tell(subscription))
+      .catch(() => {});
+  }
+
+  // The bell on a tab: turning it on first makes sure this device can hear it.
+  document.querySelectorAll("form[data-push-ask]").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      if (form.dataset.asked || form.elements.on.value !== "1") return;
+      event.preventDefault();
+      form.dataset.asked = "1";
+      try { await enable(); } catch (e) { /* the setting is still saved */ }
+      form.submit();
+    });
+  });
+
+  // The settings page.
+  const box = document.getElementById("push-device");
+  if (!box) return;
+  const status = document.getElementById("push-status");
+  const on = document.getElementById("push-on");
+  const test = document.getElementById("push-test");
+  const ios = document.getElementById("push-ios");
+
+  const showOn = () => {
+    status.textContent = "Notifications are on for this device.";
+    on.hidden = true;
+    test.hidden = false;
+  };
+  if (iphone && !standalone) ios.hidden = false;
+  if (!supported) {
+    on.hidden = true;
+    if (!iphone) status.textContent = "This browser cannot show notifications.";
+  } else if (Notification.permission === "granted") {
+    navigator.serviceWorker.getRegistration("/")
+      .then((registration) => registration && registration.pushManager.getSubscription())
+      .then((subscription) => { if (subscription) showOn(); })
+      .catch(() => {});
+  } else if (Notification.permission === "denied") {
+    status.textContent = "Notifications are blocked for this site in your browser settings.";
+  }
+
+  on.addEventListener("click", async () => {
+    on.disabled = true;
+    try {
+      const result = await enable();
+      if (result === "on") showOn();
+      else if (result === "denied") status.textContent = "Notifications are blocked for this site in your browser settings.";
+      else status.textContent = "This browser cannot show notifications.";
+    } catch (e) {
+      status.textContent = "That did not work. Try again in a moment.";
+    } finally {
+      on.disabled = false;
+    }
+  });
+
+  test.addEventListener("click", async () => {
+    test.disabled = true;
+    try {
+      const res = await fetch("/push/test", { method: "POST" });
+      const data = await res.json();
+      status.textContent = data.ok ? "Sent. It should show up in a few seconds."
+                                   : "Nothing reached this device. Turn it on again.";
+    } finally {
+      test.disabled = false;
+    }
+  });
 })();

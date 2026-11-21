@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %} · Notifications{% endblock %}
+{% block body %}
+<div class="app">
+  <form class="form" method="post" action="/profile/notifications">
+
+    <div class="sheet-head">
+      <span class="side"><a class="link link--plain" href="/profile">Back</a></span>
+      <span class="mid">Notifications</span>
+      <span class="side"></span>
+    </div>
+
+    {% if done == 'saved' %}<div class="said">Saved.</div>{% endif %}
+
+    {% if not PUSH_ON() %}
+      <div class="error">Notifications are not switched on for this app yet.</div>
+    {% else %}
+
+    {# This device. The browser asks once, and only after a tap, because a
+       question that pops up on its own gets a no. #}
+    <span class="section">THIS DEVICE</span>
+    <div class="push-device" id="push-device" data-key="{{ PUSH_KEY() }}">
+      <p class="note push-device-status" id="push-status">
+        {% if devices %}Notifications reach {{ devices }} device{{ 's' if devices != 1 }} of yours.{% else %}Not turned on on any of your devices yet.{% endif %}
+      </p>
+      <button class="btn" type="button" id="push-on">Turn on notifications here</button>
+      <button class="btn btn--quiet" type="button" id="push-test" hidden>Send me a test</button>
+      <p class="note" id="push-ios" hidden style="text-align: left">
+        On an iPhone, open this page from the icon on your home screen first:
+        Safari, Share, Add to Home Screen. Safari in a normal tab cannot show
+        notifications.
+      </p>
+    </div>
+
+    {# What to hear about, one switch per area. Off means nothing at all from
+       that area, on any device. #}
+    <span class="section">WHAT YOU HEAR ABOUT</span>
+    <div class="rows">
+      {% for key, name, about in areas %}
+        {% set pref = prefs[key] %}
+        <label class="row switch-row">
+          <div class="row-body">
+            <span class="row-name">{{ name }}</span>
+            <span class="row-meta">
+              {{ about }}
+              {% if key != 'messages' and pref.on and (pref.q or pref.cat) %}
+                Searching for: {{ pref.q }}{{ ' · ' if pref.q and pref.cat }}{{ pref.cat }}.
+              {% elif key != 'messages' and pref.on %}
+                Everything new.
+              {% endif %}
+            </span>
+          </div>
+          <input class="switch" type="checkbox" name="on" value="{{ key }}" {{ 'checked' if pref.on }}>
+        </label>
+        {% if not loop.last %}<div class="divider" style="margin-left: 14px"></div>{% endif %}
+      {% endfor %}
+    </div>
+    <p class="note" style="text-align: left; margin: 8px 2px 0">
+      To hear about new tickets, housing or Market entries that match a search,
+      search on that tab and tap the bell next to your picture.
+    </p>
+
+    <div style="height: 22px"></div>
+    <button class="btn" type="submit">Save</button>
+    {% endif %}
+    <div style="height: calc(var(--foot) + 20px)"></div>
+
+  </form>
+</div>
+{% endblock %}
