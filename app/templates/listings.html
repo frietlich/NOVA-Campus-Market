@@ -33,13 +33,19 @@
       {{ icon.search() }}
       <label class="sr" for="q">Search {{ tab.label }}</label>
       <input id="q" name="q" type="search" value="{{ q }}" placeholder="{{ tab.placeholder }}">
-      {% if tab.kind == 'group' and scope == 'all' %}
-        <input type="hidden" name="scope" value="all">
-      {% endif %}
+      {#- Whatever else is in the address rides along, so searching inside a
+          category keeps you in it. The filter row does the same with the
+          search, and the two only make sense together. -#}
+      {% for name, value in keep.items() %}
+        <input type="hidden" name="{{ name }}" value="{{ value }}">
+      {% endfor %}
     </form>
 
-    {% if tab.kind in CATEGORIES_FOR %}
-      <div class="chips">
+    {#- Tickets keep their row of categories. Market put its own categories
+        into the filter row below, so that tab has one line of things that
+        open instead of two rows that say and do different things. -#}
+    {% if tab.kind in CATEGORIES_FOR and tab.kind != 'item' %}
+      <div class="chips chips--fit">
         <a href="{{ link(cat='', day='') }}"
            class="chip {{ 'chip--on' if not cat }}">All</a>
         {% for key, name in CATEGORIES_FOR[tab.kind] %}
@@ -57,9 +63,19 @@
          Each pill shows the word it is set to, and the select lies invisible
          on top of it. Everything lands in the address, so a filtered list can
          be shared and the back button does what you expect. #}
-      <form class="filters" method="get" action="{{ tab.path }}" data-auto>
+      <form class="filters filters--one" method="get" action="{{ tab.path }}" data-auto>
         {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
-        {% if cat %}<input type="hidden" name="cat" value="{{ cat }}">{% endif %}
+
+        <label class="fpill fpill--pick {{ 'fpill--on' if cat }}">
+          <span class="sr">Category</span>
+          <span>{{ CATEGORY_LABELS[cat] if cat else 'Category' }}</span>
+          <select name="cat">
+            <option value=""{{ ' selected' if not cat }}>Any category</option>
+            {% for key, name in CATEGORIES_FOR[tab.kind] %}
+              <option value="{{ key }}"{{ ' selected' if cat == key }}>{{ name }}</option>
+            {% endfor %}
+          </select>
+        </label>
 
         <label class="fpill fpill--pick {{ 'fpill--on' if sort }}">
           <span class="sr">Sort by</span>
@@ -92,10 +108,14 @@
           </select>
         </label>
 
-        {% if sort or price or cond %}
-          <a class="clear" href="{{ link(sort='', price='', cond='') }}">Clear</a>
-        {% endif %}
       </form>
+
+      {#- On a line of its own under the row. Inside it, a fourth filter with
+          a long word pushed it off the right edge where nobody could reach
+          it, and letting the row wrap would undo the single line. -#}
+      {% if cat or sort or price or cond %}
+        <a class="clear" href="{{ link(cat='', sort='', price='', cond='') }}">Clear filters</a>
+      {% endif %}
     {% endif %}
 
     {% if tab.kind == 'housing' %}
@@ -125,24 +145,24 @@
         <div class="hpanel">
           <div class="hpanel-top">
             <b>Filters</b>
-            <a class="link" href="/housing{% if q %}?q={{ q | urlencode }}{% endif %}">Clear all</a>
+            <a class="clear clear--top" href="/housing{% if q %}?q={{ q | urlencode }}{% endif %}">Clear all</a>
           </div>
 
-          <span class="flabel">MOVE IN FROM</span>
-          <input class="input" type="date" name="movein" value="{{ hs.movein }}">
+          <span class="flabel">Move in from</span>
+          <input class="input" type="date" name="movein" value="{{ hs.movein }}" autocomplete="off">
 
-          <span class="flabel">RENT PER MONTH</span>
+          <span class="flabel">Rent per month</span>
           <div class="opts">
             {% for key, name, low, high in HOUSING.RENT_BANDS %}
               <label class="opt"><input class="sr" type="radio" name="rent" value="{{ key }}"{{ ' checked' if hs.rent == key }}><span>{{ name }}</span></label>
             {% endfor %}
           </div>
           <div class="pair pair--tight">
-            <input class="input" type="number" name="rmin" min="0" max="9999" value="{{ hs.rmin }}" placeholder="€ from">
-            <input class="input" type="number" name="rmax" min="0" max="9999" value="{{ hs.rmax }}" placeholder="€ to">
+            <input class="input" type="text" inputmode="numeric" name="rmin" pattern="[0-9]{1,4}" maxlength="4" value="{{ hs.rmin }}" placeholder="€ from" autocomplete="off">
+            <input class="input" type="text" inputmode="numeric" name="rmax" pattern="[0-9]{1,4}" maxlength="4" value="{{ hs.rmax }}" placeholder="€ to" autocomplete="off">
           </div>
 
-          <span class="flabel">KIND OF PLACE</span>
+          <span class="flabel">Kind of place</span>
           <div class="opts">
             <label class="opt"><input class="sr" type="radio" name="cat" value=""{{ ' checked' if not hs.kind }}><span>Any</span></label>
             {% for key, name in HOUSING.KINDS %}
@@ -150,7 +170,7 @@
             {% endfor %}
           </div>
 
-          <span class="flabel">AREA</span>
+          <span class="flabel">Area</span>
           <div class="opts">
             <label class="opt"><input class="sr" type="radio" name="area" value=""{{ ' checked' if not hs.area }}><span>Anywhere</span></label>
             {% for key, name in HOUSING.AREAS %}
@@ -158,22 +178,29 @@
             {% endfor %}
           </div>
 
-          <span class="flabel">TO CAMPUS</span>
+          <span class="flabel">Flatmates</span>
+          <div class="opts">
+            {% for key, name, cap in HOUSING.MATES_BANDS %}
+              <label class="opt"><input class="sr" type="radio" name="mates" value="{{ key }}"{{ ' checked' if hs.mates == key }}><span>{{ name }}</span></label>
+            {% endfor %}
+          </div>
+
+          <span class="flabel">To campus</span>
           <div class="opts">
             {% for key, name, cap in HOUSING.CAMPUS_BANDS %}
               <label class="opt"><input class="sr" type="radio" name="mins" value="{{ key }}"{{ ' checked' if hs.mins == key }}><span>{{ name }}</span></label>
             {% endfor %}
           </div>
-          <input class="input" type="number" name="minsx" min="1" max="600" value="{{ hs.minsx }}" placeholder="or type minutes">
+          <input class="input" type="text" inputmode="numeric" name="minsx" pattern="[0-9]{1,3}" maxlength="3" value="{{ hs.minsx }}" placeholder="or type minutes" autocomplete="off">
 
-          <span class="flabel">STAY FOR</span>
+          <span class="flabel">Stay for</span>
           <div class="opts">
             {% for key, name, cap in HOUSING.STAY_BANDS %}
               <label class="opt"><input class="sr" type="radio" name="stay" value="{{ key }}"{{ ' checked' if hs.stay == key }}><span>{{ name }}</span></label>
             {% endfor %}
           </div>
 
-          <span class="flabel">MUST HAVE</span>
+          <span class="flabel">Must have</span>
           <div class="opts">
             <label class="opt"><input class="sr" type="checkbox" name="has" value="bills"{{ ' checked' if hs.bills }}><span>Bills included</span></label>
             {% for key, name, pic in HOUSING.FEATURES %}
@@ -202,11 +229,12 @@
     {% endif %}
 
     {% if fresh %}
-      <span class="section day-head">New this week</span>
-      <div class="strip">
-        {% for l in fresh %}{{ c.small(l) }}{% endfor %}
+      <div class="day-block">
+        <span class="section day-head">New this week</span>
+        <div class="strip">
+          {% for l in fresh %}{{ c.small(l) }}{% endfor %}
+        </div>
       </div>
-      <span class="section day-head">All items</span>
     {% endif %}
 
     {% if listings %}
@@ -247,11 +275,17 @@
         {% endfor %}
 
       {% else %}
-        <div class="list">
-          {% for l in listings %}{{ c.card(l) }}{% endfor %}
+        {#- The heading belongs in the same block as the list it heads, the
+            way every other tab does it, so moving it down here is what
+            makes the two gaps match. -#}
+        <div class="day-block">
+          {% if fresh %}<span class="section day-head">Earlier</span>{% endif %}
+          <div class="list">
+            {% for l in listings %}{{ c.card(l) }}{% endfor %}
+          </div>
         </div>
       {% endif %}
-    {% else %}
+    {% elif not fresh %}
       <div class="empty">
         {{ icon.of_kind(tab.kind, 34, 1.4) }}
         {% if tab.kind == 'group' and not my_courses %}

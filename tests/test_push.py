@@ -40,7 +40,7 @@ class PushTests(unittest.TestCase):
 
     def ticket(self, title="Halloween Club Party", category="party"):
         listing_id = db.create_listing(self.seller, "ticket", title, price=25,
-                                       category=category, event_date="2026-10-31",
+                                       category=category, event_date="2030-10-31",
                                        place="Lux Frágil")
         return db.get_listing(listing_id)
 

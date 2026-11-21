@@ -24,7 +24,7 @@
 
     <label class="label" for="name">Name</label>
     <input class="input" id="name" name="name" type="text" required maxlength="{{ NAME_MAX }}"
-           placeholder="Marco C." value="{{ f.name }}">
+           placeholder="Marco C." value="{{ f.name }}" autocomplete="off">
 
     {# The first option is only there to give the closed field something to
        say. It carries data-hint so the script can lift it out of the list

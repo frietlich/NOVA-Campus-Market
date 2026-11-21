@@ -383,14 +383,14 @@ def main():
             condition=None, event_date=None, event_time=None, place=None,
             address=None, quantity=None, course=None, hand_in=None,
             group_size=None, available_from=None, months_min=None,
-            bills_included=None, bills_estimate=None, deposit_months=None,
+            bills_included=None, bills_estimate=None, deposit=None,
             minutes_campus=None, flatmates=None, features=None,
             days_ago=2, views=0, status="open"):
         cur = conn.execute(
             "INSERT INTO listings (owner_id, type, title, description, price, info,"
             " category, condition, event_date, event_time, place, address, quantity,"
             " course_id, hand_in, group_size, available_from, months_min,"
-            " bills_included, bills_estimate, deposit_months, minutes_campus,"
+            " bills_included, bills_estimate, deposit, minutes_campus,"
             " flatmates, features, status, views, created_at)"
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
             " ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -398,7 +398,7 @@ def main():
              event_date, event_time, place, address, quantity,
              course_id[course] if course else None, hand_in, group_size,
              available_from, months_min, bills_included, bills_estimate,
-             deposit_months, minutes_campus, flatmates, features,
+             deposit, minutes_campus, flatmates, features,
              status, views, stamp(days_ago)),
         )
         return cur.lastrowid
@@ -410,7 +410,11 @@ def main():
                              category=kind, place=area, address=where,
                              available_from=free, months_min=least,
                              bills_included=allin, bills_estimate=bills,
-                             deposit_months=dep, minutes_campus=mins,
+                             # The table above says the deposit in months,
+                             # which is how anybody writing it thinks of it.
+                             # The column holds the sum, so it is worked out
+                             # here rather than stored twice.
+                             deposit=rent * dep, minutes_campus=mins,
                              flatmates=mates, features=has,
                              days_ago=2 + n, views=34 - n * 3)
     for n, (owner, cat, date, at, place, title, price, many, text) in enumerate(TICKETS):

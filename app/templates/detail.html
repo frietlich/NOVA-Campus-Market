@@ -28,7 +28,7 @@
     {% set d = event_badge(listing.event_date) %}
     <div class="ticket-head">
       <div class="ticket-top">
-        <a class="ticket-back" href="{{ tab.path }}" aria-label="Back to {{ tab.label }}">{{ icon.back() }}</a>
+        <a class="ticket-back" href="{{ back }}" aria-label="Back">{{ icon.back() }}</a>
         {% if listing.owner_id != me.id %}{{ save_button(listing, saved, 'head') }}{% endif %}
       </div>
       <div class="stub">
@@ -83,7 +83,7 @@
        the gaps you see the board itself. #}
     <div class="board">
       <div class="ticket-top">
-        <a class="ticket-back" href="{{ tab.path }}" aria-label="Back to {{ tab.label }}">{{ icon.back() }}</a>
+        <a class="ticket-back" href="{{ back }}" aria-label="Back">{{ icon.back() }}</a>
         {% if listing.owner_id != me.id %}{{ save_button(listing, saved, 'head') }}{% endif %}
       </div>
 
@@ -121,7 +121,7 @@
       {% else %}
         {{ art.cover(listing.type, listing.id) }}
       {% endif %}
-      <a class="back" href="{{ tab.path }}" aria-label="Back to {{ tab.label }}">{{ icon.back() }}</a>
+      <a class="back" href="{{ back }}" aria-label="Back">{{ icon.back() }}</a>
       {% if listing.owner_id != me.id %}{{ save_button(listing, saved, 'hero') }}{% endif %}
       {% if photos | length > 1 %}
         <span class="count">1 / {{ photos | length }}</span>
@@ -133,13 +133,21 @@
 
     <h1>{{ listing.title }}</h1>
     {% if listing.type == 'housing' %}
+      {#- What it is and roughly where, the two things you scan for under a
+          title. Your own room used to hang on the end of this and said the
+          same as the tick two centimetres below it. -#}
+      {#- Other is a word for a form, not for a sentence. A place whose
+          kind is other is simply a place, and one whose area is other
+          names no area at all here. The address below still says where. -#}
       <p class="sub">
-        {{ HOUSING.KIND_LABELS.get(listing.category, 'Place') }}
-        {%- if listing.place %} in {{ HOUSING.AREA_LABELS.get(listing.place, listing.place) }}{% endif -%}
-        {%- if 'own_room' in (listing.features or '') %}, your own room{% endif %}
+        {{ 'Place' if listing.category == 'other'
+           else HOUSING.KIND_LABELS.get(listing.category, 'Place') }}
+        {%- if listing.place and listing.place != 'other' %} in {{ HOUSING.AREA_LABELS.get(listing.place, listing.place) }}{% endif -%}
       </p>
     {% elif listing.type != 'group' %}
-    <p class="sub">
+    {#- On a thing for sale this is the only place the price stands now, so
+        it is set like a price instead of like a grey line under the name. -#}
+    <p class="sub{{ ' sub--price' if listing.type == 'item' }}">
       {%- if listing.price is not none -%}
         {{ listing.price | money }}{% if listing.type == 'housing' %} per month{% elif listing.type == 'ticket' %} each{% endif %}
       {%- else -%}
@@ -160,11 +168,6 @@
         {% if listing.course_name %}<span class="pill pill--on">{{ listing.course_name }}</span>{% endif %}
         {% if listing.quantity %}<span class="pill">{{ listing.quantity }} {{ 'spot' if listing.quantity == 1 else 'spots' }} left</span>{% endif %}
         {% if listing.hand_in %}<span class="pill">{{ listing.hand_in | days_left }}</span>{% endif %}
-      {% endif %}
-      {% if listing.type != 'group' %}
-        {% for part in listing.info.split('·') %}
-          {% if part.strip() %}<span class="pill">{{ part.strip() }}</span>{% endif %}
-        {% endfor %}
       {% endif %}
       {% if listing.status == 'closed' %}<span class="pill">Closed</span>{% endif %}
     </div>
@@ -188,10 +191,10 @@
           <span>Per month</span>
           <span>{{ (listing.price + (0 if listing.bills_included else (listing.bills_estimate or 0))) | money }}</span>
         </div>
-        {% if listing.deposit_months and listing.price %}
+        {% if listing.deposit %}
           <div class="cost cost--note">
             <span>Deposit, once</span>
-            <span>{{ (listing.price * listing.deposit_months) | money }}</span>
+            <span>{{ listing.deposit | money }}</span>
           </div>
         {% endif %}
       </div>
@@ -225,7 +228,8 @@
           <span class="where-pin">{{ icon.pin(19) }}</span>
           <span class="where-text">
             <b>{{ listing.address }}</b>
-            <span>{{ HOUSING.AREA_LABELS.get(listing.place, 'Where it is') }}</span>
+            <span>{{ 'Where it is' if listing.place in (None, '', 'other')
+                      else HOUSING.AREA_LABELS.get(listing.place, 'Where it is') }}</span>
           </span>
           <span class="where-go">Open in maps</span>
         </a>
@@ -277,11 +281,16 @@
     <div class="rule"></div>
 
     <div class="owner">
-      {{ av.avatar(listing.owner_name, listing.owner_photo, "md") }}
-      <div class="owner-body">
-        <span class="owner-name">{{ listing.owner_name }}</span>
-        <span class="owner-course">{{ listing.owner_programme | programme(listing.owner_cems) }}</span>
-      </div>
+      {#- Picture and name together are the way to whoever put this up, the
+          same as in a chat. Verified stays outside, it is a fact about the
+          account and not somewhere to go. -#}
+      <a class="owner-who" href="/student/{{ listing.owner_id }}">
+        {{ av.avatar(listing.owner_name, listing.owner_photo, "md") }}
+        <div class="owner-body">
+          <span class="owner-name">{{ listing.owner_name }}</span>
+          <span class="owner-course">{{ listing.owner_programme | programme(listing.owner_cems) }}</span>
+        </div>
+      </a>
       <span class="verified">{{ icon.check() }} Verified</span>
     </div>
 
@@ -292,25 +301,41 @@
   </div>
 
   <div class="actionbar">
-    {% if listing.price is not none and listing.type != 'ticket' %}
-      <div class="price-block">
-        <span class="big">{{ listing.price | money }}</span>
-        <span class="small">{% if listing.type == 'housing' %}per month{% else %}total{% endif %}</span>
-      </div>
-    {% endif %}
-
     {% if listing.owner_id == me.id %}
       {% if listing.status == 'open' %}
-        <form method="post" action="/listing/{{ listing.id }}/close">
-          <button class="btn btn--quiet" type="submit">Close this entry</button>
-        </form>
+        <div class="actionbar-stack">
+          <a class="btn" href="/listing/{{ listing.id }}/edit?back={{ back | urlencode }}">Edit this entry</a>
+          <form method="post" action="/listing/{{ listing.id }}/close">
+            <button class="btn btn--quiet" type="submit">Close this entry</button>
+          </form>
+        </div>
       {% else %}
-        <form method="post" action="/listing/{{ listing.id }}/reopen">
-          <button class="btn" type="submit">Put it back up</button>
-        </form>
+        {#- An entry whose day has been cannot go back up as it is. It
+            would leave the tab on the spot and close itself again in the
+            morning, so the page says the one thing that does help. -#}
+        {% set over = (listing.type == 'ticket' and listing.event_date
+                       and listing.event_date < today_iso())
+                   or (listing.type == 'group' and listing.hand_in
+                       and listing.hand_in < today_iso()) %}
+        <div class="actionbar-stack">
+          {% if over %}
+            <a class="btn" href="/listing/{{ listing.id }}/edit?back={{ back | urlencode }}">Change the date</a>
+            <p class="note" style="margin: 0">
+              {{ 'The last day to join has passed.' if listing.type == 'group'
+                 else 'This event has passed.' }}
+            </p>
+          {% else %}
+            <form method="post" action="/listing/{{ listing.id }}/reopen">
+              <button class="btn" type="submit">Put it back up</button>
+            </form>
+            <a class="btn btn--quiet" href="/listing/{{ listing.id }}/edit?back={{ back | urlencode }}">Edit this entry</a>
+          {% endif %}
+        </div>
       {% endif %}
     {% elif listing.status == 'closed' %}
-      <button class="btn btn--quiet" type="button" disabled>This one is gone</button>
+      {#- The same two words as the badge in a saved list and the line over
+          an entry's chats. Closed has one name in this app. -#}
+      <button class="btn btn--quiet" type="button" disabled>Entry closed</button>
     {% else %}
       <form method="post" action="/listing/{{ listing.id }}/chat">
         <button class="btn" type="submit">Message {{ listing.owner_name.split(' ')[0] }}</button>

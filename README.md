@@ -400,3 +400,15 @@ Students can select predefined courses on **My courses** and at signup. They can
 create a course. Unsupported programmes have no predefined offerings yet.
 The existing seed command still **deletes the local database**, so do not run it on
 real or shared data. This branch does not change other contributors' code.
+
+## Bachelor course catalogue (2026/27)
+
+The official catalogue also covers the three Bachelor programmes: Management,
+Economics, and Ocean Studies. Their mandatory and elective classifications are
+programme-specific; BSc Management and Economics include internship/additional
+courses under **Out of Programme**. Career modules are excluded. Ocean Studies
+currently has only mandatory courses in the handbook; its electives are not
+yet announced. The five Ocean Studies courses displayed with code `XXXX` have
+unique internal identifiers so they do not merge into one. The duplicated
+Oceanography code in the handbook was reconciled to `1701` using its academic
+offer page. No database reset is needed: the catalogue syncs at startup.

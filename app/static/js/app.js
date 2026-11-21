@@ -301,7 +301,11 @@
 // exactly where you left. The address stays in the markup for the case where
 // there is no page before this one, such as a link opened from outside.
 (function backLinks() {
-  const arrows = document.querySelectorAll("[data-back], .chat-head .icon-btn");
+  // Only what is marked as a way back. This used to take every icon button
+  // in a chat header, which was fine while the back arrow was the only one
+  // there. The archive button is one too, and it was being turned into a
+  // history.back() before it could ever send its form.
+  const arrows = document.querySelectorAll("[data-back]");
   if (!arrows.length || !document.referrer) return;
   let from;
   try {
@@ -317,6 +321,85 @@
       history.back();
     });
   });
+})();
+
+// A number box that lets you type a word is a box that lies about itself.
+// The browser checks a number field only when the form is sent, and a plain
+// one happily takes e, a plus and a minus because that is legal in maths
+// notation. These two keep the wrong character out of the box in the first
+// place, so nobody ever sees a field refuse what it just accepted.
+//
+// Everything is read off the markup. A money box says inputmode decimal and
+// a counting box is a number field, so no template has to mark anything.
+(function numberBoxes() {
+  // A money amount. Digits, one separator, two places after it.
+  function tidy(box) {
+    const was = box.value;
+    let now = was.replace(/[^0-9.,]/g, "");
+    const first = now.search(/[.,]/);
+    if (first !== -1) {
+      now = now.slice(0, first + 1) + now.slice(first + 1).replace(/[.,]/g, "");
+      now = now.slice(0, first + 3);
+    }
+    if (now === was) return;
+    const at = Math.max(0, box.selectionStart - (was.length - now.length));
+    box.value = now;
+    try {
+      box.setSelectionRange(at, at);
+    } catch (err) {
+      // a field that does not carry a cursor, nothing to put back
+    }
+  }
+
+  document.querySelectorAll("input[inputmode='decimal']").forEach((box) => {
+    box.addEventListener("input", () => tidy(box));
+  });
+
+  // A whole number. Digits and nothing else. These are text fields on
+  // purpose, because a number field hands back an empty string while it
+  // holds something like 12e, and what you cannot read you cannot clean.
+  document.querySelectorAll("input[inputmode='numeric']").forEach((box) => {
+    box.addEventListener("input", () => {
+      const was = box.value;
+      const now = was.replace(/[^0-9]/g, "");
+      if (now === was) return;
+      const at = Math.max(0, box.selectionStart - (was.length - now.length));
+      box.value = now;
+      try {
+        box.setSelectionRange(at, at);
+      } catch (err) {
+        // nothing to put back
+      }
+    });
+  });
+
+  // A money box that still ends in a separator when you leave it is just
+  // an unfinished number, so it loses the dangling comma.
+  document.querySelectorAll("input[inputmode='decimal']").forEach((box) => {
+    box.addEventListener("blur", () => {
+      box.value = box.value.replace(/[.,]$/, "");
+    });
+  });
+})();
+
+// Bills included means there is nothing to estimate, so the box goes dead
+// instead of a sentence underneath asking people to leave it alone. What a
+// disabled field holds is never sent, so the server gets nothing either.
+(function billsBox() {
+  const picker = document.getElementById("bills");
+  const field = document.getElementById("bills_estimate");
+  const box = document.getElementById("bills_box");
+  if (!picker || !field || !box) return;
+
+  function sync() {
+    const included = picker.value === "1";
+    field.disabled = included;
+    box.classList.toggle("prefixed--off", included);
+    if (included) field.value = "";
+  }
+
+  picker.addEventListener("change", sync);
+  sync();
 })();
 
 // The course list is long, so it filters while you type and keeps a count.
