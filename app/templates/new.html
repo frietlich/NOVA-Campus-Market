@@ -50,6 +50,25 @@
       </p>
     {% endif %}
 
+    {% if tab.kind == 'ticket' %}
+    {# Bought it on Luma, DICE or Xceed? The event page already says what,
+       when and where, so the link fills the form. The seller checks it and
+       puts their own price. Nothing here is required. #}
+    <div class="ticket-link" id="ticket-link">
+      <label class="label" for="ticket_url">Link to the event</label>
+      <div class="ticket-link-row">
+        <input class="input" id="ticket_url" type="text" inputmode="url"
+               autocomplete="off" autocapitalize="off" spellcheck="false"
+               maxlength="500" placeholder="luma.com/… or dice.fm/event/…">
+        <button class="btn btn--quiet ticket-link-go" type="button" id="ticket-link-go">Fill in</button>
+      </div>
+      <p class="note ticket-link-status" id="ticket-link-status" aria-live="polite">
+        Optional. Works with Luma, DICE, Xceed, BOL and Eventbrite.
+        You check everything before publishing.
+      </p>
+    </div>
+    {% endif %}
+
     <label class="label" for="title">Title</label>
     <input class="input" id="title" name="title" type="text" required maxlength="60"
            placeholder="{% if tab.kind == 'housing' %}Room in a 3-bed flat{% elif tab.kind == 'ticket' %}Student night, Urban Beach{% elif tab.kind == 'item' %}iPad Air, 11 inch{% else %}Econometrics, final project{% endif %}">

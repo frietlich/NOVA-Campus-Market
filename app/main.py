@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import categories, db, housing, mailer, passwords, programmes
+from . import categories, db, housing, mailer, passwords, programmes, ticket_import
 
 # .env first, so CAMPUS_SECRET and the mail account can live in it.
 mailer.load_env()
@@ -1114,6 +1114,18 @@ def new_form(request: Request, kind: str = "housing", error: str = ""):
         return go("/courses?back=/new%3Fkind%3Dgroup")
     return page(request, "new.html", tab=BY_KIND[kind], error=error, me=me,
                 active=kind, my_courses=mine)
+
+
+@app.post("/new/ticket-autofill")
+def new_ticket_autofill(request: Request, url: str = Form("")):
+    """Fill the ticket form from the link to the event. Answers in JSON.
+
+    Only links to the sites in ticket_import.PLATFORMS are ever fetched. The
+    seller sees the filled form and checks it before anything is published.
+    """
+    if me_or_none(request) is None:
+        return JSONResponse({"ok": False, "reason": "login"}, status_code=401)
+    return JSONResponse(ticket_import.autofill(url))
 
 
 @app.post("/new")

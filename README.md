@@ -94,6 +94,7 @@ predictable by design. All of it lives in `db.new_code` and `db.check_code`.
     app/db.py          every read and write of the database, nobody else writes SQL
     app/programmes.py  the list of programmes the school offers
     app/passwords.py   the password rules and how a password is stored
+    app/ticket_import.py  filling the ticket form from the link to the event
     app/mailer.py      sending the 6-digit code, and reading .env
     app/categories.py  what a ticket can be for
     app/schema.sql     the five tables
@@ -273,6 +274,35 @@ the time it is what decides whether two entries are the same event.
 with a link that hands it to whatever map the phone already has. We draw no
 map ourselves, which is why this costs one column and one line of markup
 instead of a mapping library and an API key.
+
+## A ticket from the link to the event
+
+Whoever sells a ticket bought it somewhere. On the ticket form they can paste
+the link to the event, and the title, category, date, time, venue, address and
+the price it cost there fill themselves in, marked in colour, to check and
+change before publishing. A second link first takes back what the first one
+filled, so nothing from the wrong event stays.
+
+`app/ticket_import.py` does it. Nearly every ticket site writes the event into
+its page a second time for search engines (schema.org Event, as JSON-LD), and
+that is what is read, so one reader covers every site and a new design on one
+of them changes nothing.
+
+Tested by hand in November 2026 against real event pages:
+
+    Luma, DICE, Xceed, BOL, Eventbrite   work
+    Shotgun                              blocks apps most of the time
+    Resident Advisor                     blocks apps
+    Fever, Fourvenues, Ticketline,       on the list, not checked with a
+    Blueticket                           real event page yet
+
+Only links to the sites in `PLATFORMS` are ever opened, and every redirect is
+checked against the same list, so a pasted link can never make our server open
+anything else. A site that refuses gets an honest message, and the seller types
+it in. `tests/test_ticket_import.py` covers all of it without going online.
+
+The time on a page is turned into Lisbon time, summer and winter, because the
+sites write it in UTC.
 
 ## Not now, but worth knowing
 

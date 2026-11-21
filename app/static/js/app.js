@@ -630,3 +630,103 @@
     t.addEventListener("animationend", () => t.remove(), { once: true });
   }, 3200);
 })();
+
+// A ticket from the link to the event. The server reads the event page and
+// sends back what it found, and those fields are filled in and marked blue,
+// so the seller sees at a glance what came from the link and checks it.
+(function ticketLink() {
+  const box = document.getElementById("ticket-link");
+  if (!box) return;
+  const input = document.getElementById("ticket_url");
+  const go = document.getElementById("ticket-link-go");
+  const status = document.getElementById("ticket-link-status");
+  const form = box.closest("form");
+  const start = status.textContent.trim();
+
+  const say = (text, kind) => {
+    status.textContent = text;
+    status.classList.toggle("is-ok", kind === "ok");
+    status.classList.toggle("is-bad", kind === "bad");
+  };
+
+  const REASONS = {
+    site: "That link is not from a ticket site we know. Try Luma, DICE, Xceed, BOL or Eventbrite.",
+    blocked: "{site} does not let apps read its pages. Please type it in.",
+    unreachable: "{site} did not answer. Check the link, or type it in.",
+    empty: "We opened the page but found no event on it. Please type it in.",
+    login: "Log in again, then try once more.",
+  };
+  const NAMES = { title: "title", category: "category", event_date: "date",
+                  event_time: "time", place: "venue", address: "address",
+                  price: "price" };
+
+  // What the last link filled in. A second link first takes back whatever the
+  // first one put there and nobody has touched since, so nothing from the
+  // wrong event is left behind.
+  let lastFilled = [];
+  const takeBack = () => {
+    lastFilled.forEach(({ field, hint }) => {
+      if (!field.classList.contains("is-filled")) return;
+      if (hint && !hint.parentNode) field.insertBefore(hint, field.firstChild);
+      field.value = "";
+      if (hint) field.selectedIndex = 0;
+      field.classList.remove("is-filled");
+    });
+    lastFilled = [];
+  };
+
+  const fill = (fields) => {
+    takeBack();
+    const done = [];
+    Object.entries(fields).forEach(([name, value]) => {
+      const field = form.querySelector(`[name="${name}"]`);
+      if (!field || value === null || value === "") return;
+      if (field.tagName === "SELECT") {
+        const option = field.querySelector(`option[value="${value}"]`);
+        if (!option) return;
+        const hint = field.querySelector("option[data-hint]");
+        if (hint) hint.remove();
+        field.value = value;
+        lastFilled.push({ field, hint });
+      } else {
+        field.value = String(value);
+        lastFilled.push({ field, hint: null });
+      }
+      field.classList.add("is-filled");
+      field.addEventListener("input", () => field.classList.remove("is-filled"), { once: true });
+      field.addEventListener("change", () => field.classList.remove("is-filled"), { once: true });
+      done.push(NAMES[name] || name);
+    });
+    return done;
+  };
+
+  const run = async () => {
+    const url = input.value.trim();
+    if (!url) { say("Paste the link to the event first.", "bad"); input.focus(); return; }
+    go.disabled = true;
+    say("Reading the event page…");
+    try {
+      const body = new URLSearchParams({ url });
+      const res = await fetch("/new/ticket-autofill", { method: "POST", body });
+      const data = await res.json();
+      if (!data.ok) {
+        say((REASONS[data.reason] || REASONS.empty).replace("{site}", data.site || "That site"), "bad");
+        return;
+      }
+      const done = fill(data.fields || {});
+      let text = `Filled in from ${data.site}: ${done.join(", ")}.`;
+      if ("price" in (data.fields || {})) text += " The price is what the ticket cost there, change it to yours.";
+      say(text + " Check it before publishing.", "ok");
+    } catch (e) {
+      say("Something went wrong. Please type it in.", "bad");
+    } finally {
+      go.disabled = false;
+    }
+  };
+
+  go.addEventListener("click", run);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); run(); }
+  });
+  input.addEventListener("input", () => { if (!input.value) say(start); });
+})();
