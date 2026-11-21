@@ -37,6 +37,12 @@
 
 {% macro pin(size=20, w=1.7) %}<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 21.2c3.6-4 6.2-7 6.2-10.3A6.2 6.2 0 0 0 5.8 10.9c0 3.3 2.6 6.3 6.2 10.3z" stroke="currentColor" stroke-width="{{ w }}" stroke-linejoin="round"/><circle cx="12" cy="10.7" r="2.3" stroke="currentColor" stroke-width="{{ w }}"/></svg>{% endmacro %}
 
+{#- The box with the lid, the sign every mail app uses for putting
+    something away. Crossed through it means taking it back out. -#}
+{% macro archive(size=20, w=1.8) %}<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.2" y="4.2" width="17.6" height="4.2" rx="1.6" stroke="currentColor" stroke-width="{{ w }}"/><path d="M5.2 8.4v9.4a2.2 2.2 0 0 0 2.2 2.2h9.2a2.2 2.2 0 0 0 2.2-2.2V8.4" stroke="currentColor" stroke-width="{{ w }}" stroke-linecap="round"/><path d="M10 12.4h4" stroke="currentColor" stroke-width="{{ w }}" stroke-linecap="round"/></svg>{% endmacro %}
+
+{% macro unarchive(size=20, w=1.8) %}<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.2" y="4.2" width="17.6" height="4.2" rx="1.6" stroke="currentColor" stroke-width="{{ w }}"/><path d="M5.2 8.4v9.4a2.2 2.2 0 0 0 2.2 2.2h9.2a2.2 2.2 0 0 0 2.2-2.2V8.4" stroke="currentColor" stroke-width="{{ w }}" stroke-linecap="round"/><path d="M3.6 3.1 20.4 20.6" stroke="currentColor" stroke-width="{{ w }}" stroke-linecap="round"/></svg>{% endmacro %}
+
 {% macro chev(size=16, w=2) %}<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7.5 10 12 14.5 16.5 10" stroke="currentColor" stroke-width="{{ w }}" stroke-linecap="round" stroke-linejoin="round"/></svg>{% endmacro %}
 
 {% macro of_kind(kind, size=24, w=1.7) %}

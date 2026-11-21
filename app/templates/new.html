@@ -1,14 +1,19 @@
 {% extends "base.html" %}
 {% import "partials/icons.html" as icon %}
-{% block title %} · New entry{% endblock %}
+{% block title %} · {{ "Edit entry" if edit_id else "New entry" }}{% endblock %}
 {% block body %}
 <div class="app" data-kind="{{ tab.kind }}">
   <form class="form" method="post" action="/new" enctype="multipart/form-data">
     <input type="hidden" name="kind" value="{{ tab.kind }}">
+    {# Present only when an entry is being changed. The server takes the
+       kind from the entry itself, so this cannot move it to another tab. #}
+    {% if edit_id %}<input type="hidden" name="edit_id" value="{{ edit_id }}">{% endif %}
+    {% if back %}<input type="hidden" name="back" value="{{ back }}">{% endif %}
 
     <div class="sheet-head">
-      <span class="side"><a class="link link--plain" href="{{ tab.path }}">Cancel</a></span>
-      <span class="mid">New entry</span>
+      <span class="side"><a class="link link--plain"
+         href="{{ '/listing/' ~ edit_id if edit_id else tab.path }}">Cancel</a></span>
+      <span class="mid">{{ "Edit entry" if edit_id else "New entry" }}</span>
       <span class="side"></span>
     </div>
 
@@ -39,9 +44,9 @@
         {#- Without this the field sits on whichever course comes first and
             a group posted in a hurry lands under the wrong one, where the
             people it is meant for never look. -#}
-        <option value="" data-hint selected disabled hidden>Select your course</option>
+        <option value="" data-hint{{ ' selected' if not v.course_id }} disabled hidden>Select your course</option>
         {% for c in my_courses %}
-          <option value="{{ c.id }}">{{ c.name }} · {{ c.code }}</option>
+          <option value="{{ c.id }}"{{ ' selected' if v.course_id == c.id|string }}>{{ c.name }} · {{ c.code }}</option>
         {% endfor %}
       </select>
       <p class="note" style="text-align: left; margin: 6px 2px 0">
@@ -51,56 +56,57 @@
     {% endif %}
 
     <label class="label" for="title">Title</label>
-    <input class="input" id="title" name="title" type="text" required maxlength="60"
-           placeholder="{% if tab.kind == 'housing' %}Room in a 3-bed flat{% elif tab.kind == 'ticket' %}Student night, Urban Beach{% elif tab.kind == 'item' %}iPad Air, 11 inch{% else %}Econometrics, final project{% endif %}">
+    <input class="input" id="title" name="title" type="text" required maxlength="{{ TITLE_MAX }}"
+           placeholder="{% if tab.kind == 'housing' %}Room in a 3-bed flat{% elif tab.kind == 'ticket' %}Student night, Urban Beach{% elif tab.kind == 'item' %}iPad Air, 11 inch{% else %}Econometrics, final project{% endif %}" value="{{ v.title }}" autocomplete="off">
 
     {% if tab.kind == 'ticket' %}
 
       <label class="label" for="category">What is it for</label>
       <select class="input" id="category" name="category" required>
-        <option value="" data-hint selected disabled hidden>Pick a category</option>
+        <option value="" data-hint{{ ' selected' if not v.category }} disabled hidden>Pick a category</option>
         {% for key, name in CATEGORIES_FOR['ticket'] %}
-          <option value="{{ key }}">{{ name }}</option>
+          <option value="{{ key }}"{{ ' selected' if v.category == key }}>{{ name }}</option>
         {% endfor %}
       </select>
 
       <div class="pair">
         <div>
           <label class="label" for="event_date">Date</label>
-          <input class="input" id="event_date" name="event_date" type="date" required>
+          <input class="input" id="event_date" name="event_date" type="date" required
+                 min="{{ today_iso() }}" value="{{ v.event_date }}" autocomplete="off">
         </div>
         <div>
           <label class="label" for="event_time">Starts at</label>
-          <input class="input" id="event_time" name="event_time" type="time">
+          <input class="input" id="event_time" name="event_time" type="time" required value="{{ v.event_time }}" autocomplete="off">
         </div>
       </div>
 
       <label class="label" for="place">Venue</label>
-      <input class="input" id="place" name="place" type="text" maxlength="60"
-             placeholder="Urban Beach">
+      <input class="input" id="place" name="place" type="text" required maxlength="{{ PLACE_MAX }}"
+             placeholder="Urban Beach" value="{{ v.place }}" autocomplete="off">
       <p class="note" style="text-align: left; margin: 6px 2px 0">
-        The name everyone uses. Time and venue are what put your ticket next to
-        the others for the same event, so write it the way people say it.
+        The name everyone uses.
       </p>
 
       <label class="label" for="address">Address</label>
-      <input class="input" id="address" name="address" type="text" maxlength="120"
-             placeholder="Cais da Viscondessa, 1200-109 Lisboa">
+      <input class="input" id="address" name="address" type="text" required maxlength="{{ ADDRESS_MAX }}"
+             placeholder="Cais da Viscondessa, 1200-109 Lisboa" value="{{ v.address }}" autocomplete="off">
       <p class="note" style="text-align: left; margin: 6px 2px 0">
-        Copy it off the ticket. Whoever buys it can then open it in maps.
+        The one on the ticket.
       </p>
 
       <div class="pair">
         <div>
           <label class="label" for="quantity">How many</label>
-          <input class="input" id="quantity" name="quantity" type="number"
-                 min="1" max="50" value="1">
+          <input class="input" id="quantity" name="quantity" type="text" inputmode="numeric" required
+                 pattern="[0-9]{1,2}" maxlength="2" value="{{ v.quantity or 1 }}" autocomplete="off">
         </div>
         <div>
           <label class="label" for="price">Price each</label>
           <div class="prefixed">
             <span>€</span>
-            <input id="price" name="price" type="text" inputmode="decimal" placeholder="0">
+            <input id="price" name="price" type="text" inputmode="decimal"
+                   pattern="[0-9]{1,6}([.,][0-9]{1,2})?" maxlength="9" placeholder="0" value="{{ v.price }}" autocomplete="off">
           </div>
         </div>
       </div>
@@ -110,9 +116,9 @@
       {% if tab.kind == 'item' %}
         <label class="label" for="category">What is it</label>
         <select class="input" id="category" name="category" required>
-          <option value="" data-hint selected disabled hidden>Pick a category</option>
+          <option value="" data-hint{{ ' selected' if not v.category }} disabled hidden>Pick a category</option>
           {% for key, name in CATEGORIES_FOR['item'] %}
-            <option value="{{ key }}">{{ name }}</option>
+            <option value="{{ key }}"{{ ' selected' if v.category == key }}>{{ name }}</option>
           {% endfor %}
         </select>
       {% endif %}
@@ -124,17 +130,17 @@
            whether somebody even looks are asked here. #}
         <label class="label" for="category">Kind of place</label>
         <select class="input" id="category" name="category" required>
-          <option value="" data-hint selected disabled hidden>Pick one</option>
+          <option value="" data-hint{{ ' selected' if not v.category }} disabled hidden>Pick one</option>
           {% for key, name in HOUSING.KINDS %}
-            <option value="{{ key }}">{{ name }}</option>
+            <option value="{{ key }}"{{ ' selected' if v.category == key }}>{{ name }}</option>
           {% endfor %}
         </select>
 
         <label class="label" for="place">Area</label>
         <select class="input" id="place" name="place" required>
-          <option value="" data-hint selected disabled hidden>Pick one</option>
+          <option value="" data-hint{{ ' selected' if not v.place }} disabled hidden>Pick one</option>
           {% for key, name in HOUSING.AREAS %}
-            <option value="{{ key }}">{{ name }}</option>
+            <option value="{{ key }}"{{ ' selected' if v.place == key }}>{{ name }}</option>
           {% endfor %}
         </select>
 
@@ -143,77 +149,77 @@
             <label class="label" for="price">Rent per month</label>
             <div class="prefixed">
               <span>€</span>
-              <input id="price" name="price" type="text" inputmode="decimal" placeholder="480">
+              <input id="price" name="price" type="text" inputmode="decimal" required
+                   pattern="[0-9]{1,6}([.,][0-9]{1,2})?" maxlength="9" placeholder="480" value="{{ v.price }}" autocomplete="off">
             </div>
           </div>
           <div>
             <label class="label" for="bills">Bills</label>
             <select class="input" id="bills" name="bills_included">
-              <option value="0" selected>On top</option>
-              <option value="1">Included</option>
+              <option value="0"{{ ' selected' if v.bills_included != '1' }}>On top</option>
+              <option value="1"{{ ' selected' if v.bills_included == '1' }}>Included</option>
             </select>
           </div>
         </div>
 
+        {#- The bills box goes dead the moment you say they are included.
+            A field you cannot fill says more plainly than a sentence that
+            there is nothing to fill in. -#}
         <div class="pair">
           <div>
             <label class="label" for="bills_estimate">Bills, about</label>
-            <div class="prefixed">
+            <div class="prefixed" id="bills_box">
               <span>€</span>
-              <input id="bills_estimate" name="bills_estimate" type="text" inputmode="decimal" placeholder="55">
+              <input id="bills_estimate" name="bills_estimate" type="text" inputmode="decimal"
+                     pattern="[0-9]{1,4}([.,][0-9]{1,2})?" maxlength="7" placeholder="55" value="{{ v.bills_estimate }}" autocomplete="off">
             </div>
           </div>
           <div>
-            <label class="label" for="deposit_months">Deposit</label>
-            <select class="input" id="deposit_months" name="deposit_months">
-              <option value="">None</option>
-              <option value="1" selected>1 month</option>
-              <option value="2">2 months</option>
-              <option value="3">3 months</option>
-            </select>
+            <label class="label" for="deposit">Deposit, once</label>
+            <div class="prefixed">
+              <span>€</span>
+              <input id="deposit" name="deposit" type="text" inputmode="decimal" required
+                     pattern="[0-9]{1,6}([.,][0-9]{1,2})?" maxlength="9" placeholder="480" value="{{ v.deposit }}" autocomplete="off">
+            </div>
           </div>
         </div>
-        <p class="note" style="text-align: left; margin: 6px 2px 0">
-          Leave the bills empty if they are included. Whoever reads it sees
-          rent and bills added up, so an honest guess helps more than nothing.
-        </p>
 
         <div class="pair">
           <div>
             <label class="label" for="available_from">Free from</label>
-            <input class="input" id="available_from" name="available_from" type="date" required>
+            <input class="input" id="available_from" name="available_from" type="date" required value="{{ v.available_from }}" autocomplete="off">
           </div>
           <div>
             <label class="label" for="months_min">Minimum stay</label>
-            <input class="input" id="months_min" name="months_min" type="number"
-                   min="1" max="36" placeholder="5">
+            <input class="input" id="months_min" name="months_min" type="text" inputmode="numeric" required
+                   pattern="[0-9]{1,2}" maxlength="2" placeholder="5" value="{{ v.months_min }}" autocomplete="off">
           </div>
         </div>
 
         <div class="pair">
           <div>
             <label class="label" for="minutes_campus">Minutes to campus</label>
-            <input class="input" id="minutes_campus" name="minutes_campus" type="number"
-                   min="1" max="600" placeholder="15">
+            <input class="input" id="minutes_campus" name="minutes_campus" type="text" inputmode="numeric" required
+                   pattern="[0-9]{1,3}" maxlength="3" placeholder="15" value="{{ v.minutes_campus }}" autocomplete="off">
           </div>
           <div>
             <label class="label" for="flatmates">Flatmates</label>
-            <input class="input" id="flatmates" name="flatmates" type="number"
-                   min="0" max="20" placeholder="2">
+            <input class="input" id="flatmates" name="flatmates" type="text" inputmode="numeric" required
+                   pattern="[0-9]{1,2}" maxlength="2" placeholder="2" value="{{ v.flatmates }}" autocomplete="off">
           </div>
         </div>
 
         <label class="label" for="address">Address</label>
-        <input class="input" id="address" name="address" type="text" maxlength="120"
-               placeholder="Rua Bartolomeu Dias 14">
+        <input class="input" id="address" name="address" type="text" required maxlength="{{ ADDRESS_MAX }}"
+               placeholder="Rua Bartolomeu Dias 14" value="{{ v.address }}" autocomplete="off">
         <p class="note" style="text-align: left; margin: 6px 2px 0">
-          Whoever is interested can open it in maps from the entry.
+          It opens in maps from the entry.
         </p>
 
         <span class="label">What the flat has</span>
         <div class="opts" style="margin-top: 8px">
           {% for key, name, pic in HOUSING.FEATURES %}
-            <label class="opt"><input class="sr" type="checkbox" name="features" value="{{ key }}"><span>{{ name }}</span></label>
+            <label class="opt"><input class="sr" type="checkbox" name="features" value="{{ key }}"{{ ' checked' if key in v.features }}><span>{{ name }}</span></label>
           {% endfor %}
         </div>
 
@@ -226,7 +232,7 @@
             together, which is the one that decides whether somebody can
             still join. -#}
         <label class="label" for="hand_in">Group by</label>
-        <input class="input" id="hand_in" name="hand_in" type="date" required>
+        <input class="input" id="hand_in" name="hand_in" type="date" required value="{{ v.hand_in }}" autocomplete="off">
         <p class="note" style="text-align: left; margin: 6px 2px 0">
           The last day somebody can still join, not the hand in date.
         </p>
@@ -234,13 +240,13 @@
         <div class="pair">
           <div>
             <label class="label" for="group_size">Group of</label>
-            <input class="input" id="group_size" name="group_size" type="number"
-                   min="2" max="20" value="4">
+            <input class="input" id="group_size" name="group_size" type="text" inputmode="numeric" required
+                   pattern="[0-9]{1,2}" maxlength="2" value="{{ v.group_size or 4 }}" autocomplete="off">
           </div>
           <div>
             <label class="label" for="quantity">Spots free</label>
-            <input class="input" id="quantity" name="quantity" type="number"
-                   min="1" max="20" value="1">
+            <input class="input" id="quantity" name="quantity" type="text" inputmode="numeric" required
+                   pattern="[0-9]{1,2}" maxlength="2" value="{{ v.quantity or 1 }}" autocomplete="off">
           </div>
         </div>
 
@@ -251,14 +257,15 @@
           <label class="label" for="price">Price</label>
           <div class="prefixed">
             <span>€</span>
-            <input id="price" name="price" type="text" inputmode="decimal" placeholder="0">
+            <input id="price" name="price" type="text" inputmode="decimal"
+                   pattern="[0-9]{1,6}([.,][0-9]{1,2})?" maxlength="9" placeholder="0" value="{{ v.price }}" autocomplete="off">
           </div>
         </div>
         <div>
           <label class="label" for="condition">Condition</label>
           <select class="input" id="condition" name="condition">
             {% for key, name in CONDITIONS %}
-              <option value="{{ key }}"{{ ' selected' if key == 'used' }}>{{ name }}</option>
+              <option value="{{ key }}"{{ ' selected' if (v.condition or 'used') == key }}>{{ name }}</option>
             {% endfor %}
           </select>
         </div>
@@ -270,24 +277,17 @@
 
       {% endif %}
 
-      {# Housing stopped using the grey line when every fact became a field,
-         and a group entry says everything it has to say in its description. #}
-      {% if tab.kind not in ('housing', 'group') %}
-        <label class="label" for="info">Short line</label>
-        <input class="input" id="info" name="info" type="text"
-               placeholder="{% if tab.kind == 'group' %}We meet Tuesdays in the library{% else %}With the pencil and the charger{% endif %}">
-      {% endif %}
-
     {% endif %}
 
     <label class="label" for="description">Description</label>
     <textarea class="textarea" id="description" name="description" rows="3"
-              placeholder="What should the other person know?"></textarea>
+              {%- if DESC_MAX.get(tab.kind) %} required maxlength="{{ DESC_MAX[tab.kind] }}"{% endif %}
+              placeholder="What should the other person know?" autocomplete="off">{{ v.description }}</textarea>
 
     <div style="height: 24px"></div>
 
-    <button class="btn" type="submit">Publish</button>
-    <p class="note" style="padding-bottom: calc(var(--foot) + 20px)">Visible to verified Nova students only.</p>
+    <button class="btn" type="submit">{{ "Save changes" if edit_id else "Publish" }}</button>
+    <div style="height: calc(var(--foot) + 20px)"></div>
 
   </form>
 </div>

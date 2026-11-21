@@ -10,6 +10,8 @@ import secrets
 import sqlite3
 from datetime import datetime, timezone
 
+from . import categories
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("CAMPUS_DB", os.path.join(os.path.dirname(HERE), "campus.db"))
 SCHEMA_PATH = os.path.join(HERE, "schema.sql")
@@ -71,6 +73,17 @@ LATER_COLUMNS = {
         ("minutes_campus", "INTEGER"),
         ("flatmates", "INTEGER"),
         ("features", "TEXT"),
+        # The deposit as the amount it really is. It used to be a number of
+        # months that the page multiplied by the rent, which meant nobody
+        # could say the one thing landlords actually say, a flat sum.
+        ("deposit", "REAL"),
+    ],
+    "conversations": [
+        ("archived_owner", "TEXT"),
+        ("archived_starter", "TEXT"),
+    ],
+    "messages": [
+        ("kind", "TEXT NOT NULL DEFAULT 'text'"),
     ],
 }
 
@@ -324,11 +337,65 @@ def date_hint(search):
     return f"-{month}-{day}" if day else f"-{month}-"
 
 
+def search_clause(search):
+    """What somebody typed in the search box, as SQL and its arguments.
+
+    Every word has to turn up somewhere, each in a column of its own if it
+    likes. Searching the whole box as one piece of text meant air ipad found
+    nothing at all, because no single column holds those two words in that
+    order.
+
+    The venue is one of them, because it is printed on every ticket card
+    and a word you can read on the screen has to be a word you can look
+    for. Part of it is enough, the same as everywhere else, so Coliseu
+    finds the Coliseu dos Recreios.
+
+    The grey line is not among the columns. It is gone from the form and
+    from the card, and searching something nobody can read any more only
+    turns up entries for a reason you cannot see.
+
+    Two of the columns do not hold the word that is on the screen. A card
+    says Electronics and Like new, the database says books and like_new, so
+    the labels are read here and turned into the keys to look for. Without
+    that, searching for a word printed on the card finds nothing, which is
+    the most confusing kind of nothing there is.
+
+    A date is matched against the whole box instead, never word by word,
+    because 5 Dec is one fact written as two words and the 5 on its own
+    means nothing. An entry answers if every word was found, or if what was
+    typed reads as a date and the entry falls on it.
+    """
+    words = [w for w in (search or "").strip().lower().split() if w]
+    if not words:
+        return "", []
+
+    groups, args = [], []
+    for word in words:
+        parts = ["l.title LIKE ?", "l.description LIKE ?", "l.place LIKE ?",
+                 "c.name LIKE ?", "c.code LIKE ?"]
+        args += [f"%{word}%"] * 5
+        for column, labels in (("l.category", categories.LABELS),
+                               ("l.condition", categories.CONDITION_LABELS)):
+            keys = [key for key, name in labels.items() if word in name.lower()]
+            if keys:
+                parts.append(f"{column} IN ({','.join('?' * len(keys))})")
+                args += keys
+        groups.append("(" + " OR ".join(parts) + ")")
+
+    clause = " AND ".join(groups)
+    hint = date_hint(search)
+    if hint:
+        clause = f"({clause}) OR l.hand_in LIKE ? OR l.event_date LIKE ?"
+        args += [f"%{hint}%"] * 2
+    return f"({clause})", args
+
+
 def listings_of_type(kind, search="", only_for=None, category=None, sort=None,
                      min_price=None, max_price=None, free_only=False,
                      condition=None, free_from=None, area=None,
                      max_minutes=None, max_months=None, bills_included=False,
-                     features=None, price_inclusive=False):
+                     features=None, price_inclusive=False,
+                     max_mates=None, min_mates=None):
     """Open listings in one tab.
 
     Search looks in the title, the grey line and the course name. Give
@@ -340,6 +407,15 @@ def listings_of_type(kind, search="", only_for=None, category=None, sort=None,
     """
     where = "l.type = ? AND l.status = 'open'"
     args = [kind]
+
+    # An event that has been and gone takes itself out of the tab the day
+    # after. Nothing is deleted and nothing is closed, the entry is simply
+    # not among the ones on offer any more, the same way a ticket for
+    # yesterday already drops out of a student's saved list. The day of the
+    # event itself still counts, because people sell up to the door.
+    if kind == "ticket":
+        where += " AND (l.event_date IS NULL OR l.event_date >= ?)"
+        args.append(datetime.now().astimezone().date().isoformat())
 
     if category:
         where += " AND l.category = ?"
@@ -381,6 +457,16 @@ def listings_of_type(kind, search="", only_for=None, category=None, sort=None,
         where += " AND (',' || l.features || ',') LIKE ?"
         args.append(f"%,{key},%")
 
+    # Who else lives there. A place that never said is left out of both,
+    # because neither answer would be true of it.
+    if max_mates is not None:
+        where += " AND l.flatmates IS NOT NULL AND l.flatmates <= ?"
+        args.append(max_mates)
+
+    if min_mates is not None:
+        where += " AND l.flatmates IS NOT NULL AND l.flatmates >= ?"
+        args.append(min_mates)
+
     if free_only:
         where += " AND (l.price IS NULL OR l.price = 0)"
 
@@ -400,17 +486,10 @@ def listings_of_type(kind, search="", only_for=None, category=None, sort=None,
                   " WHERE user_id = ?)")
         args.append(only_for)
 
-    if search.strip():
-        # The dates are in here too, so Dec or 5 Dec finds the group that has
-        # to be together by then without the page needing a date picker.
-        parts = ("l.title LIKE ? OR l.info LIKE ? OR l.description LIKE ?"
-                 " OR c.name LIKE ? OR c.code LIKE ?")
-        args += [f"%{search.strip()}%"] * 5
-        hint = date_hint(search)
-        if hint:
-            parts += " OR l.hand_in LIKE ? OR l.event_date LIKE ?"
-            args += [f"%{hint}%"] * 2
-        where += f" AND ({parts})"
+    clause, found = search_clause(search)
+    if clause:
+        where += " AND " + clause
+        args += found
 
     conn = connect()
     if kind == "housing":
@@ -446,7 +525,7 @@ def create_listing(owner_id, kind, title, description="", price=None, info="",
                    event_time=None, place=None, address=None, quantity=None,
                    course_id=None, hand_in=None, group_size=None,
                    available_from=None, months_min=None, bills_included=None,
-                   bills_estimate=None, deposit_months=None,
+                   bills_estimate=None, deposit=None,
                    minutes_campus=None, flatmates=None, features=None):
     if kind not in TYPES:
         raise ValueError(f"unknown type {kind}")
@@ -455,14 +534,14 @@ def create_listing(owner_id, kind, title, description="", price=None, info="",
         "INSERT INTO listings (owner_id, type, title, description, price, info,"
         " category, condition, event_date, event_time, place, address, quantity,"
         " course_id, hand_in, group_size, available_from, months_min,"
-        " bills_included, bills_estimate, deposit_months, minutes_campus,"
+        " bills_included, bills_estimate, deposit, minutes_campus,"
         " flatmates, features, status, views, created_at)"
         " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
         " ?, ?, ?, ?, 'open', 0, ?)",
         (owner_id, kind, title, description, price, info, category, condition,
          event_date, event_time, place, address, quantity, course_id, hand_in,
          group_size, available_from, months_min, bills_included, bills_estimate,
-         deposit_months, minutes_campus, flatmates, features, now()),
+         deposit, minutes_campus, flatmates, features, now()),
     )
     conn.commit()
     new_id = cur.lastrowid
@@ -470,34 +549,166 @@ def create_listing(owner_id, kind, title, description="", price=None, info="",
     return new_id
 
 
+# What a form may change about an entry. Who owns it, which tab it is in,
+# how often it was looked at and when it went up are not in here, so no
+# request can touch them however it is put together.
+EDITABLE = ("title", "description", "price", "info", "category", "condition",
+            "event_date", "event_time", "place", "address", "quantity",
+            "course_id", "hand_in", "group_size", "available_from",
+            "months_min", "bills_included", "bills_estimate",
+            "deposit", "minutes_campus", "flatmates", "features")
+
+
+def update_listing(listing_id, owner_id, **fields):
+    """Change an entry. Only the owner, and only the columns named above.
+
+    Every column the form knows is written, including the ones left empty,
+    so clearing a field really clears it instead of quietly keeping what was
+    there before.
+    """
+    names = [n for n in EDITABLE if n in fields]
+    if not names:
+        return False
+    sets = ", ".join(f"{n} = ?" for n in names)
+    args = [fields[n] for n in names] + [listing_id, owner_id]
+    conn = connect()
+    cur = conn.execute(
+        f"UPDATE listings SET {sets} WHERE id = ? AND owner_id = ?", args)
+    conn.commit()
+    changed = cur.rowcount > 0
+    conn.close()
+    return changed
+
+
+CLOSED_LINE = "This entry was closed"
+
+
 def close_listing(listing_id, owner_id):
-    """Only the owner can close. Returns True if something actually changed."""
+    """Only the owner can close. Returns True if something actually changed.
+
+    Closing also says so in every chat about the entry, because the other
+    student is still waiting for an answer and nothing else would ever tell
+    them. The notice is a message from the owner, so it lifts the chat up
+    everybody else's list and counts as unread for them and not for the
+    owner, which is exactly who already knows.
+    """
     conn = connect()
     cur = conn.execute(
         "UPDATE listings SET status = 'closed' WHERE id = ? AND owner_id = ?",
         (listing_id, owner_id),
     )
-    conn.commit()
     changed = cur.rowcount > 0
+    if changed:
+        conn.execute(
+            "INSERT INTO messages (conversation_id, sender_id, body,"
+            "                      created_at, kind)"
+            " SELECT c.id, ?, ?, ?, 'closed' FROM conversations c"
+            "  WHERE c.listing_id = ?",
+            (owner_id, CLOSED_LINE, now(), listing_id),
+        )
+        conn.execute(
+            "UPDATE conversations SET archived_owner = NULL,"
+            "                         archived_starter = NULL"
+            " WHERE listing_id = ?",
+            (listing_id,),
+        )
+    conn.commit()
     conn.close()
     return changed
+
+
+# The day the sweep below last ran. A module level name, so a restart only
+# ever means one sweep too many, never one too few.
+_swept_on = None
+
+
+def close_past_dates(force=False):
+    """Close every entry whose day has been, the morning after it.
+
+    A ticket goes by the day of the event, a group by the last day somebody
+    could still join. Both are a date after which the entry cannot do what
+    it was put up for.
+
+    An entry nobody ever closes keeps its chats sitting in other people's
+    inboxes for good, and those chats cannot be put away while the entry is
+    open. The owner may have stopped using the app the day the party ended.
+    So the calendar closes it instead, and everybody who wrote gets the
+    same notice they would have got from the owner by hand.
+
+    It goes through close_listing one entry at a time on purpose. Closing
+    is more than a column, it writes the notice into every chat, and doing
+    that twice in two places is how the two slowly stop agreeing.
+
+    It runs once a day. The first page anybody opens after midnight pays
+    for one query over an indexed column, and usually finds nothing.
+    """
+    global _swept_on
+    today = datetime.now().astimezone().date().isoformat()
+    if _swept_on == today and not force:
+        return 0
+    _swept_on = today
+    conn = connect()
+    over = conn.execute(
+        "SELECT id, owner_id FROM listings"
+        " WHERE status = 'open' AND ("
+        "      (type = 'ticket' AND event_date IS NOT NULL AND event_date < ?)"
+        "   OR (type = 'group'  AND hand_in    IS NOT NULL AND hand_in    < ?))",
+        (today, today),
+    ).fetchall()
+    conn.close()
+    for row in over:
+        close_listing(row["id"], row["owner_id"])
+    return len(over)
 
 
 def reopen_listing(listing_id, owner_id):
+    """Put an entry back up, and take the notice out of every chat again.
+
+    Mostly this undoes a mistake. Leaving the line in would have the app
+    telling nine people something that is no longer true, and a thread is
+    not a record of what the owner pressed, it is the conversation.
+    """
     conn = connect()
     cur = conn.execute(
-        "UPDATE listings SET status = 'open' WHERE id = ? AND owner_id = ?",
-        (listing_id, owner_id),
+        "UPDATE listings SET status = 'open' WHERE id = ? AND owner_id = ?"
+        # A party that has been and a group nobody can join any more cannot
+        # go back up as they are. Either would close itself again in the
+        # morning, so the button says what does help instead, change the
+        # date.
+        "   AND (type <> 'ticket' OR event_date IS NULL OR event_date >= ?)"
+        "   AND (type <> 'group'  OR hand_in    IS NULL OR hand_in    >= ?)",
+        (listing_id, owner_id,
+         datetime.now().astimezone().date().isoformat(),
+         datetime.now().astimezone().date().isoformat()),
     )
-    conn.commit()
     changed = cur.rowcount > 0
+    if changed:
+        conn.execute(
+            "DELETE FROM messages WHERE kind = 'closed' AND conversation_id IN"
+            " (SELECT id FROM conversations WHERE listing_id = ?)",
+            (listing_id,),
+        )
+    conn.commit()
     conn.close()
     return changed
 
 
-def count_view(listing_id):
+def count_view(listing_id, user_id):
+    """Count that this student looked at this entry, once and once only.
+
+    The row in views is what holds the promise. A second look by the same
+    person is ignored by the primary key, so the total can be raised by one
+    more student and never by one more reload.
+    """
     conn = connect()
-    conn.execute("UPDATE listings SET views = views + 1 WHERE id = ?", (listing_id,))
+    cur = conn.execute(
+        "INSERT OR IGNORE INTO views (user_id, listing_id, created_at)"
+        " VALUES (?, ?, ?)",
+        (user_id, listing_id, now()),
+    )
+    if cur.rowcount:
+        conn.execute("UPDATE listings SET views = views + 1 WHERE id = ?",
+                     (listing_id,))
     conn.commit()
     conn.close()
 
@@ -705,7 +916,7 @@ def open_conversation(listing_id, starter_id):
 def get_conversation(conv_id):
     conn = connect()
     row = conn.execute(
-        "SELECT c.*, l.title, l.price, l.type, l.owner_id"
+        "SELECT c.*, l.title, l.price, l.type, l.owner_id, l.status"
         "  FROM conversations c JOIN listings l ON l.id = c.listing_id"
         " WHERE c.id = ?",
         (conv_id,),
@@ -717,6 +928,52 @@ def get_conversation(conv_id):
 def can_see_conversation(conv, user_id):
     """Only the two people in it. This is what keeps chats private."""
     return conv is not None and user_id in (conv["starter_id"], conv["owner_id"])
+
+
+def archive_chat(conv_id, user_id, on=True):
+    """Put one chat away, or bring it back. Your own side of it only.
+
+    The other person's list is none of your business, so each side has its
+    own stamp and this only ever writes the one that belongs to you.
+    """
+    conn = connect()
+    row = conn.execute(
+        "SELECT c.starter_id, l.owner_id FROM conversations c"
+        "  JOIN listings l ON l.id = c.listing_id WHERE c.id = ?",
+        (conv_id,),
+    ).fetchone()
+    if row is None or user_id not in (row["starter_id"], row["owner_id"]):
+        conn.close()
+        return False
+    side = "archived_owner" if user_id == row["owner_id"] else "archived_starter"
+    conn.execute(
+        "UPDATE conversations SET %s = ? WHERE id = ?" % side,
+        (now() if on else None, conv_id),
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+def archive_entry(listing_id, owner_id, on=True):
+    """Every chat about one of your own entries, or none of them.
+
+    On your own side an entry is one thing with several people in it, so it
+    goes away in one piece. Half an entry in the list and half in the
+    archive would be a worse state than either.
+    """
+    conn = connect()
+    cur = conn.execute(
+        "UPDATE conversations SET archived_owner = ?"
+        " WHERE listing_id = ? AND EXISTS ("
+        "     SELECT 1 FROM listings l WHERE l.id = conversations.listing_id"
+        "       AND l.owner_id = ?)",
+        (now() if on else None, listing_id, owner_id),
+    )
+    conn.commit()
+    changed = cur.rowcount > 0
+    conn.close()
+    return changed
 
 
 def conversations_of(user_id):
@@ -745,11 +1002,15 @@ def conversations_of(user_id):
         "       (SELECT created_at FROM messages m WHERE m.conversation_id = c.id"
         "        ORDER BY m.id DESC LIMIT 1) AS last_at,"
         "       (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id"
-        "        AND m.sender_id <> ? AND m.read_at IS NULL) AS unread"
+        "        AND m.sender_id <> ? AND m.read_at IS NULL) AS unread,"
+        # Archived is asked of your own side only. The same chat can be put
+        # away by one of you and still be open in the other one's list.
+        "       CASE WHEN l.owner_id = ? THEN c.archived_owner"
+        "            ELSE c.archived_starter END AS archived"
         "  FROM conversations c JOIN listings l ON l.id = c.listing_id"
         " WHERE c.starter_id = ? OR l.owner_id = ?"
         " ORDER BY last_at DESC, c.id DESC",
-        (user_id, user_id, user_id, user_id, user_id, user_id),
+        (user_id, user_id, user_id, user_id, user_id, user_id, user_id),
     ).fetchall()
     conn.close()
     return rows
@@ -768,6 +1029,13 @@ def messages_of(conv_id):
 
 
 def send_message(conv_id, sender_id, body):
+    """Write a line, and bring the chat back out of the archive.
+
+    Archiving says this is over. A message says it is not, so it wins. The
+    one chat comes back for the student who wrote about the entry, and the
+    whole entry comes back for its owner, because that side is archived all
+    or nothing.
+    """
     body = body.strip()
     if not body:
         return None
@@ -776,6 +1044,15 @@ def send_message(conv_id, sender_id, body):
         "INSERT INTO messages (conversation_id, sender_id, body, created_at)"
         " VALUES (?, ?, ?, ?)",
         (conv_id, sender_id, body, now()),
+    )
+    conn.execute(
+        "UPDATE conversations SET archived_starter = NULL WHERE id = ?",
+        (conv_id,),
+    )
+    conn.execute(
+        "UPDATE conversations SET archived_owner = NULL WHERE listing_id ="
+        " (SELECT listing_id FROM conversations WHERE id = ?)",
+        (conv_id,),
     )
     conn.commit()
     new_id = cur.lastrowid
@@ -801,8 +1078,10 @@ def unread_total(user_id):
         "  JOIN conversations c ON c.id = m.conversation_id"
         "  JOIN listings l ON l.id = c.listing_id"
         " WHERE m.sender_id <> ? AND m.read_at IS NULL"
-        "   AND (c.starter_id = ? OR l.owner_id = ?)",
-        (user_id, user_id, user_id),
+        "   AND (c.starter_id = ? OR l.owner_id = ?)"
+        "   AND (CASE WHEN l.owner_id = ? THEN c.archived_owner"
+        "             ELSE c.archived_starter END) IS NULL",
+        (user_id, user_id, user_id, user_id),
     ).fetchone()
     conn.close()
     return row["n"]
