@@ -1116,3 +1116,216 @@ def unread_total(user_id):
     ).fetchone()
     conn.close()
     return row["n"]
+
+
+# ------------------------------------------------------------- screenshots
+
+def take_ai_read(user_id, limit, pictures=1):
+    """Count screenshots read today. False when they would go over the limit.
+
+    Counted before the read, so a student who keeps retrying a failing
+    screenshot still stops at the limit.
+    """
+    day = datetime.now(timezone.utc).date().isoformat()
+    conn = connect()
+    try:
+        with conn:
+            row = conn.execute(
+                "SELECT count FROM ai_reads WHERE user_id = ? AND day = ?",
+                (user_id, day)).fetchone()
+            if (row["count"] if row else 0) + pictures > limit:
+                return False
+            conn.execute(
+                "INSERT INTO ai_reads (user_id, day, count) VALUES (?, ?, ?)"
+                " ON CONFLICT(user_id, day) DO UPDATE SET count = count + ?",
+                (user_id, day, pictures, pictures))
+            return True
+    finally:
+        conn.close()
+
+
+# ------------------------------------------------------------ notifications
+
+# "all" is the main switch above the four. Off silences everything at once
+# and keeps the four as they were, so switching it back on restores them.
+NOTIFY_AREAS = ("all", "messages", "ticket", "housing", "item")
+
+
+def save_device(user_id, endpoint, p256dh, auth):
+    """Remember one device for push. The same device again just moves owner."""
+    conn = connect()
+    with conn:
+        conn.execute(
+            "INSERT INTO push_devices (endpoint, user_id, p256dh, auth, created_at)"
+            " VALUES (?, ?, ?, ?, ?) ON CONFLICT(endpoint) DO UPDATE SET"
+            " user_id = excluded.user_id, p256dh = excluded.p256dh,"
+            " auth = excluded.auth",
+            (endpoint, user_id, p256dh, auth, now()))
+    conn.close()
+
+
+def drop_device(endpoint, user_id=None):
+    """Forget a device, because it said goodbye or the push service did."""
+    conn = connect()
+    with conn:
+        if user_id is None:
+            conn.execute("DELETE FROM push_devices WHERE endpoint = ?", (endpoint,))
+        else:
+            conn.execute("DELETE FROM push_devices WHERE endpoint = ? AND user_id = ?",
+                         (endpoint, user_id))
+    conn.close()
+
+
+def devices_of(user_id):
+    conn = connect()
+    rows = conn.execute("SELECT * FROM push_devices WHERE user_id = ?",
+                        (user_id,)).fetchall()
+    conn.close()
+    return rows
+
+
+def prefs_of(user_id):
+    """{area: {"on": bool, ...}} for all four areas. All on until switched off.
+
+    For the three tabs this is the main switch. What actually rings is a
+    saved search or a watched event; switching the area off silences all of
+    them at once without throwing them away.
+    """
+    prefs = {area: {"on": True, "q": "", "cat": ""} for area in NOTIFY_AREAS}
+    conn = connect()
+    for row in conn.execute("SELECT * FROM notify_prefs WHERE user_id = ?", (user_id,)):
+        if row["area"] in prefs:
+            prefs[row["area"]] = {"on": bool(row["is_on"]), "q": row["q"], "cat": row["cat"]}
+    conn.close()
+    return prefs
+
+
+def set_pref(user_id, area, on, q=None, cat=None):
+    """Turn one area on or off. q and cat of None keep what was there."""
+    if area not in NOTIFY_AREAS:
+        raise ValueError(f"unknown area {area}")
+    old = prefs_of(user_id)[area]
+    q = old["q"] if q is None else q.strip()[:80]
+    cat = old["cat"] if cat is None else cat.strip()[:30]
+    conn = connect()
+    with conn:
+        conn.execute(
+            "INSERT INTO notify_prefs (user_id, area, is_on, q, cat) VALUES (?, ?, ?, ?, ?)"
+            " ON CONFLICT(user_id, area) DO UPDATE SET is_on = excluded.is_on,"
+            " q = excluded.q, cat = excluded.cat",
+            (user_id, area, 1 if on else 0, q, cat))
+    conn.close()
+
+
+def watch_search(user_id, kind, params, label):
+    """Save one search. params is the JSON string, label the readable one."""
+    conn = connect()
+    with conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO watched_searches (user_id, kind, params, label,"
+            " created_at) VALUES (?, ?, ?, ?, ?)",
+            (user_id, kind, params, label[:120], now()))
+    conn.close()
+
+
+def unwatch_search(user_id, kind=None, params=None, watch_id=None):
+    """Forget one saved search, by the search itself or by its row."""
+    conn = connect()
+    with conn:
+        if watch_id is not None:
+            conn.execute("DELETE FROM watched_searches WHERE id = ? AND user_id = ?",
+                         (watch_id, user_id))
+        else:
+            conn.execute("DELETE FROM watched_searches WHERE user_id = ? AND kind = ?"
+                         " AND params = ?", (user_id, kind, params))
+    conn.close()
+
+
+def is_watching_search(user_id, kind, params):
+    conn = connect()
+    row = conn.execute("SELECT 1 FROM watched_searches WHERE user_id = ? AND kind = ?"
+                       " AND params = ?", (user_id, kind, params)).fetchone()
+    conn.close()
+    return row is not None
+
+
+def searches_watched(user_id):
+    """Every search a student saved, Tickets first, then Housing, then Market."""
+    conn = connect()
+    rows = conn.execute(
+        "SELECT * FROM watched_searches WHERE user_id = ? ORDER BY"
+        " CASE kind WHEN 'ticket' THEN 0 WHEN 'housing' THEN 1 ELSE 2 END, created_at",
+        (user_id,)).fetchall()
+    conn.close()
+    return rows
+
+
+def search_watchers(kind):
+    """Every saved search on one tab, with whose it is."""
+    conn = connect()
+    rows = conn.execute("SELECT user_id, params FROM watched_searches WHERE kind = ?",
+                        (kind,)).fetchall()
+    conn.close()
+    return rows
+
+
+def watch_event(user_id, key, title, place):
+    """Start watching one event. key is (date, time, place boiled down)."""
+    event_date, event_time, place_key = key
+    conn = connect()
+    with conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO event_watches (user_id, event_date, event_time,"
+            " place_key, title, place, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (user_id, event_date, event_time, place_key, title[:60], (place or "")[:60], now()))
+    conn.close()
+
+
+def unwatch_event(user_id, key=None, watch_id=None):
+    """Stop watching, either by the event itself or by the row in the settings."""
+    conn = connect()
+    with conn:
+        if watch_id is not None:
+            conn.execute("DELETE FROM event_watches WHERE id = ? AND user_id = ?",
+                         (watch_id, user_id))
+        else:
+            conn.execute(
+                "DELETE FROM event_watches WHERE user_id = ? AND event_date = ?"
+                " AND event_time = ? AND place_key = ?", (user_id, *key))
+    conn.close()
+
+
+def is_watching_event(user_id, key):
+    conn = connect()
+    row = conn.execute(
+        "SELECT 1 FROM event_watches WHERE user_id = ? AND event_date = ?"
+        " AND event_time = ? AND place_key = ?", (user_id, *key)).fetchone()
+    conn.close()
+    return row is not None
+
+
+def events_watched(user_id):
+    """The events a student watches that have not happened yet, soonest first.
+
+    Past ones are thrown away on the way, nobody needs to hear about them.
+    """
+    today = datetime.now(timezone.utc).date().isoformat()
+    conn = connect()
+    with conn:
+        conn.execute("DELETE FROM event_watches WHERE user_id = ? AND event_date < ?",
+                     (user_id, today))
+        rows = conn.execute(
+            "SELECT * FROM event_watches WHERE user_id = ?"
+            " ORDER BY event_date, event_time, title", (user_id,)).fetchall()
+    conn.close()
+    return rows
+
+
+def event_watchers(key):
+    """Everyone watching this one event."""
+    conn = connect()
+    rows = conn.execute(
+        "SELECT user_id FROM event_watches WHERE event_date = ? AND event_time = ?"
+        " AND place_key = ?", key).fetchall()
+    conn.close()
+    return [row["user_id"] for row in rows]

@@ -4,6 +4,7 @@ Every page lives here. The database is only reached through db.py.
 Start it with   uvicorn app.main:app --reload   from the project folder.
 """
 
+import json
 import os
 import re
 import unicodedata
@@ -12,14 +13,15 @@ from datetime import datetime, timedelta, timezone
 from typing import List
 from urllib.parse import quote, urlencode, urlparse
 
-from fastapi import FastAPI, Form, Query, Request, UploadFile, File
+from fastapi import BackgroundTasks, FastAPI, Form, Query, Request, UploadFile, File
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import categories, db, housing, mailer, passwords, programmes
+from . import (categories, db, housing, mailer, passwords, programmes, push,
+               screenshots, ticket_import)
 
 # .env first, so CAMPUS_SECRET and the mail account can live in it.
 mailer.load_env()
@@ -269,6 +271,10 @@ templates.env.globals["SORT_OPTIONS"] = SORT_OPTIONS
 templates.env.globals["SORT_SHORT"] = SORT_SHORT
 templates.env.globals["PRICE_BANDS"] = PRICE_BANDS
 templates.env.globals["HOUSING"] = housing
+templates.env.globals["SCREENSHOTS_ON"] = screenshots.is_set_up
+templates.env.globals["SCREENSHOTS_MAX"] = screenshots.MAX_IMAGES
+templates.env.globals["PUSH_ON"] = push.is_set_up
+templates.env.globals["PUSH_KEY"] = push.public_key
 templates.env.globals["PRICE_SHORT"] = {key: name for key, name, _, _ in PRICE_BANDS}
 
 
@@ -522,6 +528,123 @@ def housing_search(cat, sort, rent, rmin, rmax, mins, minsx, stay, area,
             "low": low, "high": high, "minutes": minutes, "bills": bills,
             "features": feats, "months": housing.STAY_BY_KEY[stay][2],
             "on": on, "summary": ", ".join(parts)}
+
+
+# --------------------------------------------------------- saved searches
+
+# The filters of each tab that a saved search keeps. Sort order and the open
+# day are left out, they change how the list looks, not what is in it.
+SEARCH_KEYS = {
+    "ticket": ("q", "cat"),
+    "item": ("q", "cat", "price", "cond"),
+    "housing": ("q", "cat", "rent", "rmin", "rmax", "mins", "minsx", "stay",
+                "area", "movein", "mates", "has"),
+}
+
+
+def _saved_housing(p):
+    """A saved housing search through the same cleaning the panel uses."""
+    return housing_search(p.get("cat", ""), "", p.get("rent", ""), p.get("rmin", ""),
+                          p.get("rmax", ""), p.get("mins", ""), p.get("minsx", ""),
+                          p.get("stay", ""), p.get("area", ""), p.get("movein", ""),
+                          p.get("mates", ""), p.get("has", []))
+
+
+def search_of(kind, query):
+    """The search on a tab as one JSON string, the same whoever wrote the address.
+
+    query is the address's query part, as a string or as the request's own
+    query parameters. Empty filters are dropped and the keys sorted, so the
+    same search is always the same string.
+    """
+    from urllib.parse import parse_qs
+    if isinstance(query, str):
+        values = parse_qs(query, keep_blank_values=False)
+        get = lambda k: (values.get(k) or [""])[0]
+        get_all = lambda k: values.get(k) or []
+    else:
+        get, get_all = (lambda k: query.get(k) or ""), query.getlist
+    found = {}
+    for key in SEARCH_KEYS.get(kind, ()):
+        if key == "has":
+            picked = sorted({v.strip() for v in get_all("has") if v.strip()})
+            if picked:
+                found["has"] = picked
+        elif get(key).strip():
+            found[key] = get(key).strip()[:80]
+    if kind == "housing":
+        # Keep only what the panel itself would keep.
+        hs = _saved_housing(found)
+        if not hs["kind"]:
+            found.pop("cat", None)
+    else:
+        if found.get("cat") and not categories.is_valid(found["cat"], kind):
+            found.pop("cat")
+        if found.get("price") not in (None, *BY_BAND):
+            found.pop("price")
+        if found.get("cond") and found["cond"] not in categories.CONDITION_LABELS:
+            found.pop("cond")
+    return json.dumps(found, sort_keys=True, ensure_ascii=False)
+
+
+def search_label(kind, params):
+    """A saved search in words, for the list in the settings."""
+    p = json.loads(params)
+    parts = [f"\u201c{p['q']}\u201d"] if p.get("q") else []
+    if kind == "housing":
+        hs = _saved_housing(p)
+        if hs["kind"]:
+            parts.append(housing.KIND_LABELS[hs["kind"]])
+        if hs["area"]:
+            parts.append(housing.AREA_LABELS[hs["area"]])
+        if hs["low"] is not None and hs["high"] is not None:
+            parts.append(f"{money(hs['low'])} to {money(hs['high'])}")
+        elif hs["high"] is not None:
+            parts.append(f"up to {money(hs['high'])}")
+        elif hs["low"] is not None:
+            parts.append(f"from {money(hs['low'])}")
+        if hs["movein"]:
+            parts.append("free from " + pretty_date(hs["movein"]))
+        if hs["minutes"]:
+            parts.append(f"max {hs['minutes']} min to campus")
+        if hs["stay"]:
+            parts.append(housing.STAY_LABELS[hs["stay"]].lower())
+        if hs["mates"]:
+            parts.append(housing.MATES_LABELS[hs["mates"]].lower())
+        if hs["bills"]:
+            parts.append("bills included")
+        parts += [housing.FEATURE_LABELS[f].lower() for f in hs["features"]]
+    else:
+        if p.get("cat"):
+            parts.append(categories.label(p["cat"]))
+        if p.get("price"):
+            parts.append(BY_BAND[p["price"]][1].lower())
+        if p.get("cond"):
+            parts.append(categories.CONDITION_LABELS[p["cond"]].lower())
+    return " · ".join(parts) if parts else "Everything new"
+
+
+def search_rows(kind, params):
+    """The open entries a saved search finds, the way the tab finds them."""
+    p = json.loads(params)
+    if kind == "housing":
+        hs = _saved_housing(p)
+        return db.listings_of_type(
+            kind, p.get("q", ""), category=hs["kind"], min_price=hs["low"],
+            max_price=hs["high"], price_inclusive=True, free_from=hs["movein"] or None,
+            area=hs["area"], max_minutes=hs["minutes"], max_months=hs["months"],
+            bills_included=hs["bills"], features=hs["features"],
+            max_mates=hs["mates_max"], min_mates=hs["mates_min"])
+    band = BY_BAND[p.get("price", "")]
+    return db.listings_of_type(kind, p.get("q", ""), category=p.get("cat") or None,
+                               min_price=band[2], max_price=band[3],
+                               free_only=p.get("price") == "free",
+                               condition=p.get("cond") or None)
+
+
+def search_finds(kind, params, listing_id):
+    """True when this saved search would show this entry on the tab."""
+    return any(row["id"] == listing_id for row in search_rows(kind, params))
 
 
 def link_maker(path, params):
@@ -1123,7 +1246,10 @@ def tab_page(request, kind, q, scope="mine", cat="", day="", sort="",
                 active=kind, me=me, scope=scope, my_courses=mine,
                 days=days, blocks=blocks, cat=cat, open_day=day, fresh=fresh,
                 sort=sort, price=price, cond=cond, bands=PRICE_BANDS, hs=hs,
-                link=link_maker(tab["path"], params))
+                link=link_maker(tab["path"], params),
+                watching=(kind in SEARCH_KEYS and db.is_watching_search(
+                    me["id"], kind, search_of(kind, request.query_params))),
+                here=str(request.url.path) + (f"?{request.url.query}" if request.url.query else ""))
 
 
 @app.get("/housing")
@@ -1194,13 +1320,15 @@ def listing_detail(request: Request, listing_id: int, back: str = ""):
     if row["owner_id"] != me["id"]:
         db.count_view(listing_id, me["id"])
         row = db.get_listing(listing_id)
+    watching = (row["type"] == "ticket" and bool(row["event_date"])
+                and db.is_watching_event(me["id"], event_key(row)))
     return page(request, "detail.html", listing=row, photos=db.photos_of(listing_id),
                 tab=BY_KIND[row["type"]], me=me,
                 back=ours(back) or request.session.get("last_place")
                      or BY_KIND[row["type"]]["path"],
                 tabs=tear_tabs(row) if row["type"] == "group" else [],
                 saved=db.is_saved(me["id"], listing_id),
-                saves=db.save_count(listing_id))
+                saves=db.save_count(listing_id), watching_event=watching)
 
 
 @app.post("/listing/{listing_id}/close")
@@ -1308,8 +1436,43 @@ def new_form(request: Request, kind: str = "housing", error: str = ""):
                 active=kind, my_courses=mine, v=form_values())
 
 
+@app.post("/new/ticket-autofill")
+def new_ticket_autofill(request: Request, url: str = Form("")):
+    """Fill the ticket form from the link to the event. Answers in JSON.
+
+    Only links to the sites in ticket_import.PLATFORMS are ever fetched. The
+    seller sees the filled form and checks it before anything is published.
+    """
+    if me_or_none(request) is None:
+        return JSONResponse({"ok": False, "reason": "login"}, status_code=401)
+    return JSONResponse(ticket_import.autofill(url))
+
+
+@app.post("/new/screenshot")
+def new_from_screenshots(request: Request, kind: str = Form(""),
+                         screenshots_: List[UploadFile] = File(default=[], alias="screenshots")):
+    """Fill the ticket or housing form from screenshots, read by Claude.
+
+    Same JSON as the link. The pictures are only read, never stored, and each
+    student has a daily limit because every picture costs money.
+    """
+    me = me_or_none(request)
+    if me is None:
+        return JSONResponse({"ok": False, "reason": "login"}, status_code=401)
+    if not screenshots.is_set_up():
+        return JSONResponse({"ok": False, "reason": "setup"})
+    files = [f for f in screenshots_ if f and f.filename]
+    if len(files) > screenshots.MAX_IMAGES:
+        return JSONResponse({"ok": False, "reason": "many"})
+    if not db.take_ai_read(me["id"], screenshots.READS_PER_DAY, max(1, len(files))):
+        return JSONResponse({"ok": False, "reason": "limit"})
+    pictures = [f.file.read(screenshots.MAX_UPLOAD + 1) for f in files]
+    return JSONResponse(screenshots.read(kind, pictures))
+
+
 @app.post("/new")
 async def new_listing(request: Request,
+                      background: BackgroundTasks,
                       kind: str = Form("housing"),
                       title: str = Form(""),
                       price: str = Form(""),
@@ -1551,6 +1714,11 @@ async def new_listing(request: Request,
         db.add_photo(listing_id, name, position)
         position += 1
 
+    # Everyone watching this tab hears about a new entry, after the page has
+    # answered. A change to an entry that is already up rings nobody.
+    if changing is None:
+        background.add_task(push.new_listing, db.get_listing(listing_id), event_key,
+                            search_finds)
     # The way out is carried through the form, because the page before this
     # one is now the form itself and an arrow pointing there is a trap.
     done = "saved" if changing is not None else "published"
@@ -1841,14 +2009,16 @@ def chat(request: Request, conv_id: int):
 
 
 @app.post("/chat/{conv_id}")
-def chat_send(request: Request, conv_id: int, body: str = Form("")):
+def chat_send(request: Request, background: BackgroundTasks, conv_id: int,
+              body: str = Form("")):
     me = me_or_none(request)
     if me is None:
         return go("/start")
     conv = db.get_conversation(conv_id)
     if not db.can_see_conversation(conv, me["id"]):
         return page(request, "missing.html", active="chats")
-    db.send_message(conv_id, me["id"], body)
+    if db.send_message(conv_id, me["id"], body):
+        background.add_task(push.new_message, conv, me["id"], body.strip())
     return go(f"/chat/{conv_id}")
 
 
@@ -2042,6 +2212,141 @@ def password_change(request: Request, current: str = Form(""),
 
     db.set_password(me["id"], passwords.hash_password(password))
     return go("/profile")
+
+
+# --------------------------------------------------------- notifications
+
+@app.get("/sw.js")
+def service_worker():
+    """The service worker has to come from the top of the site, or it may
+    only look after the pages below /static."""
+    return FileResponse(os.path.join(HERE, "static", "js", "sw.js"),
+                        media_type="application/javascript",
+                        headers={"Cache-Control": "no-cache"})
+
+
+@app.post("/push/device")
+async def push_device(request: Request):
+    """The browser said yes to notifications. Remember this device."""
+    me = me_or_none(request)
+    if me is None:
+        return JSONResponse({"ok": False}, status_code=401)
+    try:
+        data = await request.json()
+        endpoint, keys = data["endpoint"], data["keys"]
+        p256dh, auth = keys["p256dh"], keys["auth"]
+    except (ValueError, KeyError, TypeError):
+        return JSONResponse({"ok": False}, status_code=400)
+    if not (isinstance(endpoint, str) and endpoint.startswith("https://")
+            and len(endpoint) < 1000 and isinstance(p256dh, str) and len(p256dh) < 200
+            and isinstance(auth, str) and len(auth) < 100):
+        return JSONResponse({"ok": False}, status_code=400)
+    db.save_device(me["id"], endpoint, p256dh, auth)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/push/device/forget")
+async def push_device_forget(request: Request):
+    me = me_or_none(request)
+    if me is None:
+        return JSONResponse({"ok": False}, status_code=401)
+    try:
+        endpoint = (await request.json())["endpoint"]
+    except (ValueError, KeyError, TypeError):
+        return JSONResponse({"ok": False}, status_code=400)
+    db.drop_device(str(endpoint), me["id"])
+    return JSONResponse({"ok": True})
+
+
+@app.post("/push/test")
+def push_test(request: Request):
+    """A notification to yourself, to see that it works on this phone."""
+    me = me_or_none(request)
+    if me is None:
+        return JSONResponse({"ok": False}, status_code=401)
+    reached = push.send(me["id"], "Campus Market",
+                        "Notifications work on this device.", "/profile/notifications",
+                        test=True)
+    return JSONResponse({"ok": reached > 0, "reached": reached})
+
+
+@app.get("/profile/notifications")
+def notifications_form(request: Request, done: str = ""):
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    return page(request, "notifications.html", me=me, prefs=db.prefs_of(me["id"]),
+                areas=push.AREAS, devices=len(db.devices_of(me["id"])), done=done,
+                events=db.events_watched(me["id"]), searches=db.searches_watched(me["id"]),
+                tab_names={t["kind"]: t["label"] for t in TABS})
+
+
+@app.post("/profile/notifications")
+async def notifications_save(request: Request):
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    form = await request.form()
+    on = set(form.getlist("on"))
+    for area in db.NOTIFY_AREAS:
+        db.set_pref(me["id"], area, area in on)
+    return go("/profile/notifications?done=saved")
+
+
+@app.post("/notify/event")
+def notify_event(request: Request, listing_id: int = Form(0), on: str = Form("1")):
+    """The bell on a ticket: tell me about more tickets for this same event."""
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    row = db.get_listing(listing_id)
+    if row is None or row["type"] != "ticket" or not row["event_date"]:
+        return go("/tickets")
+    if on == "1":
+        db.watch_event(me["id"], event_key(row), row["title"], row["place"])
+    else:
+        db.unwatch_event(me["id"], event_key(row))
+    return go(f"/listing/{listing_id}?done=" + ("watching" if on == "1" else "unwatched"))
+
+
+@app.post("/notify/event/remove")
+def notify_event_remove(request: Request, watch_id: int = Form(0)):
+    """Stop watching one event, from the list in the settings."""
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    db.unwatch_event(me["id"], watch_id=watch_id)
+    return go("/profile/notifications?done=removed")
+
+
+@app.post("/notify/watch")
+def notify_watch(request: Request, kind: str = Form(""), back: str = Form("")):
+    """The bell on a tab: save the search on screen, or forget it again."""
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    if kind not in SEARCH_KEYS:
+        return go("/profile/notifications")
+    # Only ever back to a page of our own.
+    back = back if back.startswith("/") and not back.startswith("//") else BY_KIND[kind]["path"]
+    params = search_of(kind, back.partition("?")[2])
+    if db.is_watching_search(me["id"], kind, params):
+        db.unwatch_search(me["id"], kind, params)
+        done = "search-off"
+    else:
+        db.watch_search(me["id"], kind, params, search_label(kind, params))
+        done = "search-on"
+    return go(back + ("&" if "?" in back else "?") + "done=" + done)
+
+
+@app.post("/notify/search/remove")
+def notify_search_remove(request: Request, watch_id: int = Form(0)):
+    """Forget one saved search, from the list in the settings."""
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    db.unwatch_search(me["id"], watch_id=watch_id)
+    return go("/profile/notifications?done=removed-search")
 
 
 @app.get("/profile")

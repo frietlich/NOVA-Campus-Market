@@ -38,6 +38,18 @@
     {% set up = mine | selectattr("status", "equalto", "open") | list %}
     {% set shut = mine | rejectattr("status", "equalto", "open") | list %}
 
+    {% if PUSH_ON() %}
+    <span class="section">Notifications</span>
+    <div class="rows">
+      <a class="row" href="/profile/notifications">
+        <div class="row-body">
+          <span class="row-name" style="color: var(--accent)">Notifications</span>
+          <span class="row-meta">Messages, saved searches and events you watch</span>
+        </div>
+      </a>
+    </div>
+    {% endif %}
+
     <span class="section">My entries</span>
 
     {% macro mine_row(l, mark) %}

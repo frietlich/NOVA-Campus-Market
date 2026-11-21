@@ -8,7 +8,7 @@ what is in `docs/tasks.docx`. Read both before you write code.
 
 ## Run it
 
-You need Python 3.10 or newer. From this folder, once:
+You need Python 3.10 or newer (3.15 is what we test with). From this folder, once:
 
     python3 -m venv .venv
     source .venv/bin/activate
@@ -94,6 +94,9 @@ predictable by design. All of it lives in `db.new_code` and `db.check_code`.
     app/db.py          every read and write of the database, nobody else writes SQL
     app/programmes.py  the list of programmes the school offers
     app/passwords.py   the password rules and how a password is stored
+    app/ticket_import.py  filling the ticket form from the link to the event
+    app/screenshots.py the ticket or housing form from screenshots, read by Claude
+    app/push.py        push notifications, who gets what, and sending them
     app/mailer.py      sending the 6-digit code, and reading .env
     app/categories.py  what a ticket can be for
     app/schema.sql     the five tables
@@ -273,6 +276,95 @@ the time it is what decides whether two entries are the same event.
 with a link that hands it to whatever map the phone already has. We draw no
 map ourselves, which is why this costs one column and one line of markup
 instead of a mapping library and an API key.
+
+## A ticket from the link to the event
+
+Whoever sells a ticket bought it somewhere. On the ticket form they can paste
+the link to the event, and the title, category, date, time, venue, address and
+the price it cost there fill themselves in, marked in colour, to check and
+change before publishing. A second link first takes back what the first one
+filled, so nothing from the wrong event stays.
+
+`app/ticket_import.py` does it. Nearly every ticket site writes the event into
+its page a second time for search engines (schema.org Event, as JSON-LD), and
+that is what is read, so one reader covers every site and a new design on one
+of them changes nothing.
+
+Tested by hand in November 2026 against real event pages:
+
+    Luma, DICE, Xceed, BOL, Eventbrite   work
+    Shotgun                              blocks apps most of the time
+    Resident Advisor                     blocks apps
+    Fever, Fourvenues, Ticketline,       on the list, not checked with a
+    Blueticket                           real event page yet
+
+Only links to the sites in `PLATFORMS` are ever opened, and every redirect is
+checked against the same list, so a pasted link can never make our server open
+anything else. A site that refuses gets an honest message, and the seller types
+it in. `tests/test_ticket_import.py` covers all of it without going online.
+
+The time on a page is turned into Lisbon time, summer and winter, because the
+sites write it in UTC.
+
+## Tickets and housing from screenshots
+
+Shotgun, Resident Advisor, Idealista, Imovirtual, a ticket app or an Instagram
+story cannot be read by link. Screenshots can: `app/screenshots.py` sends them to
+Claude Opus (`claude-opus-5-5` at medium effort, and only that model), which answers in a fixed JSON form, and the form
+fills itself in the same way as from a link. A housing advert rarely fits on
+one screen, so up to four screenshots go in together and are read as one.
+
+* Switched on by `ANTHROPIC_API_KEY` in `.env`. Without a key the button is not
+  shown at all.
+* About one cent per screenshot. Every student gets 20 pictures a day (`ai_reads`).
+* The picture is shrunk to a small JPEG, sent once and thrown away. It is
+  never saved, because a ticket screenshot often has the QR code on it.
+* Claude is told to read only the event or the place, never QR codes, ticket
+  numbers, names or phone numbers, and to leave a field empty rather than guess.
+* `tests/test_screenshots.py` never calls Claude, it answers for it.
+
+## Notifications
+
+Push notifications on the lock screen, the standard every browser speaks, so
+there is no app store and no paid service. `app/push.py` decides who hears
+about what:
+
+    Messages    a message in one of your chats
+    Tickets     a new ticket for a saved search or a watched event
+    Housing     a new place for a saved search
+    Market      a new thing for a saved search
+
+A saved search is the bell next to your picture on Tickets, Housing and
+Market. It keeps every filter that is set, on Housing the whole panel (area,
+rent, move in, stay, minutes to campus, bills, features), on Market category,
+price and condition. A new entry is checked by running exactly the search the
+tab runs, so it rings for what the list would show and nothing else. Save as
+many as you like; tapping the bell on the same search again forgets it.
+
+For one particular event there is a bell on the ticket itself: "Notify me
+about more tickets". It rings when somebody else puts up a ticket for the same
+day, time and place, whatever they call it, the same rule the Tickets tab uses
+to fold a day. A student can watch as many events as they like. All of them
+are listed under "Events you watch" in the notification settings, each with
+Remove, and past events drop off by themselves. Nobody is told twice when an
+event bell and a saved search both fit.
+
+`/profile/notifications` lists the saved searches and the watched events, each
+with Remove. On top is one switch for all notifications, and under it one per
+area; each silences without throwing anything away, and they save the moment
+they move.
+
+When a test notification does not show up although the page says it was
+sent, the browser got it and the computer is hiding it: on a Mac, allow
+notifications for the browser in System Settings, Notifications, and check
+that Focus is off. Failed deliveries are printed in the server's terminal. It also has the button that asks the browser, and a test.
+
+It needs a key pair of our own. Make one with `python -m app.push keys` and put
+its lines into `.env`. Without them nothing about notifications is shown.
+
+On an iPhone it works only from the icon on the home screen and over https,
+so test it there once the app is deployed. On a laptop, Chrome, Edge and
+Firefox show it on http://127.0.0.1:8000 already.
 
 ## Not now, but worth knowing
 

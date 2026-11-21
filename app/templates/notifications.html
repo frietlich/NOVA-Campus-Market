@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %} · Notifications{% endblock %}
+{% block body %}
+<div class="app">
+  <form class="form" method="post" action="/profile/notifications">
+
+    <div class="sheet-head">
+      <span class="side"><a class="link link--plain" href="/profile">Back</a></span>
+      <span class="mid">Notifications</span>
+      <span class="side"></span>
+    </div>
+
+    {% if done == 'saved' %}<div class="said" id="saved-note">Saved.</div>{% endif %}
+    {% if done == 'removed' %}<div class="said">Removed. No more notifications for that event.</div>{% endif %}
+    {% if done == 'removed-search' %}<div class="said">Removed. No more notifications for that search.</div>{% endif %}
+
+    {% if not PUSH_ON() %}
+      <div class="error">Notifications are not switched on for this app yet.</div>
+    {% else %}
+
+    {# This device. The browser asks once, and only after a tap, because a
+       question that pops up on its own gets a no. #}
+    <span class="section">THIS DEVICE</span>
+    <div class="push-device" id="push-device" data-key="{{ PUSH_KEY() }}">
+      <p class="note push-device-status" id="push-status">
+        {% if devices %}Notifications reach {{ devices }} device{{ 's' if devices != 1 }} of yours.{% else %}Not turned on on any of your devices yet.{% endif %}
+      </p>
+      <button class="btn" type="button" id="push-on">Turn on notifications here</button>
+      <button class="btn btn--quiet" type="button" id="push-test" hidden>Send me a test</button>
+      <p class="note" id="push-ios" hidden style="text-align: left">
+        On an iPhone, open this page from the icon on your home screen first:
+        Safari, Share, Add to Home Screen. Safari in a normal tab cannot show
+        notifications.
+      </p>
+    </div>
+
+    {# One switch for everything, and one per area under it. Off up here
+       silences all of them and leaves the four as they are. #}
+    <span class="section">WHAT YOU HEAR ABOUT</span>
+    <div class="rows">
+      <label class="row switch-row">
+        <div class="row-body">
+          <span class="row-name">All notifications</span>
+          <span class="row-meta">Off silences everything below at once.</span>
+        </div>
+        <input class="switch" type="checkbox" name="on" value="all" id="notify-all" {{ 'checked' if prefs['all'].on }}>
+      </label>
+    </div>
+    <div class="rows notify-areas {{ 'is-muted' if not prefs['all'].on }}" id="notify-areas" style="margin-top: 10px">
+      {% for key, name, about in areas if key != 'all' %}
+        {% set pref = prefs[key] %}
+        <label class="row switch-row">
+          <div class="row-body">
+            <span class="row-name">{{ name }}</span>
+            <span class="row-meta">{{ about }}</span>
+          </div>
+          <input class="switch" type="checkbox" name="on" value="{{ key }}" {{ 'checked' if pref.on }}>
+        </label>
+        {% if not loop.last %}<div class="divider" style="margin-left: 14px"></div>{% endif %}
+      {% endfor %}
+    </div>
+    <p class="note" style="text-align: left; margin: 8px 2px 0">
+      Switching an area off keeps your searches and events, it only goes quiet.
+    </p>
+
+    <noscript>
+      <div style="height: 16px"></div>
+      <button class="btn" type="submit">Save</button>
+    </noscript>
+
+    {# Every saved search, from the bell on a tab. #}
+    <span class="section">SEARCHES YOU WATCH</span>
+    {% if searches %}
+      <div class="rows">
+        {% for w in searches %}
+          <div class="event-row">
+            <div class="row-body">
+              <span class="row-name">{{ tab_names[w.kind] }}</span>
+              <span class="row-meta">{{ w.label }}</span>
+            </div>
+            <button class="event-remove" type="submit" form="unsearch-{{ w.id }}"
+                    aria-label="Stop watching {{ tab_names[w.kind] }}: {{ w.label }}">Remove</button>
+          </div>
+          {% if not loop.last %}<div class="divider" style="margin-left: 14px"></div>{% endif %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="note" style="text-align: left; margin: 0 2px">
+        None yet. On Tickets, Housing or Market, search and set the filters you
+        want, then tap the bell next to your picture. You can save as many as
+        you like.
+      </p>
+    {% endif %}
+
+    {# Every event with a bell, soonest first. Past ones disappear on their own. #}
+    <span class="section">EVENTS YOU WATCH</span>
+    {% if events %}
+      <div class="rows">
+        {% for e in events %}
+          <div class="event-row">
+            <div class="row-body">
+              <span class="row-name">{{ e.title }}</span>
+              <span class="row-meta">{{ e.event_date | pretty_date }}{% if e.event_time %} · {{ e.event_time }}{% endif %}{% if e.place %} · {{ e.place }}{% endif %}</span>
+            </div>
+            <button class="event-remove" type="submit" form="unwatch-{{ e.id }}"
+                    aria-label="Stop watching {{ e.title }}">Remove</button>
+          </div>
+          {% if not loop.last %}<div class="divider" style="margin-left: 14px"></div>{% endif %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="note" style="text-align: left; margin: 0 2px">
+        None yet. Open a ticket and tap "Notify me about more tickets" to hear
+        when somebody else sells one for the same event.
+      </p>
+    {% endif %}
+    {% endif %}
+    <div style="height: calc(var(--foot) + 20px)"></div>
+
+  </form>
+
+  {# One small form per event, outside the settings form, so Remove works on
+     its own and never saves the switches by accident. #}
+  {% for e in events %}
+    <form id="unwatch-{{ e.id }}" method="post" action="/notify/event/remove" hidden>
+      <input type="hidden" name="watch_id" value="{{ e.id }}">
+    </form>
+  {% endfor %}
+  {% for w in searches %}
+    <form id="unsearch-{{ w.id }}" method="post" action="/notify/search/remove" hidden>
+      <input type="hidden" name="watch_id" value="{{ w.id }}">
+    </form>
+  {% endfor %}
+</div>
+{% endblock %}

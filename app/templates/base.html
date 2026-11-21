@@ -25,6 +25,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Campus Market">
 <link rel="manifest" href="/static/manifest.webmanifest">
+{% if PUSH_ON() %}<meta name="push-key" content="{{ PUSH_KEY() }}">{% endif %}
 <link rel="apple-touch-icon" href="{{ asset('img/icon-180.png') }}">
 <link rel="icon" href="{{ asset('img/favicon.svg') }}" type="image/svg+xml">
 <link rel="icon" href="{{ asset('img/icon-192.png') }}" sizes="192x192">
@@ -39,6 +40,10 @@
   'saved': 'Your changes are saved.',
   'closed': 'Entry closed. It is gone from the list.',
   'reopened': 'It is back up and visible again.',
+  'watching': 'You will hear when somebody else sells a ticket for this event.',
+  'unwatched': 'No more notifications for this event.',
+  'search-on': 'Search saved. You will hear when something new fits it.',
+  'search-off': 'No more notifications for this search.',
 } -%}
 {%- set done = request.query_params.get('done') if request else None -%}
 {%- if done in TOASTS -%}
