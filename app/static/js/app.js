@@ -655,6 +655,10 @@
     unreachable: "{site} did not answer. Check the link, or type it in.",
     empty: "We opened the page but found no event on it. Please type it in.",
     login: "Log in again, then try once more.",
+    setup: "Screenshots are not switched on yet. Please type it in.",
+    picture: "That file is not a screenshot we can read. Use a PNG or JPEG.",
+    limit: "That is all the screenshots for today. Please type it in.",
+    claude: "Claude could not read it just now. Try again in a minute, or type it in.",
   };
   const NAMES = { title: "title", category: "category", event_date: "date",
                   event_time: "time", place: "venue", address: "address",
@@ -700,6 +704,40 @@
     return done;
   };
 
+  // One answer, from a link or a screenshot, goes into the form the same way.
+  const show = (data) => {
+    if (!data.ok) {
+      say((REASONS[data.reason] || REASONS.empty).replace("{site}", data.site || "That site"), "bad");
+      return;
+    }
+    const done = fill(data.fields || {});
+    let text = `Filled in from ${data.site}: ${done.join(", ")}.`;
+    if ("price" in (data.fields || {})) text += " The price is what the ticket cost there, change it to yours.";
+    say(text + " Check it before publishing.", "ok");
+  };
+
+  const shot = document.getElementById("ticket_shot");
+  const shotLabel = document.getElementById("ticket-shot-label");
+  if (shot) {
+    shot.addEventListener("change", async () => {
+      const file = shot.files[0];
+      if (!file) return;
+      shotLabel.classList.add("is-busy");
+      say("Claude is reading your screenshot…");
+      try {
+        const body = new FormData();
+        body.append("screenshot", file);
+        const res = await fetch("/new/ticket-screenshot", { method: "POST", body });
+        show(await res.json());
+      } catch (e) {
+        say("Something went wrong. Please type it in.", "bad");
+      } finally {
+        shot.value = "";
+        shotLabel.classList.remove("is-busy");
+      }
+    });
+  }
+
   const run = async () => {
     const url = input.value.trim();
     if (!url) { say("Paste the link to the event first.", "bad"); input.focus(); return; }
@@ -708,15 +746,7 @@
     try {
       const body = new URLSearchParams({ url });
       const res = await fetch("/new/ticket-autofill", { method: "POST", body });
-      const data = await res.json();
-      if (!data.ok) {
-        say((REASONS[data.reason] || REASONS.empty).replace("{site}", data.site || "That site"), "bad");
-        return;
-      }
-      const done = fill(data.fields || {});
-      let text = `Filled in from ${data.site}: ${done.join(", ")}.`;
-      if ("price" in (data.fields || {})) text += " The price is what the ticket cost there, change it to yours.";
-      say(text + " Check it before publishing.", "ok");
+      show(await res.json());
     } catch (e) {
       say("Something went wrong. Please type it in.", "bad");
     } finally {

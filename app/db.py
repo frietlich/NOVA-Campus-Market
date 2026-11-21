@@ -806,3 +806,29 @@ def unread_total(user_id):
     ).fetchone()
     conn.close()
     return row["n"]
+
+
+# ------------------------------------------------------------- screenshots
+
+def take_ai_read(user_id, limit):
+    """Count one screenshot read for today. False once the limit is reached.
+
+    Counted before the read, so a student who keeps retrying a failing
+    screenshot still stops at the limit.
+    """
+    day = datetime.now(timezone.utc).date().isoformat()
+    conn = connect()
+    try:
+        with conn:
+            row = conn.execute(
+                "SELECT count FROM ai_reads WHERE user_id = ? AND day = ?",
+                (user_id, day)).fetchone()
+            if row and row["count"] >= limit:
+                return False
+            conn.execute(
+                "INSERT INTO ai_reads (user_id, day, count) VALUES (?, ?, 1)"
+                " ON CONFLICT(user_id, day) DO UPDATE SET count = count + 1",
+                (user_id, day))
+            return True
+    finally:
+        conn.close()

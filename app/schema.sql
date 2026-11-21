@@ -118,3 +118,12 @@ CREATE TABLE IF NOT EXISTS course_offerings (
     PRIMARY KEY (course_id, programme)
 );
 CREATE INDEX IF NOT EXISTS idx_course_offerings_programme ON course_offerings (programme, type);
+
+-- How often a student had a screenshot read by Claude today. Every read
+-- costs money, so there is a daily limit per student.
+CREATE TABLE IF NOT EXISTS ai_reads (
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    day     TEXT    NOT NULL,                    -- 2026-11-21
+    count   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, day)
+);

@@ -19,7 +19,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import categories, db, housing, mailer, passwords, programmes, ticket_import
+from . import (categories, db, housing, mailer, passwords, programmes,
+               ticket_import, ticket_screenshot)
 
 # .env first, so CAMPUS_SECRET and the mail account can live in it.
 mailer.load_env()
@@ -261,6 +262,7 @@ templates.env.globals["SORT_OPTIONS"] = SORT_OPTIONS
 templates.env.globals["SORT_SHORT"] = SORT_SHORT
 templates.env.globals["PRICE_BANDS"] = PRICE_BANDS
 templates.env.globals["HOUSING"] = housing
+templates.env.globals["SCREENSHOTS_ON"] = ticket_screenshot.is_set_up
 templates.env.globals["PRICE_SHORT"] = {key: name for key, name, _, _ in PRICE_BANDS}
 
 
@@ -1126,6 +1128,24 @@ def new_ticket_autofill(request: Request, url: str = Form("")):
     if me_or_none(request) is None:
         return JSONResponse({"ok": False, "reason": "login"}, status_code=401)
     return JSONResponse(ticket_import.autofill(url))
+
+
+@app.post("/new/ticket-screenshot")
+def new_ticket_screenshot(request: Request, screenshot: UploadFile = File(None)):
+    """Fill the ticket form from a screenshot of the event, read by Claude.
+
+    Same JSON as the link. The picture is only read, never stored, and each
+    student has a daily limit because every read costs money.
+    """
+    me = me_or_none(request)
+    if me is None:
+        return JSONResponse({"ok": False, "reason": "login"}, status_code=401)
+    if not ticket_screenshot.is_set_up():
+        return JSONResponse({"ok": False, "reason": "setup"})
+    if not db.take_ai_read(me["id"], ticket_screenshot.READS_PER_DAY):
+        return JSONResponse({"ok": False, "reason": "limit"})
+    data = screenshot.file.read(ticket_screenshot.MAX_UPLOAD + 1) if screenshot else b""
+    return JSONResponse(ticket_screenshot.read(data))
 
 
 @app.post("/new")

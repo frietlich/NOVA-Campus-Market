@@ -8,7 +8,7 @@ what is in `docs/tasks.docx`. Read both before you write code.
 
 ## Run it
 
-You need Python 3.10 or newer. From this folder, once:
+You need Python 3.10 or newer (3.15 is what we test with). From this folder, once:
 
     python3 -m venv .venv
     source .venv/bin/activate
@@ -95,6 +95,7 @@ predictable by design. All of it lives in `db.new_code` and `db.check_code`.
     app/programmes.py  the list of programmes the school offers
     app/passwords.py   the password rules and how a password is stored
     app/ticket_import.py  filling the ticket form from the link to the event
+    app/ticket_screenshot.py  the same from a screenshot, read by Claude
     app/mailer.py      sending the 6-digit code, and reading .env
     app/categories.py  what a ticket can be for
     app/schema.sql     the five tables
@@ -303,6 +304,22 @@ it in. `tests/test_ticket_import.py` covers all of it without going online.
 
 The time on a page is turned into Lisbon time, summer and winter, because the
 sites write it in UTC.
+
+## A ticket from a screenshot
+
+Shotgun, Resident Advisor, a ticket app or an Instagram story cannot be read
+by link. A screenshot of the event can: `app/ticket_screenshot.py` sends it to
+Claude (`claude-opus-5-5`), which answers in a fixed JSON form, and the ticket
+form fills itself in the same way as from a link.
+
+* Switched on by `ANTHROPIC_API_KEY` in `.env`. Without a key the button is not
+  shown at all.
+* About one cent per screenshot. Every student gets 20 a day (`ai_reads`).
+* The picture is shrunk to a small JPEG, sent once and thrown away. It is
+  never saved, because a ticket screenshot often has the QR code on it.
+* Claude is told to read only the event, never QR codes, ticket numbers or
+  names, and to leave a field empty rather than guess.
+* `tests/test_ticket_screenshot.py` never calls Claude, it answers for it.
 
 ## Not now, but worth knowing
 

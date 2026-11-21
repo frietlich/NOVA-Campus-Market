@@ -491,6 +491,8 @@ img { display: block; max-width: 100%; }
 .ticket-link-go { width: auto; height: auto; padding: 0 16px; font-size: 15px; }
 .ticket-link-go[disabled] { opacity: 0.5; cursor: default; }
 .ticket-link-status { text-align: left; margin: 6px 2px 0; }
+.ticket-shot { margin-top: 8px; height: 44px; font-size: 15px; gap: 8px; }
+.ticket-shot.is-busy { opacity: 0.5; pointer-events: none; }
 .ticket-link-status.is-ok { color: var(--accent); font-weight: 600; }
 .ticket-link-status.is-bad { color: #B3271B; font-weight: 600; }
 .input.is-filled { border-color: var(--accent); }

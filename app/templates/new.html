@@ -62,8 +62,18 @@
                maxlength="500" placeholder="luma.com/… or dice.fm/event/…">
         <button class="btn btn--quiet ticket-link-go" type="button" id="ticket-link-go">Fill in</button>
       </div>
+      {% if SCREENSHOTS_ON() %}
+      {# Shotgun, RA, a ticket app or a story: a screenshot works for all of
+         them. Claude reads it, nothing is stored. #}
+      <label class="btn btn--quiet ticket-shot" for="ticket_shot" id="ticket-shot-label">
+        {{ icon.picture(18, 1.7) }} Or fill in from a screenshot
+      </label>
+      <input class="sr" id="ticket_shot" type="file" accept="image/png,image/jpeg,image/webp">
+      {% endif %}
       <p class="note ticket-link-status" id="ticket-link-status" aria-live="polite">
-        Optional. Works with Luma, DICE, Xceed, BOL and Eventbrite.
+        Optional. Links work with Luma, DICE, Xceed, BOL and Eventbrite.
+        {% if SCREENSHOTS_ON() %}A screenshot works with any site, also Shotgun
+        and RA. It is read by Claude and not stored.{% endif %}
         You check everything before publishing.
       </p>
     </div>
