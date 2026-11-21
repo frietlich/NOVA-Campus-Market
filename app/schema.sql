@@ -58,7 +58,6 @@ CREATE TABLE IF NOT EXISTS listings (
     months_min     INTEGER,                      -- shortest stay they accept
     bills_included INTEGER,                      -- 1 when the rent is all in
     bills_estimate REAL,                         -- what bills cost on top
-    deposit_months INTEGER,                      -- deposit, in months of rent
     minutes_campus INTEGER,                      -- door to campus, their guess
     flatmates      INTEGER,                      -- how many already live there
     features       TEXT,                        -- a comma separated list
@@ -81,6 +80,12 @@ CREATE TABLE IF NOT EXISTS conversations (
     listing_id INTEGER NOT NULL REFERENCES listings(id),
     starter_id INTEGER NOT NULL REFERENCES users(id),
     created_at TEXT    NOT NULL,
+    -- Archiving is one person's decision, not the chat's, so each side has
+    -- its own stamp. NULL means it is still in that person's list. The owner
+    -- archives a whole entry at once, the student who wrote archives the one
+    -- chat, and a new message clears the stamp again either way.
+    archived_owner   TEXT,
+    archived_starter TEXT,
     UNIQUE (listing_id, starter_id)
 );
 
@@ -90,12 +95,30 @@ CREATE TABLE IF NOT EXISTS messages (
     sender_id       INTEGER NOT NULL REFERENCES users(id),
     body            TEXT    NOT NULL,
     created_at      TEXT    NOT NULL,
-    read_at         TEXT
+    read_at         TEXT,
+    -- text is somebody typing. closed is the app saying the entry is gone,
+    -- written when the owner closes it. It is a real message because it has
+    -- to do what a message does, sit in the thread at its own time, lift the
+    -- chat up the list and count as unread for everyone but the sender. The
+    -- sender of a closed row is the owner, which is what makes that last
+    -- part true without a rule of its own.
+    kind            TEXT    NOT NULL DEFAULT 'text'
 );
 
 -- One heart. A student saved an entry, which is the whole table. There is no
 -- row for a heart that was taken away again, it is simply deleted.
 CREATE TABLE IF NOT EXISTS saves (
+    user_id    INTEGER NOT NULL REFERENCES users(id),
+    listing_id INTEGER NOT NULL REFERENCES listings(id),
+    created_at TEXT    NOT NULL,
+    PRIMARY KEY (user_id, listing_id)
+);
+
+-- One student looked at one entry. The row is what makes the number on an
+-- entry mean something, because without it a count went up every time the
+-- same person pressed reload. listings.views is kept as the running total
+-- so every list can still show it without counting rows.
+CREATE TABLE IF NOT EXISTS views (
     user_id    INTEGER NOT NULL REFERENCES users(id),
     listing_id INTEGER NOT NULL REFERENCES listings(id),
     created_at TEXT    NOT NULL,
