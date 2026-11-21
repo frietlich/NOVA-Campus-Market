@@ -95,6 +95,54 @@ class PushTests(unittest.TestCase):
             self.assertEqual(push.send(self.buyer, "x", "y", "/"), 0)
         self.assertEqual(self.sent, [])
 
+    def event(self, title, date_, time_, place, owner=None):
+        listing_id = db.create_listing(owner or self.seller, "ticket", title, price=20,
+                                       category="party", event_date=date_,
+                                       event_time=time_, place=place)
+        return db.get_listing(listing_id)
+
+    def test_several_events_can_be_watched_and_only_that_one_rings(self):
+        from app.main import event_key
+        brunch = self.event("Brunch Electronik", "2030-06-07", "14:00", "Tapada da Ajuda")
+        lux = self.event("Lux night", "2030-06-08", "23:00", "Lux Frágil")
+        db.watch_event(self.buyer, event_key(brunch), brunch["title"], brunch["place"])
+        db.watch_event(self.buyer, event_key(lux), lux["title"], lux["place"])
+        self.assertEqual(len(db.events_watched(self.buyer)), 2)
+
+        # Somebody else sells for the brunch, with another name and spelling.
+        again = self.event("2x brunch sunday!!", "2030-06-07", "14:00", "tapada da ajuda",
+                           owner=self.other)
+        push.new_listing(again, event_key)
+        self.assertEqual(self.receivers(), [self.buyer])
+        self.assertTrue(self.sent[0][1]["title"].startswith("Another ticket"))
+
+        self.sent.clear()
+        push.new_listing(self.event("Other party", "2030-06-07", "22:00", "Tapada da Ajuda",
+                                    owner=self.other), event_key)
+        self.assertEqual(self.sent, [])
+
+    def test_an_event_watcher_who_also_watches_the_tab_hears_it_once(self):
+        from app.main import event_key
+        brunch = self.event("Brunch Electronik", "2030-06-07", "14:00", "Tapada da Ajuda")
+        db.watch_event(self.buyer, event_key(brunch), brunch["title"], brunch["place"])
+        db.set_pref(self.buyer, "ticket", True, "", "")
+        push.new_listing(self.event("Brunch", "2030-06-07", "14:00", "Tapada da Ajuda",
+                                    owner=self.other), event_key)
+        self.assertEqual(self.receivers(), [self.buyer])
+
+    def test_an_event_can_be_removed_and_past_ones_go_by_themselves(self):
+        from app.main import event_key
+        soon = self.event("Soon", "2030-06-07", "14:00", "Somewhere")
+        past = self.event("Past", "2020-01-01", "14:00", "Somewhere")
+        db.watch_event(self.buyer, event_key(soon), "Soon", "Somewhere")
+        db.watch_event(self.buyer, event_key(past), "Past", "Somewhere")
+        watched = db.events_watched(self.buyer)
+        self.assertEqual([w["title"] for w in watched], ["Soon"])
+        db.unwatch_event(self.other, watch_id=watched[0]["id"])   # not theirs
+        self.assertEqual(len(db.events_watched(self.buyer)), 1)
+        db.unwatch_event(self.buyer, watch_id=watched[0]["id"])
+        self.assertEqual(db.events_watched(self.buyer), [])
+
     def test_keys_have_the_shape_browsers_expect(self):
         public, private = push.make_keys()
         self.assertEqual(len(public), 87)    # 65 bytes, base64 without padding
@@ -151,6 +199,22 @@ class PageTests(unittest.TestCase):
         self.assertEqual(len(db.devices_of(self.user)), 1)
         bad = dict(good, endpoint="http://127.0.0.1/steal")
         self.assertEqual(self.client.post("/push/device", json=bad).status_code, 400)
+
+    def test_the_bell_on_a_ticket_and_the_list_in_the_settings(self):
+        seller = db.create_user("55555@novasbe.pt", "Seller S.")
+        listing_id = db.create_listing(seller, "ticket", "Brunch Electronik", price=40,
+                                       event_date="2030-06-07", event_time="14:00",
+                                       place="Tapada da Ajuda")
+        self.assertIn("Notify me about more tickets",
+                      self.client.get(f"/listing/{listing_id}").text)
+        self.client.post("/notify/event", data={"listing_id": listing_id, "on": "1"})
+        self.assertIn("You are watching this event",
+                      self.client.get(f"/listing/{listing_id}").text)
+        settings = self.client.get("/profile/notifications").text
+        self.assertIn("Brunch Electronik", settings)
+        watch_id = db.events_watched(self.user)[0]["id"]
+        self.client.post("/notify/event/remove", data={"watch_id": watch_id})
+        self.assertEqual(db.events_watched(self.user), [])
 
     def test_the_service_worker_is_served_from_the_top(self):
         answer = self.client.get("/sw.js")

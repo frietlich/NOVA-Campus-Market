@@ -152,3 +152,21 @@ CREATE TABLE IF NOT EXISTS notify_prefs (
     cat     TEXT    NOT NULL DEFAULT '',
     PRIMARY KEY (user_id, area)
 );
+
+-- One event a student wants to hear about: tell me when somebody else puts up
+-- a ticket for it. An event is the same day, time and place, whatever the
+-- sellers called their ticket, so place_key is the place boiled down the same
+-- way the Tickets tab does it. title and place are only for the list in the
+-- settings. A student can watch as many events as they like.
+CREATE TABLE IF NOT EXISTS event_watches (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id),
+    event_date TEXT    NOT NULL,
+    event_time TEXT    NOT NULL DEFAULT '',
+    place_key  TEXT    NOT NULL DEFAULT '',
+    title      TEXT    NOT NULL,
+    place      TEXT    NOT NULL DEFAULT '',
+    created_at TEXT    NOT NULL,
+    UNIQUE (user_id, event_date, event_time, place_key)
+);
+CREATE INDEX IF NOT EXISTS idx_event_watches_event ON event_watches (event_date, event_time, place_key);

@@ -909,3 +909,65 @@ def watchers_of(kind):
         (kind,)).fetchall()
     conn.close()
     return rows
+
+
+def watch_event(user_id, key, title, place):
+    """Start watching one event. key is (date, time, place boiled down)."""
+    event_date, event_time, place_key = key
+    conn = connect()
+    with conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO event_watches (user_id, event_date, event_time,"
+            " place_key, title, place, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (user_id, event_date, event_time, place_key, title[:60], (place or "")[:60], now()))
+    conn.close()
+
+
+def unwatch_event(user_id, key=None, watch_id=None):
+    """Stop watching, either by the event itself or by the row in the settings."""
+    conn = connect()
+    with conn:
+        if watch_id is not None:
+            conn.execute("DELETE FROM event_watches WHERE id = ? AND user_id = ?",
+                         (watch_id, user_id))
+        else:
+            conn.execute(
+                "DELETE FROM event_watches WHERE user_id = ? AND event_date = ?"
+                " AND event_time = ? AND place_key = ?", (user_id, *key))
+    conn.close()
+
+
+def is_watching_event(user_id, key):
+    conn = connect()
+    row = conn.execute(
+        "SELECT 1 FROM event_watches WHERE user_id = ? AND event_date = ?"
+        " AND event_time = ? AND place_key = ?", (user_id, *key)).fetchone()
+    conn.close()
+    return row is not None
+
+
+def events_watched(user_id):
+    """The events a student watches that have not happened yet, soonest first.
+
+    Past ones are thrown away on the way, nobody needs to hear about them.
+    """
+    today = datetime.now(timezone.utc).date().isoformat()
+    conn = connect()
+    with conn:
+        conn.execute("DELETE FROM event_watches WHERE user_id = ? AND event_date < ?",
+                     (user_id, today))
+        rows = conn.execute(
+            "SELECT * FROM event_watches WHERE user_id = ?"
+            " ORDER BY event_date, event_time, title", (user_id,)).fetchall()
+    conn.close()
+    return rows
+
+
+def event_watchers(key):
+    """Everyone watching this one event."""
+    conn = connect()
+    rows = conn.execute(
+        "SELECT user_id FROM event_watches WHERE event_date = ? AND event_time = ?"
+        " AND place_key = ?", key).fetchall()
+    conn.close()
+    return [row["user_id"] for row in rows]

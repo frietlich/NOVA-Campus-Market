@@ -24,6 +24,8 @@
   'published': 'Your entry is live. Every Nova student can see it now.',
   'closed': 'Entry closed. It is gone from the list.',
   'reopened': 'It is back up and visible again.',
+  'watching': 'You will hear when somebody else sells a ticket for this event.',
+  'unwatched': 'No more notifications for this event.',
 } -%}
 {%- set done = request.query_params.get('done') if request else None -%}
 {%- if done in TOASTS -%}

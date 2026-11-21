@@ -252,6 +252,28 @@
       </a>
     {% endif %}
 
+    {% if listing.type == 'ticket' and listing.event_date and listing.owner_id != me.id and PUSH_ON() %}
+      {# The bell for this one event: tell me when somebody else puts up a
+         ticket for the same day, time and place, whatever they call it. #}
+      <form method="post" action="/notify/event" {{ 'data-push-ask' if not watching_event }}>
+        <input type="hidden" name="listing_id" value="{{ listing.id }}">
+        <input type="hidden" name="on" value="{{ '0' if watching_event else '1' }}">
+        <button class="watch {{ 'watch--on' if watching_event }}" type="submit"
+                aria-pressed="{{ 'true' if watching_event else 'false' }}">
+          <span class="watch-icon">{{ icon.bell(19, 1.8) }}</span>
+          <span class="watch-text">
+            {% if watching_event %}
+              <b>You are watching this event</b>
+              <span>Tap to stop. All your events are in Profile, Notifications.</span>
+            {% else %}
+              <b>Notify me about more tickets</b>
+              <span>For this event, whatever the next seller calls it.</span>
+            {% endif %}
+          </span>
+        </button>
+      </form>
+    {% endif %}
+
     <div class="rule"></div>
 
     <div class="owner">

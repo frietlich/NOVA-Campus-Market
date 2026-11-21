@@ -1052,11 +1052,13 @@ def listing_detail(request: Request, listing_id: int):
     if row["owner_id"] != me["id"]:
         db.count_view(listing_id)
         row = db.get_listing(listing_id)
+    watching = (row["type"] == "ticket" and bool(row["event_date"])
+                and db.is_watching_event(me["id"], event_key(row)))
     return page(request, "detail.html", listing=row, photos=db.photos_of(listing_id),
                 tab=BY_KIND[row["type"]], me=me,
                 tabs=tear_tabs(row) if row["type"] == "group" else [],
                 saved=db.is_saved(me["id"], listing_id),
-                saves=db.save_count(listing_id))
+                saves=db.save_count(listing_id), watching_event=watching)
 
 
 @app.post("/listing/{listing_id}/close")
@@ -1286,7 +1288,7 @@ async def new_listing(request: Request,
         position += 1
 
     # Everyone watching this tab hears about it, after the page has answered.
-    background.add_task(push.new_listing, db.get_listing(listing_id))
+    background.add_task(push.new_listing, db.get_listing(listing_id), event_key)
     return go(f"/listing/{listing_id}?done=published")
 
 
@@ -1725,7 +1727,8 @@ def notifications_form(request: Request, done: str = ""):
     if me is None:
         return go("/start")
     return page(request, "notifications.html", me=me, prefs=db.prefs_of(me["id"]),
-                areas=push.AREAS, devices=len(db.devices_of(me["id"])), done=done)
+                areas=push.AREAS, devices=len(db.devices_of(me["id"])), done=done,
+                events=db.events_watched(me["id"]))
 
 
 @app.post("/profile/notifications")
@@ -1738,6 +1741,32 @@ async def notifications_save(request: Request):
     for area in db.NOTIFY_AREAS:
         db.set_pref(me["id"], area, area in on)
     return go("/profile/notifications?done=saved")
+
+
+@app.post("/notify/event")
+def notify_event(request: Request, listing_id: int = Form(0), on: str = Form("1")):
+    """The bell on a ticket: tell me about more tickets for this same event."""
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    row = db.get_listing(listing_id)
+    if row is None or row["type"] != "ticket" or not row["event_date"]:
+        return go("/tickets")
+    if on == "1":
+        db.watch_event(me["id"], event_key(row), row["title"], row["place"])
+    else:
+        db.unwatch_event(me["id"], event_key(row))
+    return go(f"/listing/{listing_id}?done=" + ("watching" if on == "1" else "unwatched"))
+
+
+@app.post("/notify/event/remove")
+def notify_event_remove(request: Request, watch_id: int = Form(0)):
+    """Stop watching one event, from the list in the settings."""
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    db.unwatch_event(me["id"], watch_id=watch_id)
+    return go("/profile/notifications?done=removed")
 
 
 @app.post("/notify/watch")

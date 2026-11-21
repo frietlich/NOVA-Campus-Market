@@ -339,6 +339,14 @@ for whatever you are searching for right now, so the bell on "party" only
 rings for parties. Every area can be switched off at `/profile/notifications`,
 which also has the button that asks the browser and a test notification.
 
+For one particular event there is a bell on the ticket itself: "Notify me
+about more tickets". It rings when somebody else puts up a ticket for the same
+day, time and place, whatever they call it, the same rule the Tickets tab uses
+to fold a day. A student can watch as many events as they like. All of them
+are listed under "Events you watch" in the notification settings, each with
+Remove, and past events drop off by themselves. Nobody is told twice when an
+event bell and a tab bell both fit.
+
 It needs a key pair of our own. Make one with `python -m app.push keys` and put
 its lines into `.env`. Without them nothing about notifications is shown.
 

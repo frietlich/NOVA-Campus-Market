@@ -152,8 +152,13 @@ def new_message(conv, sender_id, body):
     return send(receiver, f"{name} · {conv['title']}", body, f"/chat/{conv['id']}")
 
 
-def new_listing(listing):
-    """Tell everyone watching this tab whose search the new entry fits."""
+def new_listing(listing, event_key=None):
+    """Tell everyone who wants to hear about this new entry. Once each.
+
+    First whoever watches this very event, when it is a ticket and event_key
+    says which event it is. Then whoever watches the tab with a search the
+    entry fits. Nobody hears about their own entry, and nobody twice.
+    """
     kind = listing["type"]
     if kind not in WHAT:
         return 0
@@ -162,13 +167,20 @@ def new_listing(listing):
         bits.append(listing["event_date"] or "")
     bits.append(listing["place"] or "")
     body = " · ".join(b for b in bits if b)
+    url = f"/listing/{listing['id']}"
+    told = {listing["owner_id"]}
     reached = 0
+    if kind == "ticket" and event_key and listing["event_date"]:
+        for user_id in db.event_watchers(event_key(listing)):
+            if user_id not in told:
+                told.add(user_id)
+                reached += send(user_id, f"Another ticket: {listing['title']}", body, url)
     for watcher in db.watchers_of(kind):
-        if watcher["user_id"] == listing["owner_id"]:
+        if watcher["user_id"] in told:
             continue
         if matches(listing, watcher["q"], watcher["cat"]):
-            reached += send(watcher["user_id"], f"{WHAT[kind]}: {listing['title']}",
-                            body, f"/listing/{listing['id']}")
+            told.add(watcher["user_id"])
+            reached += send(watcher["user_id"], f"{WHAT[kind]}: {listing['title']}", body, url)
     return reached
 
 
