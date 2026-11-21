@@ -8,11 +8,12 @@
     <div class="sheet-head">
       <span class="side"><a class="link link--plain" href="{{ back }}">Cancel</a></span>
       <span class="mid">My courses</span>
-      <span class="side side--right"><button class="link" type="submit">Save</button></span>
+      {#- No Save up here. With 148 courses it was a long way back to the
+          top, so the button rides along at the foot instead. -#}
+      <span class="side"></span>
     </div>
     <p class="note" style="text-align:left;margin:4px 2px 0">
       Choose from Nova's predefined 2026/27 courses for {{ me.programme }}.
-      Groups shows listings for the courses you select.
     </p>
     <div class="search" style="margin-top:14px">
       {{ icon.search() }}
@@ -20,13 +21,13 @@
       <input id="filter" type="search" placeholder="Course name or code" autocomplete="off">
     </div>
     <span class="section" style="margin:18px 0 8px 2px">
-      OFFICIAL COURSES <span id="picked" class="count-inline">{{ chosen | length }} picked</span>
+      Official courses <span id="picked" class="count-inline">{{ chosen | length }} picked</span>
     </span>
     <div class="rows" id="list">
       {% for label, types in [
-          ('MANDATORY COURSES', ['MANDATORY']),
-          ('ELECTIVES', ['ELECTIVE','EXCLUSIVE_ELECTIVE']),
-          ('OUT OF PROGRAMME', ['OUT_PROGRAM'])
+          ('Mandatory courses', ['MANDATORY']),
+          ('Electives', ['ELECTIVE','EXCLUSIVE_ELECTIVE']),
+          ('Out of programme', ['OUT_PROGRAM'])
       ] %}
         {% if courses | selectattr('course_type', 'in', types) | list %}
           <div class="section course-heading" style="margin:18px 0 8px 2px">{{ label }}</div>
@@ -46,7 +47,12 @@
     </div>
     <p class="empty-filter" id="nothing" hidden>No course matches that search.</p>
     {% if not courses %}<p class="note">There is no official course catalogue for this programme yet.</p>{% endif %}
-    <div style="height:26px"></div>
+    {#- Room for the bar below, which floats over the page. -#}
+    <div style="height: calc(var(--foot) + 84px)"></div>
+
+    <div class="savebar">
+      <button class="btn" type="submit">Save</button>
+    </div>
   </form>
 </div>
 {% endblock %}

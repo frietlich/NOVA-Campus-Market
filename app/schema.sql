@@ -58,7 +58,6 @@ CREATE TABLE IF NOT EXISTS listings (
     months_min     INTEGER,                      -- shortest stay they accept
     bills_included INTEGER,                      -- 1 when the rent is all in
     bills_estimate REAL,                         -- what bills cost on top
-    deposit_months INTEGER,                      -- deposit, in months of rent
     minutes_campus INTEGER,                      -- door to campus, their guess
     flatmates      INTEGER,                      -- how many already live there
     features       TEXT,                        -- a comma separated list

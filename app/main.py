@@ -459,14 +459,14 @@ def housing_search(cat, sort, rent, rmin, rmax, mins, minsx, stay, area,
 
     rent = rent if rent in housing.RENT_BY_KEY else ""
     low, high = housing.RENT_BY_KEY[rent][2], housing.RENT_BY_KEY[rent][3]
-    typed_low = housing.whole_number(rmin, 100000)
-    typed_high = housing.whole_number(rmax, 100000)
+    typed_low = housing.whole_number(rmin, PRICE_MAX)
+    typed_high = housing.whole_number(rmax, PRICE_MAX)
     if typed_low or typed_high:
         rent, low, high = "", typed_low, typed_high
 
     mins = mins if mins in housing.CAMPUS_BY_KEY else ""
     minutes = housing.CAMPUS_BY_KEY[mins][2]
-    typed_mins = housing.whole_number(minsx, 600)
+    typed_mins = housing.whole_number(minsx, MINUTES_MAX)
     if typed_mins:
         mins, minutes = "", typed_mins
 
@@ -633,6 +633,11 @@ async def bad_address(request: Request, error: RequestValidationError):
 # A tab is what the profile goes back to, because the profile is opened from
 # a tab. A place is what an entry goes back to, which is a tab or the profile
 # or the chats, depending on where the entry was opened from.
+#
+# Somebody else's profile is deliberately not one. There is a single slot and
+# a profile sharing it with the tab underneath meant one of the two arrows
+# was always pointing at the wrong page. An entry opened from a profile is
+# told where to go back to in its own address instead, see student.html.
 TAB_PAGES = ("listings.html", "chats.html")
 PLACES = TAB_PAGES + ("profile.html",)
 
@@ -655,6 +660,8 @@ def page(request, template, **values):
     db.close_past_dates()
     me = me_or_none(request)
     values.setdefault("me", me)
+    # Signed out there is nobody to ask, so the page follows the phone.
+    values.setdefault("theme", (me["theme"] or "") if me else "")
     values.setdefault("unread", db.unread_total(me["id"]) if me else 0)
     values.setdefault("active", "")
     if template in PLACES:
@@ -706,6 +713,21 @@ def waiting_or_none(request, key):
 
 def go(path):
     return RedirectResponse(path, status_code=303)
+
+
+def ours(path):
+    """A page of this app, or nothing.
+
+    Several screens are told in their own address where the arrow should
+    go back to. That address comes in off the URL, so it has to be read as
+    something anybody could have typed, and an arrow in our app has no
+    business leading off it. One leading slash and no second one, which is
+    how a browser reads //somewhere.else as another site.
+    """
+    path = (path or "").strip()
+    if not path.startswith("/") or path.startswith("//"):
+        return ""
+    return path
 
 
 # How long somebody waits before the same address gets another code. Stops a
@@ -1144,7 +1166,7 @@ def courses_form(request: Request, back: str = "/profile"):
 
     courses = db.courses_for_programme(me["programme"])
     return page(request, "courses.html", courses=courses, chosen=chosen,
-                back=back, me=me)
+                back=ours(back) or "/profile", me=me)
 
 
 @app.post("/courses")
@@ -1155,7 +1177,7 @@ async def courses_save(request: Request):
     form = await request.form()
     picked = [v for v in form.getlist("course_id") if str(v).isdigit()]
     db.set_enrolments(me["id"], set(map(int, picked)) & db.valid_course_ids(me["programme"]))
-    back = form.get("back") or "/profile"
+    back = ours(form.get("back")) or "/profile"
     return go(back if str(back).startswith("/") else "/profile")
 
 
@@ -1174,7 +1196,7 @@ def listing_detail(request: Request, listing_id: int, back: str = ""):
         row = db.get_listing(listing_id)
     return page(request, "detail.html", listing=row, photos=db.photos_of(listing_id),
                 tab=BY_KIND[row["type"]], me=me,
-                back=back or request.session.get("last_place")
+                back=ours(back) or request.session.get("last_place")
                      or BY_KIND[row["type"]]["path"],
                 tabs=tear_tabs(row) if row["type"] == "group" else [],
                 saved=db.is_saved(me["id"], listing_id),
@@ -1267,7 +1289,7 @@ def edit_form(request: Request, listing_id: int, error: str = "", back: str = ""
     kind = listing["type"]
     return page(request, "new.html", tab=BY_KIND[kind], error=error, me=me,
                 active=kind, v=form_values(listing), edit_id=listing_id,
-                back=back or BY_KIND[kind]["path"],
+                back=ours(back) or BY_KIND[kind]["path"],
                 my_courses=db.courses_of(me["id"]) if kind == "group" else [])
 
 
@@ -1352,7 +1374,7 @@ async def new_listing(request: Request,
 
     def oops(message):
         return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
-                    my_courses=mine, v=typed, error=message, back=back,
+                    my_courses=mine, v=typed, error=message, back=ours(back),
                     edit_id=changing["id"] if changing else None)
 
     if len(title.strip()) > TITLE_MAX:
@@ -1911,7 +1933,18 @@ def student(request: Request, user_id: int):
     if them is None or not them["verified"]:
         return page(request, "missing.html", me=me)
     open_rows = [l for l in db.listings_of_user(user_id) if l["status"] == "open"]
+
+    # The arrow goes back through the browser, which lands you exactly
+    # where you left, scroll and all. With one exception, and it is the one
+    # that used to walk in a circle. Something they have up sends you back
+    # here when you are done with it, so the page before this one is that
+    # entry, and going back through the browser would open the entry again,
+    # whose arrow points here, and round and round. Coming from an entry,
+    # the arrow therefore leaves by its own address instead, for whatever
+    # was on screen before this profile.
+    came = urlparse(request.headers.get("referer") or "").path
     return page(request, "student.html", them=them, open_rows=open_rows, me=me,
+                hop=not came.startswith("/listing/"),
                 back=request.session.get("last_place") or "/chats")
 
 
@@ -1963,6 +1996,17 @@ async def profile_edit(request: Request,
                          form_name=name, current=programme)
 
     db.update_profile(me["id"], name, chosen, cems, await save_image(photo))
+    return go("/profile")
+
+
+@app.post("/profile/theme")
+def profile_theme(request: Request, theme: str = Form("")):
+    """Light, dark, or follow the phone. Kept on the account, so the choice
+    travels with the student rather than with the browser."""
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    db.set_theme(me["id"], theme.strip())
     return go("/profile")
 
 

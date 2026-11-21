@@ -15,6 +15,10 @@
   --fill-2: #EFEFF2;
   --line: rgba(0, 0, 0, 0.07);
   --bad: #B3271B;
+  /* The louder red. The one above is for a line of warning text, where a
+     dark red reads best on white. A button has to be seen before it is
+     read, so it gets a red that carries from across the screen. */
+  --bad-loud: #E03226;
   --hair: rgba(0, 0, 0, 0.05);
   --tint: rgba(0, 0, 0, 0.05);
 
@@ -226,6 +230,14 @@ img { display: block; max-width: 100%; }
 
 .row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 
+/* The arrow at the end of a row that leads somewhere. Pointing right,
+   drawn from the chevron that points down everywhere else. */
+.row-go {
+  flex: none; display: flex;
+  color: var(--accent);
+  transform: rotate(-90deg);
+}
+
 .row-top { display: flex; align-items: baseline; gap: 8px; }
 
 .row-name {
@@ -359,9 +371,7 @@ img { display: block; max-width: 100%; }
   text-decoration: underline;
 }
 
-@media (prefers-color-scheme: dark) {
-  .link--danger { color: #FF6B5A; }
-}
+:root[data-theme="dark"] .link--danger { color: #FF6B5A; }
 
 .grab {
   width: 36px; height: 5px; border-radius: 999px;
@@ -373,12 +383,26 @@ img { display: block; max-width: 100%; }
 
 .form { display: flex; flex-direction: column; padding: 0 16px; }
 
+/* Spelled out as a block. A label is an inline element by default, and an
+   inline element throws its top and bottom margins away. The ones sitting
+   straight in the form were saved by the form being a flex box, which
+   turns its own children into blocks, but any label inside a wrapper kept
+   the inline behaviour and sat glued to its field. */
 .label {
+  display: block;
   margin: 18px 0 6px;
-  font-size: 13px; font-weight: 600; color: var(--muted);
+  font-size: 15px; font-weight: 600; color: var(--ink);
 }
 
-.label:first-of-type { margin-top: 20px; }
+/* Only the very first label on a form opens a little wider. Written as a
+   direct child, because every label inside a pair or a box is the first of
+   its type in there too and would otherwise all claim the wider gap. */
+.form > .label:first-of-type { margin-top: 20px; }
+
+/* The CEMS question sits in a box of its own, which made its label the
+   first of its type and gave it the wider opening margin. It is a field
+   like any other, so it keeps the same gap as the rest of the form. */
+
 
 .input, .textarea {
   height: 48px;
@@ -959,9 +983,15 @@ img { display: block; max-width: 100%; }
 .stat b { font-size: 17px; font-weight: 700; }
 .stat span { font-size: 11px; color: var(--muted); }
 
+/* The heading over a block of rows. It used to be eleven pale letter
+   spaced pixels, which read as a label on a filing box rather than as the
+   name of what is underneath. Same size and weight as the questions in
+   the housing panel, because they do the same job. */
 .section {
+  display: block;
   margin: 22px 0 8px 2px;
-  font-size: 11px; font-weight: 600; letter-spacing: 0.7px; color: var(--muted);
+  font-size: 15px; font-weight: 600;
+  color: var(--ink);
 }
 
 /* -------------------------------------------------------------- the chips */
@@ -1438,13 +1468,90 @@ img { display: block; max-width: 100%; }
   color: var(--muted);
 }
 
+/* A section with nothing in it, on a page that has other sections. The
+   whole screen version above puts 56 pixels of air over itself, which in
+   the middle of a page reads as a mistake rather than as an answer. This
+   one is a card the same size as the rows it stands in for. */
+.nothing {
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 26px 20px;
+  border-radius: var(--r-card);
+  background: var(--card);
+  text-align: center;
+  color: var(--muted);
+}
+
+.nothing > svg:first-child { color: var(--faint); margin-bottom: 3px; }
+.nothing b { font-size: 15px; font-weight: 600; color: var(--ink); }
+.nothing p { margin: 0; font-size: 13px; line-height: 1.5; max-width: 250px; }
+
+/* A Save that stays put while a long list scrolls under it. The course
+   list runs to 148 rows, and a button at either end of that is a button
+   you have to go looking for. */
+.savebar {
+  position: fixed;
+  left: 50%; transform: translateX(-50%);
+  bottom: 0;
+  width: 100%; max-width: var(--app);
+  padding: 10px 16px calc(var(--foot) + 14px);
+  background: rgba(246, 246, 248, 0.88);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  border-top: 1px solid var(--line);
+  z-index: 20;
+}
+
+/* The three looks, side by side. One of them is always the answer, so
+   they share a bed the way the two sides of the chats switch do. */
+.looks {
+  display: flex; gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--fill-2);
+}
+
+.look {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 9px 4px;
+  border: none; border-radius: 999px;
+  background: transparent;
+  font: inherit; font-size: 13px; font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.look--on {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.07);
+}
+
+/* The way out, at the foot of your own profile. A pill rather than a bare
+   line, so it reads as something you press and not as a stray sentence. */
+.signout {
+  margin: 16px auto 0;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 18px;
+  /* White with a red edge around it. The tinted version before this was
+     still a quiet thing in a quiet colour, and the way out of an account
+     should be the one item on the page you can find without looking. */
+  border: 1.5px solid var(--bad-loud);
+  border-radius: 999px;
+  background: var(--card);
+  font: inherit; font-size: 14px; font-weight: 600;
+  color: var(--bad-loud);
+  cursor: pointer;
+}
+
+.signout:active { background: color-mix(in srgb, var(--bad-loud) 10%, var(--card)); }
+
 .empty b { font-size: 16px; color: var(--ink); font-weight: 600; }
 .empty p { margin: 0; font-size: 14px; line-height: 1.5; max-width: 260px; }
 
 /* ------------------------------------------------------------- dark mode */
 
-@media (prefers-color-scheme: dark) {
-  :root {
+:root[data-theme="dark"] {
     --bg: #0C0C0F;
     --card: #17171B;
     --ink: #F4F4F6;
@@ -1458,17 +1565,28 @@ img { display: block; max-width: 100%; }
     --tint: rgba(255, 255, 255, 0.07);
     --accent: #4E97FF;
     --accent-soft: rgba(78, 151, 255, 0.16);
+    --bad-loud: #FF6B5A;
     --perf: rgba(255, 255, 255, 0.22);
   }
 
-  .tabbar, .chat-head, .composer { background: rgba(18, 18, 22, 0.78); box-shadow: none; }
-  .actionbar { background: rgba(18, 18, 22, 0.82); box-shadow: none; }
-  .back { background: rgba(28, 28, 33, 0.72); color: var(--ink); }
-  .grab { background: rgba(255, 255, 255, 0.22); }
-  .pic-add { border-color: rgba(255, 255, 255, 0.2); }
-  .tab .pip { border-color: rgba(18, 18, 22, 0.95); }
-  .card:active, .row:active, .where:active { background: #1D1D22; }
-}
+:root[data-theme="dark"] .tabbar,
+:root[data-theme="dark"] .chat-head,
+:root[data-theme="dark"] .savebar,
+:root[data-theme="dark"] .composer { background: rgba(18, 18, 22, 0.78); box-shadow: none; }
+
+:root[data-theme="dark"] .actionbar { background: rgba(18, 18, 22, 0.82); box-shadow: none; }
+
+:root[data-theme="dark"] .back { background: rgba(28, 28, 33, 0.72); color: var(--ink); }
+
+:root[data-theme="dark"] .grab { background: rgba(255, 255, 255, 0.22); }
+
+:root[data-theme="dark"] .pic-add { border-color: rgba(255, 255, 255, 0.2); }
+
+:root[data-theme="dark"] .tab .pip { border-color: rgba(18, 18, 22, 0.95); }
+
+:root[data-theme="dark"] .card:active,
+:root[data-theme="dark"] .row:active,
+:root[data-theme="dark"] .where:active { background: #1D1D22; }
 
 /* ============================================================ design layer
    Added on top of everything above, so the original rules stay readable.
@@ -1678,26 +1796,27 @@ img { display: block; max-width: 100%; }
 
 /* ------------------------------------------------------------- dark mode */
 
-@media (prefers-color-scheme: dark) {
-  :root {
+:root[data-theme="dark"] {
     --c-housing: #2EC4B0;
     --c-ticket:  #FF735B;
     --c-item:    #A28DFF;
     --c-group:   #E8A33D;
   }
-  [data-kind] { --k-soft: color-mix(in srgb, var(--k) 20%, transparent); }
-  .cover { filter: brightness(0.82) saturate(0.95); }
-  .card { box-shadow: none; }
-  .toast { background: #F4F4F6; color: #0B0B0F; }
-  .toast svg { color: #12A86B; }
-}
+
+:root[data-theme="dark"] [data-kind] { --k-soft: color-mix(in srgb, var(--k) 20%, transparent); }
+
+:root[data-theme="dark"] .cover { filter: brightness(0.82) saturate(0.95); }
+
+:root[data-theme="dark"] .card { box-shadow: none; }
+
+:root[data-theme="dark"] .toast { background: #F4F4F6; color: #0B0B0F; }
+
+:root[data-theme="dark"] .toast svg { color: #12A86B; }
 
 /* Light category colours are bright in the dark, so text on them turns dark. */
-@media (prefers-color-scheme: dark) {
-  .app[data-kind] .btn:not(.btn--quiet):not(.btn--danger),
-  .app[data-kind] .chip--on,
-  .app[data-kind] .fpill--on { color: #0B0B0F; }
-}
+:root[data-theme="dark"] .app[data-kind] .btn:not(.btn--quiet):not(.btn--danger),
+:root[data-theme="dark"] .app[data-kind] .chip--on,
+:root[data-theme="dark"] .app[data-kind] .fpill--on { color: #0B0B0F; }
 
 /* Your own entries on the profile carry their tab's colour too. */
 .mini[data-kind] { background: var(--k-soft); color: var(--k); }
@@ -1901,11 +2020,11 @@ img { display: block; max-width: 100%; }
 
 .save--pop { animation: pop 0.26s ease; }
 
-@media (prefers-color-scheme: dark) {
-  .save { background: rgba(28, 28, 33, 0.72); color: var(--ink); }
-  .save--head { background: rgba(255, 255, 255, 0.88); color: #0B0B0F; }
-  .save--on { color: #FF6B55; }
-}
+:root[data-theme="dark"] .save { background: rgba(28, 28, 33, 0.72); color: var(--ink); }
+
+:root[data-theme="dark"] .save--head { background: rgba(255, 255, 255, 0.88); color: #0B0B0F; }
+
+:root[data-theme="dark"] .save--on { color: #FF6B55; }
 
 /* --------------------------------------------- the notice on the board */
 
@@ -2060,8 +2179,7 @@ img { display: block; max-width: 100%; }
 .tear-tab--torn[data-shape="4"] i { clip-path: polygon(0 0,100% 0,100% 44%,89% 31%,78% 46%,67% 33%,56% 45%,45% 30%,34% 43%,23% 32%,12% 46%,0 34%); }
 .tear-tab--torn[data-shape="5"] i { clip-path: polygon(0 0,100% 0,100% 27%,88% 39%,77% 26%,66% 38%,55% 25%,44% 37%,33% 28%,22% 40%,11% 29%,0 36%); }
 
-@media (prefers-color-scheme: dark) {
-  :root {
+:root[data-theme="dark"] {
     --paper: #1C1C21;
     --paper-edge: #0C0C0F;
     --paper-line: rgba(255, 255, 255, 0.16);
@@ -2069,8 +2187,8 @@ img { display: block; max-width: 100%; }
     --paper-sub: #96969F;
     --paper-faint: #6A6A73;
   }
-  .notice-behind { background: rgba(255, 255, 255, 0.4); }
-}
+
+:root[data-theme="dark"] .notice-behind { background: rgba(255, 255, 255, 0.4); }
 
 /* ------------------------------------------------- the Housing filter panel */
 
@@ -2200,17 +2318,17 @@ img { display: block; max-width: 100%; }
 .block-head { display: block; margin-top: 18px; font-size: 14px; font-weight: 600; }
 .text--flush { margin-top: 8px; }
 
-@media (prefers-color-scheme: dark) {
-  .app[data-kind] .fbtn--on,
-  .app[data-kind] .opt input:checked + span { color: #0B0B0F; }
+:root[data-theme="dark"] .app[data-kind] .fbtn--on,
+:root[data-theme="dark"] .app[data-kind] .opt input:checked + span { color: #0B0B0F; }
+
 
   /* The logo sits on near black, and so does the page, so the tile needs a
      line around it or it stops being a tile and the four shapes just float. */
-  .mark--brand {
+  
+:root[data-theme="dark"] .mark--brand {
     border: 1px solid rgba(255, 255, 255, 0.11);
     box-shadow: none;
   }
-}
 
 /* ------------------------------------------- the capsule under the tab bar */
 
@@ -2241,15 +2359,55 @@ img { display: block; max-width: 100%; }
 .tab svg { transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1); }
 .tab[aria-current="page"] svg { transform: translateY(-1px) scale(1.06); }
 
-@media (prefers-color-scheme: dark) {
-  .glide {
+:root[data-theme="dark"] .glide {
     background: rgba(255, 255, 255, 0.12);
     border-color: rgba(255, 255, 255, 0.16);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
   }
-}
 
 /* Somebody who asked their phone for less movement gets none. */
 @media (prefers-reduced-motion: reduce) {
   .tab svg { transition: none; }
 }
+
+/* ---------------------------------------------------------------- a fold
+
+   The closed entries on the profile, kept out of the way under a line that
+   says how many there are. The checkbox is the switch and the heading is
+   its label, the same way the chats fold their blocks, so nothing here
+   needs a script. It carries no checked attribute, so it starts shut.
+
+   The heading is a row of the same card the entries are in, which is why
+   there is no seam between the line and what it opens. */
+.fold { margin-top: 10px; }
+
+/* The same size and weight as the title of an entry, because that is what
+   this line is, the heading of the ones underneath. It was a size smaller
+   and grey, and a line you have to look for is a line nobody opens. */
+.fold-head {
+  gap: 8px;
+  font-size: 15px; font-weight: 600; color: var(--ink);
+  cursor: pointer;
+}
+
+.fold-name { flex: 1; min-width: 0; }
+
+/* The number in a grey circle rather than a figure in brackets. It grows
+   into a pill at three digits, which is what keeps it a circle at one. */
+.fold-count {
+  flex: none;
+  min-width: 24px; height: 24px;
+  padding: 0 7px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 999px;
+  background: var(--fill);
+  font-size: 12px; font-weight: 700; color: var(--ink-2);
+}
+
+/* The arrow carries the weight of the line it sits on, which the faint
+   grey everywhere else no longer did next to this one. */
+.fold-head .ch-chev { color: var(--muted); }
+
+.fold-rows { display: none; }
+.fold > input:checked ~ .rows .fold-rows { display: block; }
+.fold > input:checked ~ .rows .fold-head .ch-chev { transform: rotate(180deg); }

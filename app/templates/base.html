@@ -1,6 +1,21 @@
 <!doctype html>
-<html lang="en">
+{#- The page says which of the two looks it is wearing, so the stylesheet
+    never has to ask the system itself. "system" is the one the server
+    cannot answer, and the little script below settles it before anything
+    is drawn, which is why it sits here and not in the deferred file. -#}
+<html lang="en" data-theme="{{ 'dark' if theme == 'dark' else 'light' }}">
 <head>
+{% if theme not in ('dark', 'light') %}
+<script>
+  try {
+    if (matchMedia("(prefers-color-scheme: dark)").matches) {
+      document.documentElement.dataset.theme = "dark";
+    }
+  } catch (err) {
+    // an old browser that cannot be asked, light it is
+  }
+</script>
+{% endif %}
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <title>Campus Market{% block title %}{% endblock %}</title>

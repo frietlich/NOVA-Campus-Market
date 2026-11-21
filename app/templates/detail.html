@@ -311,7 +311,9 @@
         </div>
       {% endif %}
     {% elif listing.status == 'closed' %}
-      <button class="btn btn--quiet" type="button" disabled>This one is gone</button>
+      {#- The same two words as the badge in a saved list and the line over
+          an entry's chats. Closed has one name in this app. -#}
+      <button class="btn btn--quiet" type="button" disabled>Entry closed</button>
     {% else %}
       <form method="post" action="/listing/{{ listing.id }}/chat">
         <button class="btn" type="submit">Message {{ listing.owner_name.split(' ')[0] }}</button>

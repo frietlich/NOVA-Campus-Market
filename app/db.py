@@ -60,6 +60,8 @@ LATER_COLUMNS = {
     "users": [
         ("code_sent", "TEXT"),
         ("code_tries", "INTEGER NOT NULL DEFAULT 0"),
+        # light, dark, or empty for whatever the phone is set to
+        ("theme", "TEXT NOT NULL DEFAULT ''"),
     ],
     "listings": [
         ("condition", "TEXT"),
@@ -69,7 +71,6 @@ LATER_COLUMNS = {
         ("months_min", "INTEGER"),
         ("bills_included", "INTEGER"),
         ("bills_estimate", "REAL"),
-        ("deposit_months", "INTEGER"),
         ("minutes_campus", "INTEGER"),
         ("flatmates", "INTEGER"),
         ("features", "TEXT"),
@@ -165,8 +166,17 @@ def create_user(email, name, programme="", password=None, cems=False):
 
 
 def update_profile(user_id, name, programme, cems=False, photo=None):
-    """Save what the edit page sends. photo of None leaves the picture alone."""
+    """Save what the edit page sends. photo of None leaves the picture alone.
+
+    Changing programme also lets go of the courses that belonged to the old
+    one. A course is a course of a programme, so carrying them over would
+    leave somebody enrolled in things their new programme does not teach,
+    and the Groups tab would quietly filter by them.
+    """
     conn = connect()
+    before = conn.execute("SELECT programme FROM users WHERE id = ?",
+                          (user_id,)).fetchone()
+    moved = before is not None and before["programme"] != programme
     if photo is None:
         conn.execute(
             "UPDATE users SET name = ?, programme = ?, cems = ? WHERE id = ?",
@@ -178,8 +188,25 @@ def update_profile(user_id, name, programme, cems=False, photo=None):
             " WHERE id = ?",
             (name.strip(), programme, 1 if cems else 0, photo, user_id),
         )
+    if moved:
+        conn.execute(
+            "DELETE FROM enrolments WHERE user_id = ? AND course_id NOT IN"
+            " (SELECT course_id FROM course_offerings WHERE programme = ?)",
+            (user_id, programme),
+        )
     conn.commit()
     conn.close()
+
+
+def set_theme(user_id, theme):
+    """Light, dark, or empty to follow the phone. Anything else is ignored."""
+    if theme not in ("", "light", "dark"):
+        return False
+    conn = connect()
+    conn.execute("UPDATE users SET theme = ? WHERE id = ?", (theme, user_id))
+    conn.commit()
+    conn.close()
+    return True
 
 
 def set_password(user_id, hashed):
@@ -766,7 +793,11 @@ def saved_listings(user_id):
     conn = connect()
     rows = conn.execute(
         _listing_sql("s.user_id = ? AND (l.type != 'ticket' OR l.event_date >= ?)",
-                     order="s.created_at DESC",
+                     # Closed ones sink to the foot of the list. They stay,
+                     # because that an entry is gone is the thing you came
+                     # back to find out, but the live ones lead.
+                     order="CASE WHEN l.status = 'open' THEN 0 ELSE 1 END,"
+                           " s.created_at DESC",
                      extra_join="JOIN saves s ON s.listing_id = l.id"),
         (user_id, today),
     ).fetchall()
