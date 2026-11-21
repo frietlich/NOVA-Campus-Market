@@ -2,7 +2,7 @@
 {% import "partials/icons.html" as icon %}
 {% import "partials/avatar.html" as av %}
 {% import "partials/art.html" as art %}
-{% block title %}{{ listing.title }}{% endblock %}
+{% block title %} · {{ listing.title }}{% endblock %}
 
 {# The heart sits top right on every kind of entry. It is a real form, so it
    works without JavaScript as well, the page simply comes back fresh. Your
@@ -95,16 +95,16 @@
             <span class="notice-stamp">{{ listing.quantity }} of {{ listing.group_size }} free</span>
           {% endif %}
           <div class="notice-paper">
-            <span class="kicker">GROUP WORK</span>
+            <span class="kicker kicker--k">GROUP BY</span>
             <div class="notice-date">{{ listing.hand_in | short_date or 'No date' }}</div>
             <span class="notice-sub">
-              {{ listing.hand_in | days_left }}{% if listing.group_size %}, group of {{ listing.group_size }}{% endif %}
+              {{ listing.hand_in | days_left }} to join{% if listing.group_size %}, group of {{ listing.group_size }}{% endif %}
             </span>
           </div>
           <div class="tear">
             {% for t in tabs %}
               {% if t.hanging %}
-                <span class="tear-tab"><b>JOIN<br>US</b></span>
+                <span class="tear-tab"><b>JOIN<br>US<br>NOW</b></span>
               {% else %}
                 <span class="tear-tab tear-tab--torn" data-shape="{{ t.shape }}"><i></i><i></i></span>
               {% endif %}
@@ -161,9 +161,11 @@
         {% if listing.quantity %}<span class="pill">{{ listing.quantity }} {{ 'spot' if listing.quantity == 1 else 'spots' }} left</span>{% endif %}
         {% if listing.hand_in %}<span class="pill">{{ listing.hand_in | days_left }}</span>{% endif %}
       {% endif %}
-      {% for part in listing.info.split('·') %}
-        {% if part.strip() %}<span class="pill">{{ part.strip() }}</span>{% endif %}
-      {% endfor %}
+      {% if listing.type != 'group' %}
+        {% for part in listing.info.split('·') %}
+          {% if part.strip() %}<span class="pill">{{ part.strip() }}</span>{% endif %}
+        {% endfor %}
+      {% endif %}
       {% if listing.status == 'closed' %}<span class="pill">Closed</span>{% endif %}
     </div>
     {% endif %}

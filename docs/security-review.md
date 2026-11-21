@@ -12,8 +12,10 @@
 - Check participants again before storing a chat message.
 - Store keyed code digests with purpose separation. Enforce ten-minute expiry,
   five guesses, atomic one-time use and a sixty-second resend cooldown.
-- Rate-limit authentication POST requests by client address and endpoint.
-- Return a mail-delivery error when SMTP is absent. Never print codes.
+- Limit login attempts by normalized email (20 per ten minutes); keep a generous
+  IP ceiling (2,000 per ten minutes per endpoint) on other authentication forms.
+- Return a mail-delivery error without SMTP in production. Print terminal codes
+  only with explicit local demo mode and no SMTP.
 - Pin runtime dependencies with hashes and run tests and pip-audit in CI.
 
 ## Developer setup
@@ -33,7 +35,8 @@ To regenerate the lock, use uv pip compile requirements.in --generate-hashes
 --output-file requirements.txt, then rerun both commands.
 
 Development account selection requires verified Nova demo accounts and is
-hidden in production. The old terminal-code fallback is removed.
+hidden in production. Terminal verification codes are available only in explicit
+local demo mode without SMTP, which bypasses real mailbox verification.
 
 ## Deployment acceptance
 
@@ -56,8 +59,10 @@ mailbox access, which also includes some alumni and staff. Production hosting
 and actual inbox delivery must be checked separately.
 
 The SQLite throttle shares state between workers and survives restart. It is
-keyed by client address and endpoint, so the team must test proxy handling and
-tune limits for shared campus networks.
+keyed by normalized email for login, with a generous shared-IP ceiling on other
+authentication forms. Account code-guess and resend limits apply separately.
+Proxy headers are tested with trusted and untrusted clients. Follow the README
+proxy configuration and verify the actual public deployment before release.
 
 Earlier dependencies were flagged by pip-audit. The upgraded lock must be
 tested against any later changes to main before merge.

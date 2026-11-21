@@ -1,15 +1,18 @@
 {% extends "base.html" %}
 {% import "partials/icons.html" as icon %}
 {% import "partials/avatar.html" as av %}
-{% block title %}{{ other.name }}{% endblock %}
+{% block title %} · {{ other.name }}{% endblock %}
 {% block body %}
 <div class="app chat-page">
 
   <div class="chat-head">
     <a class="icon-btn" href="/chats" aria-label="Back to the chats">{{ icon.back() }}</a>
-    {{ av.avatar(other.name, other.photo, "sm") }}
+    {# Picture and name both lead to whoever you are talking to. #}
+    <a href="/student/{{ other.id }}" aria-label="{{ other.name }}'s profile">
+      {{ av.avatar(other.name, other.photo, "sm") }}
+    </a>
     <div class="who">
-      <b>{{ other.name }}</b>
+      <b><a href="/student/{{ other.id }}">{{ other.name }}</a></b>
       <span class="truncate">
         <a href="/listing/{{ conv.listing_id }}">{{ conv.title }}{% if conv.price is not none %} · {{ conv.price | money }}{% endif %}</a>
       </span>

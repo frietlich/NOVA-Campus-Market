@@ -8,7 +8,7 @@ what is in `docs/tasks.docx`. Read both before you write code.
 
 ## Run it
 
-You need Python 3.10 or newer. From this folder, once:
+You need Python 3.12 or newer (3.12 is used in CI). From this folder, once:
 
     python3 -m venv .venv
     source .venv/bin/activate
@@ -31,13 +31,18 @@ Two ways, and both work right now.
 
 The real one starts at `/start`. Create an account with a `novasbe.pt` address
 and a password, tick the courses you are taking, confirm the 6-digit code, and
-you are in. Whoever skips the courses is asked once right after the code. After that you sign
-in at `/login` with the address and the password. Forgotten passwords go
-through `/forgot`, which sends a fresh code.
+you are in. The courses are not compulsory on the way in. Whoever leaves them
+blank lands in the app all the same, and Groups asks for them itself the first
+time it is opened. After that you sign in at `/login` with the address and the
+password. Forgotten passwords go through `/forgot`, which sends a fresh code.
 
-Email verification requires a configured SMTP sender. Missing mail settings
-produce a delivery error. For private local development, explicitly enable
-CAMPUS_SECURITY_DEMO=1 in .env. Set a random CAMPUS_SECRET in all environments.
+Production email verification requires a configured SMTP sender. For private
+local development, copy `.env.example` to `.env`, generate a random
+CAMPUS_SECRET of at least 32 characters, and set CAMPUS_SECURITY_DEMO=1.
+With demo mode enabled and no SMTP configured, verification codes appear in
+the terminal. This bypasses mailbox ownership checks and must never be enabled
+on a public server. With SMTP configured, codes are sent by email instead.
+All team members need to update their local .env; no credentials go into Git.
 See docs/security-review.md for installation, tests and deployment checks.
 
 In explicit local demo mode, the quick one is at `/dev`. Pick any fake student and you are that person. Use
@@ -314,3 +319,17 @@ real or shared data. This branch does not change other contributors' code.
 
 See [Security review](docs/security-review.md) for the test commands, required
 environment settings and deployment checks.
+
+
+## HTTPS behind a hosting proxy
+
+Use the public HTTPS hostname unchanged when forwarding requests. For a local
+reverse proxy on the same machine, run:
+
+    uvicorn app.main:app --proxy-headers --forwarded-allow-ips=127.0.0.1
+
+Replace that trusted IP with the actual proxy addresses required by your host.
+Do not trust arbitrary public clients. The proxy must set X-Forwarded-Proto to
+https and preserve Host. Otherwise the origin check rejects form submissions.
+Before release, test registration, login, listing forms and import requests at
+the public HTTPS address. Set CAMPUS_SECURITY_DEMO=0 and configure SMTP there.

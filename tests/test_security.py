@@ -26,8 +26,8 @@ def world(tmp_path, monkeypatch):
     upload_dir = tmp_path / "uploads"
     upload_dir.mkdir()
     monkeypatch.setattr(module, "UPLOADS", str(upload_dir))
-    users = [db.create_user(f"{name}@novasbe.pt", name, "finance",
-             passwords.hash_password("TestPassword1!")) for name in ("alice", "bob", "clara")]
+    users = [db.create_user(f"{10000 + index}@novasbe.pt", name, "finance",
+             passwords.hash_password("TestPassword1!")) for index, name in enumerate(("alice", "bob", "clara"))]
     conn = db.connect()
     with conn:
         conn.execute("UPDATE users SET verified=1")
@@ -107,9 +107,9 @@ def test_html_is_escaped(world):
 def test_login_rate_limit(world):
     _, clients=world
     for _ in range(20):
-        assert clients[0].post("/login",data={"email":"nobody@novasbe.pt","password":"incorrect"},
+        assert clients[0].post("/login",data={"email":"99999@novasbe.pt","password":"incorrect"},
                                headers=ORIGIN).status_code==200
-    assert clients[0].post("/login",data={},headers=ORIGIN).status_code==429
+    assert clients[0].post("/login",data={"email":"99999@novasbe.pt"},headers=ORIGIN).status_code==429
 
 def test_single_use_is_atomic(world):
     users,_=world
@@ -149,11 +149,11 @@ def test_registration_sends_code_and_requires_verification(world, monkeypatch):
     monkeypatch.setattr(mailer,"send_code",lambda email,code,why: deliveries.append((email,code)) or True)
     client=TestClient(app)
     fields={"name":"New Student","programme":programmes.MASTER[0][0] if isinstance(programmes.MASTER[0],tuple) else programmes.MASTER[0],
-            "email":"newstudent@novasbe.pt","password":"TestPassword1!","password2":"TestPassword1!"}
+            "email":"12345@novasbe.pt","password":"TestPassword1!","password2":"TestPassword1!"}
     response=client.post("/join",data=fields,headers=ORIGIN,follow_redirects=False)
     assert response.status_code==303, response.text
     assert len(deliveries)==1
-    assert deliveries[0][0]=="newstudent@novasbe.pt"
+    assert deliveries[0][0]=="12345@novasbe.pt"
     assert client.get("/housing",follow_redirects=False).status_code==303
     code=deliveries[0][1]
     assert client.post("/verify",data={f"d{i+1}":n for i,n in enumerate(code)},
@@ -240,3 +240,58 @@ def test_housing_fields_survive_valid_publication(world):
     row = db.listings_of_user(users[0])[0]
     assert row["flatmates"] == 2
     assert row["bills_estimate"] == 35
+
+
+def test_shared_ip_does_not_lock_other_accounts(world):
+    _, clients = world
+    for _ in range(20):
+        clients[0].post("/login", data={"email": "99999@novasbe.pt", "password": "wrong"}, headers=ORIGIN)
+    assert clients[0].post("/login", data={"email": "99999@novasbe.pt"}, headers=ORIGIN).status_code == 429
+    assert clients[0].post("/login", data={"email": "88888@novasbe.pt"}, headers=ORIGIN).status_code == 200
+    assert clients[0].post("/login", data={"email": " 99999@NOVASBE.PT "}, headers=ORIGIN).status_code == 429
+
+
+def test_bad_signup_photo_keeps_form_and_creates_no_account(world):
+    from app import programmes
+    client = TestClient(app)
+    response = client.post("/join", headers=ORIGIN,
+        data={"name": "New Student", "email": "12345@novasbe.pt", "programme": programmes.MASTER[0],
+              "password": "TestPassword1!", "password2": "TestPassword1!"},
+        files={"photo": ("photo.jpg", b"not an image", "image/jpeg")})
+    assert response.status_code == 200
+    assert "Upload a valid JPEG, PNG or WebP image." in response.text
+    assert db.get_user_by_email("12345@novasbe.pt") is None
+
+
+def test_terminal_codes_only_in_explicit_demo(world, monkeypatch, capsys):
+    from app import main, mailer
+    users, _ = world
+    monkeypatch.setattr(mailer, "is_set_up", lambda: False)
+    monkeypatch.setattr(main, "LOCAL_DEMO", False)
+    assert "not configured" in main.send_code(db.get_user(users[0]), "join")
+    assert "LOCAL DEMO" not in capsys.readouterr().out
+    monkeypatch.setattr(main, "LOCAL_DEMO", True)
+    assert main.send_code(db.get_user(users[0]), "join") == ""
+    assert "LOCAL DEMO ONLY" in capsys.readouterr().out
+
+
+def test_trusted_proxy_https_origin_and_untrusted_spoof(world):
+    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+    proxied = ProxyHeadersMiddleware(app, trusted_hosts=["127.0.0.1"])
+    headers = {"origin": "https://testserver", "x-forwarded-proto": "https"}
+    trusted = TestClient(proxied, client=("127.0.0.1", 50000))
+    assert trusted.post("/logout", headers=headers, follow_redirects=False).status_code == 303
+    untrusted = TestClient(proxied, client=("203.0.113.10", 50000))
+    assert untrusted.post("/logout", headers=headers, follow_redirects=False).status_code == 403
+
+
+def test_bad_edit_profile_photo_keeps_form(world):
+    from app import programmes
+    users, clients = world
+    before = db.get_user(users[0])["name"]
+    response = clients[0].post("/profile/edit", headers=ORIGIN,
+        data={"name": "Changed", "programme": programmes.MASTER[0]},
+        files={"photo": ("photo.png", b"not an image", "image/png")})
+    assert response.status_code == 200
+    assert "Upload a valid JPEG, PNG or WebP image." in response.text
+    assert db.get_user(users[0])["name"] == before

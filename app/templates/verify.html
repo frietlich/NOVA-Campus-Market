@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% import "partials/icons.html" as icon %}
-{% block title %}Check your inbox{% endblock %}
+{% block title %} · Check your inbox{% endblock %}
 {% block body %}
 <div class="app">
   <form class="gate" method="post" action="/verify">
 
     <div class="brand">
-      <div class="mark">{{ icon.house(28, 1.8) }}</div>
+      <div class="mark mark--brand">{{ icon.logo(66) }}</div>
       <span>CAMPUS MARKET</span>
     </div>
 
@@ -31,7 +31,6 @@
     <div class="grow"></div>
 
     <button class="btn" type="submit">Continue</button>
-    <p class="note">Only <strong>novasbe.pt</strong> addresses can join. Your e-mail is never shown to other students.</p>
 
   </form>
 </div>

@@ -4,7 +4,8 @@ The settings come from the file .env in the project folder, which is never
 put into git. Copy .env.example to .env and fill it in. For a Gmail account
 that means an app password, not the normal one. See the README.
 
-Missing SMTP settings return a delivery error. Codes are never printed.
+Missing SMTP settings return a delivery error here. The calling application
+may display codes only in explicitly enabled private local demo mode.
 """
 
 import os

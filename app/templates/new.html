@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% import "partials/icons.html" as icon %}
-{% block title %}New entry{% endblock %}
+{% block title %} · New entry{% endblock %}
 {% block body %}
 <div class="app" data-kind="{{ tab.kind }}">
   <form class="form" method="post" action="/new" enctype="multipart/form-data">
@@ -18,7 +18,9 @@
 
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
 
-    {% if tab.kind != 'ticket' %}
+    {# A ticket is a line of text and a group entry is a question, so
+       neither of them has anything to photograph. #}
+    {% if tab.kind not in ('ticket', 'group') %}
     <span class="label">Photos</span>
     <div class="pics">
       <label class="pic-add" for="photos">
@@ -34,18 +36,22 @@
     {% if tab.kind == 'group' %}
       <label class="label" for="course_id">Course</label>
       <select class="input" id="course_id" name="course_id" required>
+        {#- Without this the field sits on whichever course comes first and
+            a group posted in a hurry lands under the wrong one, where the
+            people it is meant for never look. -#}
+        <option value="" data-hint selected disabled hidden>Select your course</option>
         {% for c in my_courses %}
           <option value="{{ c.id }}">{{ c.name }} · {{ c.code }}</option>
         {% endfor %}
       </select>
       <p class="note" style="text-align: left; margin: 6px 2px 0">
         Only your own courses are in here.
-        <a class="link link--quiet" href="/courses?back=/new%3Fkind%3Dgroup">Change them</a>
+        <a class="link link--tiny" href="/courses?back=/new%3Fkind%3Dgroup">Change them here</a>
       </p>
     {% endif %}
 
     <label class="label" for="title">Title</label>
-    <input class="input" id="title" name="title" type="text" required
+    <input class="input" id="title" name="title" type="text" required maxlength="60"
            placeholder="{% if tab.kind == 'housing' %}Room in a 3-bed flat{% elif tab.kind == 'ticket' %}Student night, Urban Beach{% elif tab.kind == 'item' %}iPad Air, 11 inch{% else %}Econometrics, final project{% endif %}">
 
     {% if tab.kind == 'ticket' %}
@@ -216,8 +222,14 @@
         {# A group has no price. What it has is a deadline, a size and the
            spots that are still open, and those three are what the notice on
            the entry is built from. #}
-        <label class="label" for="hand_in">Hand in</label>
+        {#- Not when the work is due. The date by which the group has to be
+            together, which is the one that decides whether somebody can
+            still join. -#}
+        <label class="label" for="hand_in">Group by</label>
         <input class="input" id="hand_in" name="hand_in" type="date" required>
+        <p class="note" style="text-align: left; margin: 6px 2px 0">
+          The last day somebody can still join, not the hand in date.
+        </p>
 
         <div class="pair">
           <div>
@@ -258,8 +270,9 @@
 
       {% endif %}
 
-      {# Housing stopped using the grey line when every fact became a field. #}
-      {% if tab.kind != 'housing' %}
+      {# Housing stopped using the grey line when every fact became a field,
+         and a group entry says everything it has to say in its description. #}
+      {% if tab.kind not in ('housing', 'group') %}
         <label class="label" for="info">Short line</label>
         <input class="input" id="info" name="info" type="text"
                placeholder="{% if tab.kind == 'group' %}We meet Tuesdays in the library{% else %}With the pencil and the charger{% endif %}">
