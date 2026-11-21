@@ -22,10 +22,11 @@ from datetime import date
 
 from . import categories
 
-# The only model this ever uses. Reading a few lines off a picture is easy
-# work, and Haiku does it for a fraction of a cent. There is no fallback to
-# any other model: when Haiku cannot read it, the student types it in.
-MODEL = "claude-haiku-5-5"
+# The only model this ever uses, and how hard it thinks. Opus at medium reads
+# blurry, busy screenshots reliably for about a cent each. There is no
+# fallback to any other model: when it cannot read one, the student types it.
+MODEL = "claude-opus-5-5"
+EFFORT = "medium"
 READS_PER_DAY = 20
 MAX_UPLOAD = 10_000_000          # bytes, what a phone screenshot can be
 LONG_EDGE = 1568                 # pixels; the API shrinks anything larger anyway
@@ -104,8 +105,7 @@ def ask_claude(jpeg, today=None):
     response = _client().messages.create(
         model=MODEL,
         max_tokens=4000,
-        # Reading a few lines off a picture needs no deep thinking.
-        output_config={"effort": "low",
+        output_config={"effort": EFFORT,
                        "format": {"type": "json_schema", "schema": SCHEMA}},
         system=SYSTEM,
         messages=[{

@@ -62,7 +62,8 @@ class ReadTests(unittest.TestCase):
     def test_what_is_sent_to_claude(self):
         _, client = self.read_with(GOOD)
         asked = client.asked
-        self.assertEqual(asked["model"], "claude-haiku-5-5")
+        self.assertEqual(asked["model"], "claude-opus-5-5")
+        self.assertEqual(asked["output_config"]["effort"], "medium")
         self.assertNotIn("fallbacks", asked)
         self.assertEqual(asked["output_config"]["format"]["schema"], shot.SCHEMA)
         picture = asked["messages"][0]["content"][0]
