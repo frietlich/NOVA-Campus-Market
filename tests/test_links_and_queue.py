@@ -127,3 +127,31 @@ class AutofillTests(unittest.TestCase):
         self.assertTrue(housing.looks_blocked(403, ""))
         self.assertTrue(housing.looks_blocked(200, "<html>captcha-delivery.com datadome</html>"))
         self.assertFalse(housing.looks_blocked(200, "<html><title>Room</title></html>"))
+
+
+class SafeFetchTests(unittest.TestCase):
+    def test_redirects_only_to_listed_sites(self):
+        from urllib.request import Request
+        handler = housing._CheckedRedirects()
+        req = Request("https://www.uniplaces.com/accommodation/lisbon/1")
+        for bad in ("http://169.254.169.254/latest/meta-data/",
+                    "http://localhost:8000/admin", "https://evil.com/"):
+            with self.subTest(target=bad):
+                with self.assertRaises(ValueError):
+                    handler.redirect_request(req, None, 302, "Found", {}, bad)
+        ok = handler.redirect_request(req, None, 302, "Found", {},
+                                      "https://www.uniplaces.com/accommodation/lisbon/2")
+        self.assertIn("uniplaces.com", ok.full_url)
+
+    def test_sites_that_block_apps_are_known(self):
+        self.assertTrue(housing.blocks_apps("https://www.idealista.pt/imovel/1/"))
+        self.assertTrue(housing.blocks_apps("https://www.imovirtual.com/pt/anuncio/x"))
+        self.assertFalse(housing.blocks_apps("https://www.uniplaces.com/x"))
+
+    def test_each_student_has_a_limit(self):
+        housing._fetches.clear()
+        for _ in range(housing.FETCH_LIMIT):
+            self.assertTrue(housing.may_fetch(1, now=1000))
+        self.assertFalse(housing.may_fetch(1, now=1000))
+        self.assertTrue(housing.may_fetch(2, now=1000))          # someone else
+        self.assertTrue(housing.may_fetch(1, now=1000 + housing.FETCH_WINDOW + 1))

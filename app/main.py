@@ -1310,9 +1310,6 @@ def new_autofill(request: Request, url: str = Form(""), text: str = Form("")):
     get an honest "blocked", and the page then offers the paste instead.
     Only links to the sites in housing.PLATFORMS are ever fetched.
     """
-    import urllib.error
-    import urllib.request
-
     if me_or_none(request) is None:
         return JSONResponse({"ok": False, "reason": "login"}, status_code=401)
 
@@ -1328,19 +1325,13 @@ def new_autofill(request: Request, url: str = Form(""), text: str = Form("")):
     if not link:
         return JSONResponse({"ok": False, "reason": "site"})
     site = housing.platform_of(link)["name"]
-    req = urllib.request.Request(link, headers={
-        "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                       "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"),
-        "Accept": "text/html,application/xhtml+xml",
-        "Accept-Language": "en,pt;q=0.8",
-    })
+    if housing.blocks_apps(link):
+        # No point asking: these sites refuse every app. Straight to the paste box.
+        return JSONResponse({"ok": False, "reason": "blocked", "site": site})
+    if not housing.may_fetch(me_or_none(request)["id"]):
+        return JSONResponse({"ok": False, "reason": "limit", "site": site})
     try:
-        with urllib.request.urlopen(req, timeout=8) as res:
-            status = res.status
-            page = res.read(3_000_000).decode(res.headers.get_content_charset() or "utf-8",
-                                              "replace")
-    except urllib.error.HTTPError as e:
-        status, page = e.code, ""
+        status, page = housing.fetch_listing(link)
     except Exception:
         return JSONResponse({"ok": False, "reason": "unreachable", "site": site})
     if housing.looks_blocked(status, page):

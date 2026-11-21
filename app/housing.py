@@ -440,3 +440,72 @@ def looks_blocked(status, page):
     small = (page or "")[:20000].lower()
     return any(w in small for w in ("datadome", "captcha", "are you a robot",
                                     "access denied", "pardon our interruption"))
+
+
+# Sites that refuse to be read by an app (tested November 2026): Idealista
+# answers 403, Imovirtual a robot check. For them the form goes straight to
+# the paste box instead of promising something that will not work.
+BLOCKS_APPS = {"idealista.pt", "idealista.com", "imovirtual.com"}
+
+
+def blocks_apps(url):
+    found = platform_of(url)
+    return bool(found) and found["domain"] in BLOCKS_APPS
+
+
+class _CheckedRedirects(__import__("urllib.request").request.HTTPRedirectHandler):
+    """Follow a redirect only to another page on one of our housing sites.
+
+    Without this an allowed site could send our server on to any address,
+    including machines inside the hosting network. Every hop is checked
+    with the same rule as the link the student pasted.
+    """
+    max_redirections = 4
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not clean_listing_url(newurl):
+            raise ValueError("redirect to a site that is not on the list")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def fetch_listing(link, timeout=8, limit=3_000_000):
+    """Download one advert page. Returns (status, html). Raises on failure.
+
+    link must already have passed clean_listing_url.
+    """
+    import urllib.error
+    import urllib.request
+
+    opener = urllib.request.build_opener(_CheckedRedirects)
+    req = urllib.request.Request(link, headers={
+        "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                       "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"),
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "en,pt;q=0.8",
+    })
+    try:
+        with opener.open(req, timeout=timeout) as res:
+            charset = res.headers.get_content_charset() or "utf-8"
+            return res.status, res.read(limit).decode(charset, "replace")
+    except urllib.error.HTTPError as e:
+        return e.code, ""
+
+
+# How often one student may ask the server to read a link: enough to try a
+# few adverts, not enough to turn our server into somebody's robot.
+FETCH_LIMIT = 10
+FETCH_WINDOW = 60 * 60          # seconds
+_fetches = {}
+
+
+def may_fetch(user_id, now=None):
+    """True, and counts it, if this student is still under the limit."""
+    import time
+    now = time.time() if now is None else now
+    recent = [t for t in _fetches.get(user_id, []) if now - t < FETCH_WINDOW]
+    if len(recent) >= FETCH_LIMIT:
+        _fetches[user_id] = recent
+        return False
+    recent.append(now)
+    _fetches[user_id] = recent
+    return True
