@@ -1,0 +1,23 @@
+# docker compose up --build      start it, http://127.0.0.1:8000
+# docker compose down            stop it, the data stays
+# docker compose down -v         stop it and throw the data away
+
+services:
+  web:
+    build: .
+    image: campus-market
+    ports:
+      - "${PORT:-8000}:8000"
+    # The same .env as without Docker, for the mail account and CAMPUS_SECRET.
+    # Without one the app still starts and prints the codes in the log.
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - campus-data:/data
+      - campus-uploads:/app/app/static/uploads
+    restart: unless-stopped
+
+volumes:
+  campus-data:
+  campus-uploads:

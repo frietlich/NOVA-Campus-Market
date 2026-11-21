@@ -25,6 +25,33 @@ Then open http://127.0.0.1:8000 in the browser.
 `python -m app.seed` wipes the database and writes the fake students and entries
 again. Run it whenever you want a clean start.
 
+## Run it in Docker
+
+If you have Docker, you need no Python and no venv. From this folder:
+
+    docker compose up --build
+
+Then open http://127.0.0.1:8000. `PORT=8080 docker compose up` puts it on
+another port if 8000 is taken.
+
+The first start writes the fake students and entries, exactly like
+`python -m app.seed`. After that the database is left alone. It lives in a
+Docker volume together with the uploaded photos, so stopping, rebuilding and
+starting again keeps everything.
+
+    docker compose down                              stop it, the data stays
+    docker compose down -v                           stop it and throw the data away
+    docker compose run --rm web python -m app.seed   clean start, same as above
+    docker compose logs -f web                       the log, with the 6-digit codes
+
+The container reads the same `.env` as everything else, for the mail account
+and `CAMPUS_SECRET`. Without a `CAMPUS_SECRET` it makes a random one on the
+first start and keeps it in the volume, so a restart logs nobody out. Set
+`CAMPUS_SEED=0` in `.env` to start with an empty database instead of the demo.
+
+The container has no `--reload`, so code changes need
+`docker compose up --build` again. For day to day work the venv above is quicker.
+
 ## Logging in
 
 Two ways, and both work right now.
@@ -103,6 +130,8 @@ predictable by design. All of it lives in `db.new_code` and `db.check_code`.
     app/static/js/     the few bits of behaviour the pages need
     app/static/uploads/ photos people upload, not in git
     docs/              the one pager and the task split
+    Dockerfile         the image, compose.yaml starts it, docker-entrypoint.sh
+                       seeds an empty database and makes the secret
 
 ## The nine tables
 
