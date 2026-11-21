@@ -263,6 +263,8 @@ img { display: block; max-width: 100%; }
 .switch:checked { background: var(--accent); }
 .switch:checked::after { transform: translateX(18px); }
 .switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.notify-areas.is-muted { opacity: 0.45; }
+.notify-areas.is-muted .switch { pointer-events: none; }
 
 /* The bell for one event, on a ticket's page. */
 .watch {

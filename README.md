@@ -350,8 +350,14 @@ Remove, and past events drop off by themselves. Nobody is told twice when an
 event bell and a saved search both fit.
 
 `/profile/notifications` lists the saved searches and the watched events, each
-with Remove, and has one switch per area that silences it without throwing
-anything away. It also has the button that asks the browser, and a test.
+with Remove. On top is one switch for all notifications, and under it one per
+area; each silences without throwing anything away, and they save the moment
+they move.
+
+When a test notification does not show up although the page says it was
+sent, the browser got it and the computer is hiding it: on a Mac, allow
+notifications for the browser in System Settings, Notifications, and check
+that Focus is off. Failed deliveries are printed in the server's terminal. It also has the button that asks the browser, and a test.
 
 It needs a key pair of our own. Make one with `python -m app.push keys` and put
 its lines into `.env`. Without them nothing about notifications is shown.

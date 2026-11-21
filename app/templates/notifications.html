@@ -10,7 +10,7 @@
       <span class="side"></span>
     </div>
 
-    {% if done == 'saved' %}<div class="said">Saved.</div>{% endif %}
+    {% if done == 'saved' %}<div class="said" id="saved-note">Saved.</div>{% endif %}
     {% if done == 'removed' %}<div class="said">Removed. No more notifications for that event.</div>{% endif %}
     {% if done == 'removed-search' %}<div class="said">Removed. No more notifications for that search.</div>{% endif %}
 
@@ -34,11 +34,20 @@
       </p>
     </div>
 
-    {# What to hear about, one switch per area. Off means nothing at all from
-       that area, on any device. #}
+    {# One switch for everything, and one per area under it. Off up here
+       silences all of them and leaves the four as they are. #}
     <span class="section">WHAT YOU HEAR ABOUT</span>
     <div class="rows">
-      {% for key, name, about in areas %}
+      <label class="row switch-row">
+        <div class="row-body">
+          <span class="row-name">All notifications</span>
+          <span class="row-meta">Off silences everything below at once.</span>
+        </div>
+        <input class="switch" type="checkbox" name="on" value="all" id="notify-all" {{ 'checked' if prefs['all'].on }}>
+      </label>
+    </div>
+    <div class="rows notify-areas {{ 'is-muted' if not prefs['all'].on }}" id="notify-areas" style="margin-top: 10px">
+      {% for key, name, about in areas if key != 'all' %}
         {% set pref = prefs[key] %}
         <label class="row switch-row">
           <div class="row-body">
@@ -54,8 +63,10 @@
       Switching an area off keeps your searches and events, it only goes quiet.
     </p>
 
-    <div style="height: 16px"></div>
-    <button class="btn" type="submit">Save</button>
+    <noscript>
+      <div style="height: 16px"></div>
+      <button class="btn" type="submit">Save</button>
+    </noscript>
 
     {# Every saved search, from the bell on a tab. #}
     <span class="section">SEARCHES YOU WATCH</span>

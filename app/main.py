@@ -1836,7 +1836,8 @@ def push_test(request: Request):
     if me is None:
         return JSONResponse({"ok": False}, status_code=401)
     reached = push.send(me["id"], "Campus Market",
-                        "Notifications work on this device.", "/profile/notifications")
+                        "Notifications work on this device.", "/profile/notifications",
+                        test=True)
     return JSONResponse({"ok": reached > 0, "reached": reached})
 
 

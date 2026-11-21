@@ -836,7 +836,9 @@ def take_ai_read(user_id, limit, pictures=1):
 
 # ------------------------------------------------------------ notifications
 
-NOTIFY_AREAS = ("messages", "ticket", "housing", "item")
+# "all" is the main switch above the four. Off silences everything at once
+# and keeps the four as they were, so switching it back on restores them.
+NOTIFY_AREAS = ("all", "messages", "ticket", "housing", "item")
 
 
 def save_device(user_id, endpoint, p256dh, auth):

@@ -47,7 +47,21 @@ class PushTests(unittest.TestCase):
     def test_every_area_is_on_until_switched_off(self):
         prefs = db.prefs_of(self.buyer)
         self.assertEqual({area: p["on"] for area, p in prefs.items()},
-                         {"messages": True, "ticket": True, "housing": True, "item": True})
+                         {"all": True, "messages": True, "ticket": True,
+                          "housing": True, "item": True})
+
+    def test_the_main_switch_silences_everything_but_the_test(self):
+        self.save(self.buyer, "ticket", "")
+        db.set_pref(self.buyer, "all", False)
+        self.announce(self.ticket()["id"])
+        listing = self.ticket()
+        conv = db.get_conversation(db.open_conversation(listing["id"], self.seller))
+        push.new_message(conv, self.seller, "Hello")
+        self.assertNotIn(self.buyer, self.receivers())
+        push.send(self.buyer, "Campus Market", "test", "/", test=True)
+        self.assertIn(self.buyer, self.receivers())
+        db.set_pref(self.buyer, "all", True)
+        self.assertTrue(db.prefs_of(self.buyer)["ticket"]["on"])   # kept as it was
 
     def save(self, user, kind, query):
         from app.main import search_label, search_of
@@ -253,10 +267,11 @@ class PageTests(unittest.TestCase):
         self.assertTrue(answer.headers["location"].startswith("/tickets"))
 
     def test_the_settings_page_switches_each_area(self):
-        self.client.post("/profile/notifications", data={"on": ["housing", "item"]})
+        self.client.post("/profile/notifications", data={"on": ["all", "housing", "item"]})
         prefs = db.prefs_of(self.user)
         self.assertEqual({area: p["on"] for area, p in prefs.items()},
-                         {"messages": False, "ticket": False, "housing": True, "item": True})
+                         {"all": True, "messages": False, "ticket": False,
+                          "housing": True, "item": True})
         page = self.client.get("/profile/notifications").text
         self.assertIn('value="housing" checked', page)
 

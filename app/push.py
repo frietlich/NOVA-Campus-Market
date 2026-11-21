@@ -104,15 +104,23 @@ def _webpush(device, payload):
         status = getattr(error.response, "status_code", None)
         # 404 and 410 mean the browser threw the subscription away, for
         # example because notifications were turned off in its settings.
+        print(f"  push to user {device['user_id']} failed: {status} {error}", flush=True)
         return status not in (404, 410)
-    except Exception:
+    except Exception as error:
+        print(f"  push to user {device['user_id']} failed: {error}", flush=True)
         return True
     return True
 
 
-def send(user_id, title, body, url):
-    """Send to every device of one student. Gives back how many it reached."""
+def send(user_id, title, body, url, test=False):
+    """Send to every device of one student. Gives back how many it reached.
+
+    Nothing goes out while the student's main switch is off, except the test
+    they asked for themselves.
+    """
     if not is_set_up():
+        return 0
+    if not test and not db.prefs_of(user_id)["all"]["on"]:
         return 0
     payload = {"title": title[:80], "body": body[:160], "url": url}
     reached = 0

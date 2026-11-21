@@ -856,6 +856,24 @@
     });
   });
 
+  // The switches save the moment they move. The main switch greys out the
+  // four below it, which keep their own position for when it comes back on.
+  const all = document.getElementById("notify-all");
+  if (all) {
+    const form = all.closest("form");
+    const areas = document.getElementById("notify-areas");
+    form.querySelectorAll("input.switch").forEach((one) => {
+      one.addEventListener("change", async () => {
+        areas.classList.toggle("is-muted", !all.checked);
+        try {
+          await fetch(form.action, { method: "POST", body: new FormData(form) });
+        } catch (e) {
+          form.submit();
+        }
+      });
+    });
+  }
+
   // The settings page.
   const box = document.getElementById("push-device");
   if (!box) return;
