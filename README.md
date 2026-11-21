@@ -31,9 +31,10 @@ Two ways, and both work right now.
 
 The real one starts at `/start`. Create an account with a `novasbe.pt` address
 and a password, tick the courses you are taking, confirm the 6-digit code, and
-you are in. Whoever skips the courses is asked once right after the code. After that you sign
-in at `/login` with the address and the password. Forgotten passwords go
-through `/forgot`, which sends a fresh code.
+you are in. The courses are not compulsory on the way in. Whoever leaves them
+blank lands in the app all the same, and Groups asks for them itself the first
+time it is opened. After that you sign in at `/login` with the address and the
+password. Forgotten passwords go through `/forgot`, which sends a fresh code.
 
 Without a mail account the code is printed in the terminal where the server
 runs. Copy it from there. With one, it arrives by e-mail, see below.
@@ -307,3 +308,15 @@ Students can select predefined courses on **My courses** and at signup. They can
 create a course. Unsupported programmes have no predefined offerings yet.
 The existing seed command still **deletes the local database**, so do not run it on
 real or shared data. This branch does not change other contributors' code.
+
+## Bachelor course catalogue (2026/27)
+
+The official catalogue also covers the three Bachelor programmes: Management,
+Economics, and Ocean Studies. Their mandatory and elective classifications are
+programme-specific; BSc Management and Economics include internship/additional
+courses under **Out of Programme**. Career modules are excluded. Ocean Studies
+currently has only mandatory courses in the handbook; its electives are not
+yet announced. The five Ocean Studies courses displayed with code `XXXX` have
+unique internal identifiers so they do not merge into one. The duplicated
+Oceanography code in the handbook was reconciled to `1701` using its academic
+offer page. No database reset is needed: the catalogue syncs at startup.

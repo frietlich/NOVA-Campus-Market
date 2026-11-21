@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<title>{% block title %}Campus Market{% endblock %}</title>
+<title>Campus Market{% block title %}{% endblock %}</title>
 <meta name="theme-color" content="#F4F4F6" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0C0C0F" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Campus Market">
 <link rel="manifest" href="/static/manifest.webmanifest">
-<link rel="apple-touch-icon" href="/static/img/icon-180.png">
-<link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
-<link rel="icon" href="/static/img/icon-192.png" sizes="192x192">
+<link rel="apple-touch-icon" href="{{ asset('img/icon-180.png') }}">
+<link rel="icon" href="{{ asset('img/favicon.svg') }}" type="image/svg+xml">
+<link rel="icon" href="{{ asset('img/icon-192.png') }}" sizes="192x192">
 <link rel="stylesheet" href="{{ asset('css/app.css') }}">
 </head>
 <body>
@@ -21,6 +21,7 @@
     here adds ?done=... to the address; the script removes it again. -#}
 {%- set TOASTS = {
   'published': 'Your entry is live. Every Nova student can see it now.',
+  'saved': 'Your changes are saved.',
   'closed': 'Entry closed. It is gone from the list.',
   'reopened': 'It is back up and visible again.',
 } -%}

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% import "partials/icons.html" as icon %}
+{% import "partials/avatar.html" as av %}
+{% import "partials/card.html" as c %}
+{% block title %} · {{ them.name }}{% endblock %}
+{% block body %}
+<div class="app">
+  <div class="screen">
+
+    <div class="sheet-head">
+      <span class="side"><a class="link link--plain" data-back href="{{ back }}">Back</a></span>
+      <span class="mid">{{ them.name }}</span>
+      <span class="side"></span>
+    </div>
+
+    <div class="photo-pick" style="margin-top: 8px">
+      <span class="avatar avatar--xl">{{ av.avatar(them.name, them.photo, "xl") }}</span>
+      <b style="margin-top: 10px; font-size: 18px">{{ them.name }}</b>
+      <span class="note" style="margin: 2px 0 0">{{ them.programme | programme(them.cems) }}</span>
+    </div>
+
+    {% if open_rows %}
+      <span class="section" style="margin: 26px 0 8px 2px">UP RIGHT NOW</span>
+      <div class="list">
+        {% for l in open_rows %}{{ c.card(l, owner=False) }}{% endfor %}
+      </div>
+    {% else %}
+      <p class="note" style="margin-top: 26px">{{ them.name }} has nothing up at the moment.</p>
+    {% endif %}
+
+    <div style="height: calc(var(--foot) + 24px)"></div>
+
+  </div>
+</div>
+{% endblock %}

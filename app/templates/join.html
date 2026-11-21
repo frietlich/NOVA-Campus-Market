@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% import "partials/icons.html" as icon %}
 {% import "partials/avatar.html" as av %}
-{% block title %}Create an account{% endblock %}
+{% block title %} · Create an account{% endblock %}
 {% block body %}
 <div class="app">
   <form class="form" method="post" action="/join" enctype="multipart/form-data">
@@ -23,8 +23,8 @@
     </div>
 
     <label class="label" for="name">Name</label>
-    <input class="input" id="name" name="name" type="text" required maxlength="60"
-           placeholder="Marco C." value="{{ f.name }}">
+    <input class="input" id="name" name="name" type="text" required maxlength="{{ NAME_MAX }}"
+           placeholder="Marco C." value="{{ f.name }}" autocomplete="off">
 
     {# The first option is only there to give the closed field something to
        say. It carries data-hint so the script can lift it out of the list
@@ -52,15 +52,15 @@
       </select>
     </div>
 
-    {# The pattern is the same door policy the server keeps, an address that
-       ends in the school domain, so the field says no before the page has to
-       be sent to find out. #}
+    {# The pattern is the same door policy the server keeps, a five digit
+       student number and the school domain and nothing else, so the field
+       says no before the page has to be sent to find out. #}
     <label class="label" for="email">Nova e-mail</label>
     <input class="input" id="email" name="email" type="email" required
            inputmode="email" autocapitalize="none" autocomplete="email"
-           maxlength="64" pattern="[^@\s]+@[Nn][Oo][Vv][Aa][Ss][Bb][Ee]\.[Pp][Tt]"
-           title="Your address has to end in @novasbe.pt"
-           placeholder="58412@novasbe.pt" value="{{ f.email }}">
+           maxlength="{{ EMAIL_MAX }}" pattern="{{ EMAIL_PATTERN }}"
+           title="Your {{ EMAIL_DIGITS }} digit student number and {{ EMAIL_DOMAIN }}"
+           placeholder="58412{{ EMAIL_DOMAIN }}" value="{{ f.email }}">
 
     <label class="label" for="password">Password</label>
     <input class="input" id="password" name="password" type="password" required

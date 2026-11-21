@@ -1,43 +1,233 @@
 {% extends "base.html" %}
 {% import "partials/icons.html" as icon %}
 {% import "partials/avatar.html" as av %}
-{% block title %}Chats{% endblock %}
+{% import "partials/art.html" as art %}
+{% block title %} · {{ 'Archive' if archived else 'Chats' }}{% endblock %}
+
+{#- The picture for an entry. Housing and Market keep their drawn cover,
+    because a building and a bag are still a building and a bag at this size.
+    A ticket and a group are scenes, and a scene shrunk to 36 pixels is a
+    smudge, so those two take the plain symbol the rest of the app uses. -#}
+{% macro thumb(kind, n) %}
+<span class="ch-thumb {{ 'ch-thumb--sign' if kind in ('ticket', 'group') }}" data-kind="{{ kind }}">
+  {%- if kind in ('ticket', 'group') -%}{{ icon.of_kind(kind, 20, 2) }}
+  {%- else -%}{{ art.cover(kind, n) }}{%- endif -%}
+</span>
+{% endmacro %}
+
+{#- One chat inside a block of your own entry. Which entry it is about is
+    written above it, so the person is what this row is for. -#}
+{% macro chat_row(c, tucked=false) %}
+<a class="ch-row{{ ' ch-row--more' if tucked }}" href="/chat/{{ c.id }}">
+  <span class="ch-face{{ ' ch-face--new' if c.unread }}"
+        {% if c.unread %}aria-label="Unread"{% endif %}>
+    {{ av.avatar(c.other_name, c.other_photo, "sm") }}
+  </span>
+  <div class="ch-body">
+    <span class="ch-who truncate">{{ c.other_name }}</span>
+    <span class="ch-last truncate">{{ c.last_body or 'No messages yet' }}</span>
+  </div>
+  <span class="ch-when">{{ c.last_at | when }}</span>
+</a>
+{% endmacro %}
+
+{#- A chat on the asking side. The big line is whatever tells this row apart
+    from the one under it. Normally that is the entry. Filtered down to one
+    event or one course it is the person, because the entry is the same for
+    every row and the pill above already says which. -#}
+{% macro chat_card(c, by_person) %}
+<a class="ch-card" href="/chat/{{ c.id }}">
+  <span class="ch-face{{ ' ch-face--new' if c.unread }}"
+        {% if c.unread %}aria-label="Unread"{% endif %}>
+    {% if by_person %}{{ av.avatar(c.other_name, c.other_photo, "sm") }}
+    {% else %}{{ thumb(c.kind, c.listing_id) }}{% endif %}
+  </span>
+  <div class="ch-body">
+    <span class="ch-who truncate">{{ c.other_name if by_person else c.title }}</span>
+    <span class="ch-last truncate">
+      {%- if not by_person %}{{ c.other_name }} · {% endif -%}
+      {{ c.last_body or 'No messages yet' }}
+    </span>
+  </div>
+  <span class="ch-side">
+    <span class="ch-when">{{ c.last_at | when }}</span>
+    {% if c.status == 'closed' %}
+      <span class="note-pill note-pill--mini">Entry closed</span>
+    {% endif %}
+  </span>
+</a>
+{% endmacro %}
+
 {% block body %}
 <div class="app app--tabs">
   <div class="screen">
 
+    {% if archived %}
+      <div class="head" style="margin-left: -10px">
+        <div style="display: flex; align-items: center; gap: 4px">
+          <a class="icon-btn" href="/chats?side={{ side }}" aria-label="Back to your chats">{{ icon.back() }}</a>
+          <span style="font-size: 17px; font-weight: 600">
+            {{ 'Archived entries' if side == 'sell' else 'Archived chats' }}
+          </span>
+        </div>
+      </div>
+    {% else %}
     <div class="head">
       <h1>Chats</h1>
       <a href="/profile" aria-label="Your profile">{{ av.avatar(me.name, me.photo) }}</a>
     </div>
 
-    {% if conversations %}
-      <div class="rows">
-        {% for c in conversations %}
-          {% if not loop.first %}<div class="divider"></div>{% endif %}
-          <a class="row" href="/chat/{{ c.id }}">
-            <span class="who-pic">
-              {{ av.avatar(c.other_name, c.other_photo, "md") }}
-              <span class="kind-badge" data-kind="{{ c.kind }}">{{ icon.of_kind(c.kind, 12, 2.2) }}</span>
-            </span>
-            <div class="row-body">
-              <div class="row-top">
-                <span class="row-name truncate">{{ c.other_name }}</span>
-                <span class="row-time">{{ c.last_at | when }}</span>
-              </div>
-              <span class="row-sub truncate">{{ c.title }}</span>
-              <span class="row-last truncate">{{ c.last_body or 'No messages yet' }}</span>
-            </div>
-            {% if c.unread %}<span class="dot" aria-label="Unread"></span>{% endif %}
+    <form class="search" method="get" action="/chats" role="search">
+      {{ icon.search() }}
+      <label class="sr" for="q">Search your chats</label>
+      <input id="q" name="q" type="search" value="{{ q }}" placeholder="Name, entry or message">
+      <input type="hidden" name="side" value="{{ side }}">
+    </form>
+    {% endif %}
+
+    {% if has_sell and has_buy and not archived %}
+      <div class="segment" style="margin: 12px 0">
+        <a href="/chats?side=buy" aria-current="{{ 'true' if side == 'buy' else 'false' }}">
+          You asked{% if unread_buy %} <i class="seg-dot"></i>{% endif %}
+        </a>
+        <a href="/chats?side=sell" aria-current="{{ 'true' if side == 'sell' else 'false' }}">
+          Your entries{% if unread_sell %} <i class="seg-dot"></i>{% endif %}
+        </a>
+      </div>
+    {% endif %}
+
+    {#- Two rows that never mix. The four tabs are the steady ground and stay
+        on one line of their own, sliding sideways if they have to. The things
+        you asked several people about come and go, so they start a row below
+        instead of pushing the tabs about. -#}
+    {% if kinds | length > 1 %}
+      <div class="chips chips--one">
+        <a href="/chats?side={{ side }}" class="chip {{ 'chip--on' if not kind and not bundle }}">All</a>
+        {% for t in kinds %}
+          <a href="/chats?side={{ side }}&kind={{ t.kind }}" data-kind="{{ t.kind }}"
+             class="chip chip--kind {{ 'chip--on' if kind == t.kind }}">{{ t.label }}</a>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if bundles %}
+      <div class="chips" style="margin-top: 8px">
+        {% for b in bundles %}
+          <a href="/chats?side={{ side }}&bundle={{ b.key }}" data-kind="{{ b.kind }}"
+             class="chip chip--kind {{ 'chip--on' if bundle == b.key }}">
+            {{ b.label }} <span class="chip-count">{{ b.count }}</span>
+            {%- if b.unread %}<span class="chip-dot" aria-label="Unread"></span>{% endif -%}
           </a>
         {% endfor %}
       </div>
+    {% endif %}
+
+    <div style="height: 12px"></div>
+
+    {% if blocks or chats %}
+      <div class="ch-list">
+        {% for b in blocks %}
+          <div class="ch-block" data-kind="{{ b.listing.kind }}" data-key="{{ b.key }}">
+            {#- The box holds the block open and the heading is its switch,
+                so folding needs no script at all. It is there on every
+                block, even one with something unread, because somebody may
+                want a long entry out of the way whether or not it is read. -#}
+            <input class="sr" type="checkbox" id="open-{{ loop.index }}" checked>
+
+            <label class="ch-head" for="open-{{ loop.index }}">
+              {{ thumb(b.listing.kind, b.listing.listing_id) }}
+              <span class="ch-title truncate">{{ b.listing.title }}</span>
+              {% if b.listing.price is not none %}
+                <span class="ch-price">{{ b.listing.price | money }}</span>
+              {% endif %}
+              {% if b.unread %}
+                <span class="ch-new">{{ b.unread }} new</span>
+              {% else %}
+                <span class="ch-count">{{ b.total }}</span>
+              {% endif %}
+              <span class="ch-chev">{{ icon.chev() }}</span>
+            </label>
+
+            {% if b.listing.status == 'closed' %}
+              <div class="ch-closed">
+                <span class="note-pill">Entry closed</span>
+                <form class="ch-closed-do" method="post" action="/listing/{{ b.listing.listing_id }}/{{ 'unarchive' if archived else 'archive' }}">
+                  <button class="row-btn" type="submit"
+                          aria-label="{{ 'Take this entry out of your archive' if archived else 'Archive this entry and every chat about it' }}">
+                    {%- if archived %}<span class="icon-disc">{{ icon.unarchive(17) }}</span>
+                    {%- else %}{{ icon.archive(18) }}{% endif -%}
+                  </button>
+                </form>
+              </div>
+            {% endif %}
+
+            {#- Every chat is here, in the order of the clock. The ones
+                beyond the first few are only hidden by a rule, so when the
+                line below is pressed they appear in their own place instead
+                of being tacked on at the end. -#}
+            <div class="ch-rows">
+              {% if b.rest %}
+                <input class="sr" type="checkbox" id="more-{{ loop.index }}">
+              {% endif %}
+              {% for c in b.chats %}
+                {{ chat_row(c, c.id not in b.show_ids) }}
+              {% endfor %}
+              {% if b.rest %}
+                <label class="ch-more" for="more-{{ loop.index }}">
+                  <span class="ch-more-on">Show {{ b.rest }} more</span>
+                  <span class="ch-more-off">Show less</span>
+                </label>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+
+        {% for c in chats %}{{ chat_card(c, bundle != '') }}{% endfor %}
+      </div>
+
     {% else %}
       <div class="empty">
         {{ icon.chat(34, 1.4) }}
-        <b>No chats yet</b>
-        <p>Open an entry and write to whoever put it up. The conversation lands here.</p>
+        {% if archived %}
+          <b>Nothing archived</b>
+          <p>When an entry closes you can put the chat away, and it lands here.</p>
+          <a class="link" href="/chats?side={{ side }}">Back to your chats</a>
+        {% elif q %}
+          <b>Nothing found</b>
+          <p>No chat of yours matches that.</p>
+          <a class="link" href="/chats?side={{ side }}">Clear the search</a>
+        {% elif kept %}
+          {#- Before the two below, because telling somebody they have no
+              chats right above a link to five of them would be a lie. -#}
+          <b>Nothing open</b>
+          {% if side == 'sell' %}
+            <p>Every entry of yours that somebody wrote about is archived.</p>
+          {% else %}
+            <p>Every chat of yours is archived.</p>
+          {% endif %}
+        {% elif side == 'sell' %}
+          <b>Nobody has written yet</b>
+          <p>When a student asks about something you put up, it lands here.</p>
+        {% else %}
+          <b>No chats yet</b>
+          <p>Open an entry and write to whoever put it up. The conversation lands here.</p>
+        {% endif %}
       </div>
+    {% endif %}
+
+    {#- Outside the branch above, because a side where everything has been
+        archived shows the empty state and still has to offer the way in. -#}
+    {% if kept and not archived %}
+      <a class="ch-archive{{ ' ch-archive--low' if not (blocks or chats) }}"
+         href="/chats?side={{ side }}&archived=1">
+        {#- The same sign as the one in the chats, so this line is where
+            anybody who has not met it yet finds out what it means. -#}
+        {{ icon.archive(18) }}
+        <span>{{ 'Archived entries' if side == 'sell' else 'Archived chats' }}</span>
+        <span class="ch-count">{{ kept }}</span>
+        {%- if kept_unread %}<span class="chip-dot" aria-label="Unread"></span>{% endif -%}
+        <span class="ch-chev ch-chev--go">{{ icon.chev() }}</span>
+      </a>
     {% endif %}
 
   </div>

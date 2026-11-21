@@ -1,24 +1,25 @@
 {% extends "base.html" %}
 {% import "partials/icons.html" as icon %}
-{% block title %}Log in{% endblock %}
+{% block title %} · Log in{% endblock %}
 {% block body %}
 <div class="app">
   <form class="gate" method="post" action="/login">
 
     <div class="brand">
-      <div class="mark">{{ icon.house(28, 1.8) }}</div>
+      <div class="mark mark--brand">{{ icon.logo(66) }}</div>
       <span>CAMPUS MARKET</span>
     </div>
 
     <h1>Welcome back</h1>
-    <p class="lead">Sign in with your Nova address.</p>
 
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
 
     <span class="cap">Nova e-mail</span>
     <input class="input" name="email" type="email" required inputmode="email"
            autocapitalize="none" autocomplete="email"
-           placeholder="58412@novasbe.pt" value="{{ email or '' }}">
+           maxlength="{{ EMAIL_MAX }}" pattern="{{ EMAIL_PATTERN }}"
+           title="Your {{ EMAIL_DIGITS }} digit student number and {{ EMAIL_DOMAIN }}"
+           placeholder="58412{{ EMAIL_DOMAIN }}" value="{{ email or '' }}">
 
     <span class="cap" style="margin-top: 18px">Password</span>
     <input class="input" name="password" type="password" required
@@ -31,7 +32,7 @@
     <div class="grow"></div>
 
     <button class="btn" type="submit">Log in</button>
-    <p class="note"><a class="link link--quiet" href="/start">Back</a></p>
+    <a class="btn btn--quiet" href="/start" style="margin-top: 10px">Back</a>
 
   </form>
 </div>

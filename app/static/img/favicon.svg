@@ -2,9 +2,19 @@
   <title>Campus Market</title>
   <desc>Four tiles for the four tabs. A house, a ticket with two bites out of it, a price tag and a head.</desc>
   <mask id="stub"><rect x="272" y="130" width="120" height="120" rx="28" fill="#FFFFFF"/><circle cx="272" cy="190" r="19" fill="#000000"/><circle cx="392" cy="190" r="19" fill="#000000"/></mask>
+  <!-- Rounded, with the corners left transparent. Watch out when making the
+       PNGs from this: qlmanage flattens onto white, so the corners come out
+       opaque white instead of clear, which is a pale frame around the mark
+       on any dark tab bar. tools/round_icons.py cuts them out again. -->
   <rect width="512" height="512" rx="112" fill="#0B0B0F"/>
-  <path d="M180 120 232 162v60a20 20 0 0 1-20 20h-64a20 20 0 0 1-20-20v-60z" fill="#19B9A6" stroke="#19B9A6" stroke-width="16" stroke-linejoin="round"/>
-  <rect x="272" y="130" width="120" height="120" rx="28" fill="#FF6B52" mask="url(#stub)"/>
-  <path d="M120 304a22 22 0 0 1 22-22h42l56 56v44a22 22 0 0 1-22 22h-76a22 22 0 0 1-22-22z" fill="#9A7CFF"/>
-  <circle cx="332" cy="342" r="58" fill="#E8A33D"/>
+  <!-- The four tiles cover 292 of the 512, so just over half, which at the
+       16 pixels of a browser tab leaves the mark about eight pixels across.
+       This grows them about a third around their own middle at 256, 258,
+       so they sit in the plate the way the logo sits in the app. -->
+  <g transform="translate(256 258) scale(1.32) translate(-256 -258)">
+    <path d="M180 120 232 162v60a20 20 0 0 1-20 20h-64a20 20 0 0 1-20-20v-60z" fill="#19B9A6" stroke="#19B9A6" stroke-width="16" stroke-linejoin="round"/>
+    <rect x="272" y="130" width="120" height="120" rx="28" fill="#FF6B52" mask="url(#stub)"/>
+    <path d="M120 304a22 22 0 0 1 22-22h42l56 56v44a22 22 0 0 1-22 22h-76a22 22 0 0 1-22-22z" fill="#9A7CFF"/>
+    <circle cx="332" cy="342" r="58" fill="#E8A33D"/>
+  </g>
 </svg>

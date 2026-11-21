@@ -141,6 +141,267 @@
   check();
 })();
 
+// Which blocks you had open survives a trip into a chat, but not a trip out
+// of the chats tab.
+//
+// Reading a chat and coming straight back should leave the list as you had
+// it, even though that block is now settled and the server would fold it.
+// Going to Tickets and back is a new visit, and then the list greets you the
+// way it means to, with everything settled folded away.
+(function keepFolds() {
+  if (!location.pathname.startsWith("/chats")) return;
+  const SHELF = "folds";
+
+  const blocks = Array.from(document.querySelectorAll(".ch-block[data-key]"));
+  if (!blocks.length) return;
+  const boxOf = (block) => block.querySelector("input[type=checkbox]");
+
+  const nearby = (where) => {
+    if (!where) return false;
+    try {
+      const url = new URL(where);
+      return url.origin === location.origin
+        && (url.pathname.startsWith("/chats") || url.pathname.startsWith("/chat/"));
+    } catch (err) {
+      return false;
+    }
+  };
+
+  const store = () => {
+    const now = {};
+    blocks.forEach((block) => {
+      const box = boxOf(block);
+      if (box) now[block.dataset.key] = box.checked;
+    });
+    try {
+      sessionStorage.setItem(SHELF, JSON.stringify(now));
+    } catch (err) {
+      // A private window can refuse. Then every visit starts folded, which
+      // is the server's answer anyway.
+    }
+  };
+
+  if (nearby(document.referrer)) {
+    let was = {};
+    try {
+      was = JSON.parse(sessionStorage.getItem(SHELF) || "{}");
+    } catch (err) {
+      was = {};
+    }
+    blocks.forEach((block) => {
+      const box = boxOf(block);
+      const before = was[block.dataset.key];
+      if (box && typeof before === "boolean") box.checked = before;
+    });
+  } else {
+    try {
+      sessionStorage.removeItem(SHELF);
+    } catch (err) {
+      // Nothing to forget then.
+    }
+  }
+
+  blocks.forEach((block) => {
+    const box = boxOf(block);
+    if (box) box.addEventListener("change", store);
+  });
+  window.addEventListener("pagehide", store);
+})();
+
+// Emptying the search box empties the search.
+//
+// The box is an ordinary form, so clearing it changes nothing until it is
+// sent again. Pressing the little x in a search field looks like undoing the
+// search, and then the old results sit there as though nothing happened.
+// This only binds where a search is actually running, so typing something
+// and changing your mind before sending it does not reload anything.
+(function clearSearch() {
+  document.querySelectorAll("form.search").forEach((form) => {
+    const box = form.querySelector("input[type=search]");
+    if (!box || !box.value.trim()) return;
+    box.addEventListener("input", () => {
+      if (box.value.trim() === "") form.submit();
+    });
+  });
+})();
+
+// The chat list comes back fresh, and at the height you left it.
+//
+// Two things fight here. A list has to be current, because a chat you have
+// just read must not come back still marked unread, and that is why no page
+// in this app may be kept by the browser. But a browser that keeps nothing
+// also stops putting you back where you were, so the list writes its own
+// place down before you leave.
+(function keepPlace() {
+  if (!location.pathname.startsWith("/chats")) return;
+  const key = "place:" + location.pathname + location.search;
+  const flag = key + ":back";
+
+  const put = (name, value) => {
+    try {
+      sessionStorage.setItem(name, value);
+    } catch (err) {
+      // A private window can refuse to store. Then you land at the top,
+      // which is a small loss and not worth breaking the page over.
+    }
+  };
+  const take = (name) => {
+    try {
+      const value = sessionStorage.getItem(name);
+      sessionStorage.removeItem(name);
+      return value;
+    } catch (err) {
+      return null;
+    }
+  };
+
+  const store = () => put(key, String(window.scrollY));
+  window.addEventListener("pagehide", store);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) store();
+  });
+
+  // Belt and braces. no-store stops one browser from keeping the page, but
+  // not every browser: some hand the living page straight back, and then the
+  // dot you cleared is still sitting there. persisted says that happened, so
+  // the page fetches itself, leaving a note to keep the place over the trip.
+  window.addEventListener("pageshow", (event) => {
+    if (!event.persisted) return;
+    put(flag, "1");
+    location.reload();
+  });
+
+  // Only on the way back. Opening the list fresh should start at the top.
+  let back = Boolean(take(flag));
+  if (!back) {
+    try {
+      const nav = performance.getEntriesByType("navigation")[0];
+      back = Boolean(nav) && nav.type === "back_forward";
+    } catch (err) {
+      return;
+    }
+  }
+  if (!back) return;
+
+  const y = parseInt(take(key), 10);
+  if (!y) return;
+  // Once now and once after the first paint, because the drawn covers can
+  // still be settling when this runs.
+  window.scrollTo(0, y);
+  requestAnimationFrame(() => window.scrollTo(0, y));
+})();
+
+// A back arrow goes back, not to a fixed address.
+//
+// The profile and a chat are both opened from whichever tab you were on, so
+// their arrow has to return there. A plain link cannot know where you came
+// from, and it cannot bring your scroll position with it either. When the
+// page before this one was one of ours, the arrow therefore goes back
+// through the browser instead of following its own address, which lands you
+// exactly where you left. The address stays in the markup for the case where
+// there is no page before this one, such as a link opened from outside.
+(function backLinks() {
+  // Only what is marked as a way back. This used to take every icon button
+  // in a chat header, which was fine while the back arrow was the only one
+  // there. The archive button is one too, and it was being turned into a
+  // history.back() before it could ever send its form.
+  const arrows = document.querySelectorAll("[data-back]");
+  if (!arrows.length || !document.referrer) return;
+  let from;
+  try {
+    from = new URL(document.referrer);
+  } catch (err) {
+    return;
+  }
+  if (from.origin !== location.origin) return;
+  if (from.pathname === location.pathname) return;
+  arrows.forEach((arrow) => {
+    arrow.addEventListener("click", (event) => {
+      event.preventDefault();
+      history.back();
+    });
+  });
+})();
+
+// A number box that lets you type a word is a box that lies about itself.
+// The browser checks a number field only when the form is sent, and a plain
+// one happily takes e, a plus and a minus because that is legal in maths
+// notation. These two keep the wrong character out of the box in the first
+// place, so nobody ever sees a field refuse what it just accepted.
+//
+// Everything is read off the markup. A money box says inputmode decimal and
+// a counting box is a number field, so no template has to mark anything.
+(function numberBoxes() {
+  // A money amount. Digits, one separator, two places after it.
+  function tidy(box) {
+    const was = box.value;
+    let now = was.replace(/[^0-9.,]/g, "");
+    const first = now.search(/[.,]/);
+    if (first !== -1) {
+      now = now.slice(0, first + 1) + now.slice(first + 1).replace(/[.,]/g, "");
+      now = now.slice(0, first + 3);
+    }
+    if (now === was) return;
+    const at = Math.max(0, box.selectionStart - (was.length - now.length));
+    box.value = now;
+    try {
+      box.setSelectionRange(at, at);
+    } catch (err) {
+      // a field that does not carry a cursor, nothing to put back
+    }
+  }
+
+  document.querySelectorAll("input[inputmode='decimal']").forEach((box) => {
+    box.addEventListener("input", () => tidy(box));
+  });
+
+  // A whole number. Digits and nothing else. These are text fields on
+  // purpose, because a number field hands back an empty string while it
+  // holds something like 12e, and what you cannot read you cannot clean.
+  document.querySelectorAll("input[inputmode='numeric']").forEach((box) => {
+    box.addEventListener("input", () => {
+      const was = box.value;
+      const now = was.replace(/[^0-9]/g, "");
+      if (now === was) return;
+      const at = Math.max(0, box.selectionStart - (was.length - now.length));
+      box.value = now;
+      try {
+        box.setSelectionRange(at, at);
+      } catch (err) {
+        // nothing to put back
+      }
+    });
+  });
+
+  // A money box that still ends in a separator when you leave it is just
+  // an unfinished number, so it loses the dangling comma.
+  document.querySelectorAll("input[inputmode='decimal']").forEach((box) => {
+    box.addEventListener("blur", () => {
+      box.value = box.value.replace(/[.,]$/, "");
+    });
+  });
+})();
+
+// Bills included means there is nothing to estimate, so the box goes dead
+// instead of a sentence underneath asking people to leave it alone. What a
+// disabled field holds is never sent, so the server gets nothing either.
+(function billsBox() {
+  const picker = document.getElementById("bills");
+  const field = document.getElementById("bills_estimate");
+  const box = document.getElementById("bills_box");
+  if (!picker || !field || !box) return;
+
+  function sync() {
+    const included = picker.value === "1";
+    field.disabled = included;
+    box.classList.toggle("prefixed--off", included);
+    if (included) field.value = "";
+  }
+
+  picker.addEventListener("change", sync);
+  sync();
+})();
+
 // The course list is long, so it filters while you type and keeps a count.
 (function courses() {
   const field = document.getElementById("filter");

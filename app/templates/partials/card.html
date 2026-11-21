@@ -2,7 +2,9 @@
 {% import "partials/icons.html" as icon %}
 {% import "partials/art.html" as art %}
 
-{% macro card(l, extra=0) %}
+{#- owner is off on a student's own page, where their name stands at the
+    top already and does not need repeating under every entry. -#}
+{% macro card(l, extra=0, owner=True) %}
 {# Tickets and things for sale always say what they cost, and Free is a price
    like any other. A group spot has no price at all, so it says nothing. #}
 <a class="card" href="/listing/{{ l.id }}" data-kind="{{ l.type }}">
@@ -42,6 +44,7 @@
         {{ l.place or 'Place not given' }}
         {%- if l.quantity %} · {{ l.quantity }} left{% endif -%}
       </span>
+      {%- if extra or owner -%}
       <span class="card-owner truncate">
         {%- if extra -%}
           {{ extra + 1 }} students selling
@@ -49,14 +52,17 @@
           {{ l.owner_name }}
         {%- endif -%}
       </span>
+      {%- endif -%}
     {% elif l.type == 'housing' %}
       {# Two lines of facts built from fields, not from a line somebody
          typed. The first one carries the two that decide everything, what
          it really costs and how far it is. #}
+      {#- All three say Bills first, so the eye lands on the same word
+          whichever of them it is and only has to read the end. -#}
       <span class="card-key truncate">
         {%- if l.bills_included -%}Bills included
-        {%- elif l.bills_estimate -%}Plus about {{ l.bills_estimate | money }} bills
-        {%- else -%}Plus bills{%- endif -%}
+        {%- elif l.bills_estimate -%}Bills around {{ l.bills_estimate | money }}
+        {%- else -%}Bills on top{%- endif -%}
         {%- if l.minutes_campus %} · {{ l.minutes_campus }} min to campus{% endif -%}
       </span>
       <span class="card-info truncate">
@@ -66,25 +72,34 @@
         {%- if l.months_min %} · {{ l.months_min }} months min{% endif -%}
       </span>
       {% set other = HOUSING.platform_of(l.external_url) %}
-      <span class="card-owner truncate">{{ l.owner_name }} · {{ l.owner_programme | short }}
-        {%- if other %} · <span class="card-also">Also on {{ other.name }}</span>{% endif %}</span>
+      {#- The area, where the name of whoever put it up used to be. Which
+          student it is decides nothing when you are looking for a room,
+          and where it is decides almost everything. It stands here even on
+          your own profile, for the same reason. -#}
+      {#- Carries the same class as the line above it, not the smaller one
+          the owner's name used to have, so the two read as one block. -#}
+      {% if l.place and l.place != 'other' %}
+        <span class="card-info truncate">{{ HOUSING.AREA_LABELS.get(l.place, l.place) }}
+          {%- if other %} · <span class="card-also">Also on {{ other.name }}</span>{% endif %}</span>
+      {% elif other %}
+        <span class="card-info truncate"><span class="card-also">Also on {{ other.name }}</span></span>
+      {% endif %}
     {% elif l.type == 'group' %}
       {# No course line here. The course is the heading above the block. #}
       {# The deadline leads, so it never gets cut off the end of the line. #}
-      <span class="card-info truncate">
-        {%- if l.hand_in -%}{{ l.hand_in | days_left }}{% if l.info %} · {% endif %}{%- endif -%}
-        {{ l.info }}
-      </span>
-      <span class="card-owner truncate">{{ l.owner_name }} · {{ l.owner_programme | short }}</span>
+      {#- Only the date. Whatever somebody typed into the old grey line was
+          never the reason anybody opened a group entry. -#}
+      <span class="card-info truncate">{{ l.hand_in | days_left }}</span>
+      {% if owner %}<span class="card-owner truncate">{{ l.owner_name }} · {{ l.owner_programme | short }}</span>{% endif %}
     {% else %}
       {% if l.course_name %}<span class="course-line truncate">{{ l.course_name }}</span>{% endif %}
-      <span class="card-info truncate">
-        {%- if l.type == 'item' and l.condition -%}
-          {{ l.condition | condition }}{% if l.info %} · {% endif %}
-        {%- endif -%}
-        {{ l.info }}
-      </span>
-      <span class="card-owner truncate">{{ l.owner_name }} · {{ l.owner_programme | short }}</span>
+      {#- A thing for sale says how worn it is. A ticket has the day and
+          the venue on the line above. The grey line somebody typed is gone
+          from every tab, it only ever repeated the description. -#}
+      {% if l.type == 'item' %}
+        <span class="card-info truncate">{{ l.condition | condition }}</span>
+      {% endif %}
+      {% if owner %}<span class="card-owner truncate">{{ l.owner_name }} · {{ l.owner_programme | short }}</span>{% endif %}
     {% endif %}
   </div>
 
