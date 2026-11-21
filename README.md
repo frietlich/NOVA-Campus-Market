@@ -309,12 +309,12 @@ sites write it in UTC.
 
 Shotgun, Resident Advisor, a ticket app or an Instagram story cannot be read
 by link. A screenshot of the event can: `app/ticket_screenshot.py` sends it to
-Claude (`claude-opus-5-5`), which answers in a fixed JSON form, and the ticket
+Claude Haiku (`claude-haiku-5-5`, and only that model), which answers in a fixed JSON form, and the ticket
 form fills itself in the same way as from a link.
 
 * Switched on by `ANTHROPIC_API_KEY` in `.env`. Without a key the button is not
   shown at all.
-* About one cent per screenshot. Every student gets 20 a day (`ai_reads`).
+* A fraction of a cent per screenshot. Every student gets 20 a day (`ai_reads`).
 * The picture is shrunk to a small JPEG, sent once and thrown away. It is
   never saved, because a ticket screenshot often has the QR code on it.
 * Claude is told to read only the event, never QR codes, ticket numbers or

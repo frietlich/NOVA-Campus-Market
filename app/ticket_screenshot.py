@@ -22,7 +22,10 @@ from datetime import date
 
 from . import categories
 
-MODEL = "claude-opus-5-5"
+# The only model this ever uses. Reading a few lines off a picture is easy
+# work, and Haiku does it for a fraction of a cent. There is no fallback to
+# any other model: when Haiku cannot read it, the student types it in.
+MODEL = "claude-haiku-5-5"
 READS_PER_DAY = 20
 MAX_UPLOAD = 10_000_000          # bytes, what a phone screenshot can be
 LONG_EDGE = 1568                 # pixels; the API shrinks anything larger anyway
@@ -98,13 +101,9 @@ def ask_claude(jpeg, today=None):
     Raises anything the SDK raises; read() turns that into a reason.
     """
     today = (today or date.today()).isoformat()
-    response = _client().beta.messages.create(
+    response = _client().messages.create(
         model=MODEL,
         max_tokens=4000,
-        # When a safety check declines the request, the API answers with the
-        # model it picks instead of failing.
-        betas=["server-side-fallback-2026-07-01"],
-        fallbacks="default",
         # Reading a few lines off a picture needs no deep thinking.
         output_config={"effort": "low",
                        "format": {"type": "json_schema", "schema": SCHEMA}},
