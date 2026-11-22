@@ -1139,3 +1139,223 @@
     box.addEventListener("change", read);
   });
 })();
+
+// ------------------------------------------------------------------ the tour
+//
+// Two parts. First a short illustrated welcome, three cards you swipe through,
+// where Bea, a (made-up) Nova student, says what the app is and how it works.
+// Then, if you want, she points at the real buttons one by one.
+// Shown once per browser. "Take the tour again" on the profile, or ?tour=1 in
+// the address, plays it again. Skippable everywhere, Esc closes it.
+(function tour() {
+  const bar = document.querySelector(".tabbar");
+  if (!bar) return;
+  const asked = new URLSearchParams(location.search).get("tour") === "1";
+  let seen = false;
+  try { seen = localStorage.getItem("cm-tour-done") === "1"; } catch (e) {}
+  if (seen && !asked) return;
+
+  // Bea. Drawn here, in the colours of the app, no photo and no logo.
+  const BEA = (wave) => `
+  <svg class="bea" viewBox="0 0 160 190" aria-hidden="true">
+    <ellipse cx="80" cy="182" rx="44" ry="6" fill="#000" opacity=".08"/>
+    <path d="M44 74c-8 26 2 52 16 60h40c14-8 24-34 16-60z" fill="#3B2A22"/>
+    <path d="M30 190c0-36 22-56 50-56s50 20 50 56z" fill="#12998A"/>
+    <path d="M58 136c6 10 14 14 22 14s16-4 22-14" fill="none" stroke="#0B6F64" stroke-width="5" stroke-linecap="round"/>
+    <path d="M73 150v20M87 150v20" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M40 150c-4 16-4 28-2 40" stroke="#E5492F" stroke-width="7" stroke-linecap="round" fill="none"/>
+    <rect x="72" y="112" width="16" height="22" rx="7" fill="#E0A982"/>
+    <circle cx="80" cy="88" r="31" fill="#F2C29B"/>
+    <path d="M48 86c-2-26 16-40 34-38 20 1 32 16 30 38-6-12-16-18-30-18-14 0-26 6-34 18z" fill="#3B2A22"/>
+    <path d="M100 58c10-6 22-2 24 8-8-2-14 0-20 4z" fill="#3B2A22"/>
+    <circle cx="69" cy="91" r="9" fill="none" stroke="#2A2A33" stroke-width="2.6"/>
+    <circle cx="91" cy="91" r="9" fill="none" stroke="#2A2A33" stroke-width="2.6"/>
+    <path d="M78 91h4" stroke="#2A2A33" stroke-width="2.6"/>
+    <circle cx="69" cy="92" r="2.8" fill="#2A2A33"/><circle cx="91" cy="92" r="2.8" fill="#2A2A33"/>
+    <circle cx="62" cy="104" r="4" fill="#F28C78" opacity=".45"/><circle cx="98" cy="104" r="4" fill="#F28C78" opacity=".45"/>
+    <path d="M72 106c4 5 12 5 16 0" fill="none" stroke="#8A3B2A" stroke-width="2.6" stroke-linecap="round"/>
+    ${wave ? `<g class="bea-arm">
+      <path d="M118 150c10-10 16-26 18-44" stroke="#12998A" stroke-width="15" stroke-linecap="round" fill="none"/>
+      <circle cx="137" cy="100" r="9" fill="#F2C29B"/></g>`
+    : `<path d="M118 150c8 8 10 20 10 40" stroke="#12998A" stroke-width="15" stroke-linecap="round" fill="none"/>`}
+    <g transform="rotate(-10 52 168)"><rect x="38" y="150" width="26" height="40" rx="5" fill="#2A2A33"/>
+      <rect x="41" y="154" width="20" height="30" rx="3" fill="#9FE3D8"/></g>
+  </svg>`;
+  const BEA_FACE = BEA(false).replace('viewBox="0 0 160 190"', 'viewBox="40 46 80 80"').replace('class="bea"', 'class="bea-face"');
+
+  const ICON = {
+    housing: '<path d="M3.6 10.7 12 4.3l8.4 6.4V19a1.4 1.4 0 0 1-1.4 1.4h-3.6v-5.9h-6.8v5.9H5a1.4 1.4 0 0 1-1.4-1.4z"/>',
+    ticket: '<rect x="3" y="7" width="18" height="10" rx="2.4"/><path d="M14.6 7.6v1.8m0 2.7v1.8m0 2.7v.8"/>',
+    item: '<path d="M5.4 8h13.2l1 11.4a1.2 1.2 0 0 1-1.2 1.3H5.6a1.2 1.2 0 0 1-1.2-1.3z"/><path d="M9 8a3 3 0 0 1 6 0"/>',
+    group: '<circle cx="9.2" cy="8.4" r="3.1"/><path d="M3.4 19.6c0-2.9 2.6-5.2 5.8-5.2s5.8 2.3 5.8 5.2M16.1 6.2a2.8 2.8 0 0 1 0 5.6M17.6 19.6c0-2.1-.8-3.7-2.2-4.7"/>',
+    find: '<circle cx="11" cy="11" r="6.6"/><path d="M16.2 16.2 20.5 20.5"/>',
+    chat: '<path d="M20.2 11.6c0 3.5-3.7 6.4-8.2 6.4-.9 0-1.8-.1-2.7-.4L5.3 19.3l1.1-3A6.1 6.1 0 0 1 3.8 11.6c0-3.5 3.7-6.4 8.2-6.4s8.2 2.9 8.2 6.4z"/>',
+    done: '<circle cx="12" cy="12" r="8.6"/><path d="M8.4 12.3 11 14.8l4.6-5"/>',
+  };
+  const svg = (k, s = 22) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
+
+  const CARDS = [
+    { cls: "onb-hello", html: `
+      <div class="onb-stage">${BEA(true)}<span class="onb-bubble">Olá! I'm Bea 👋</span></div>
+      <h2>Welcome to Campus Market</h2>
+      <p>I'm a Finance student, and I'll show you around. This is where Nova students
+         offer each other rooms, tickets, things and spots in group projects.</p>
+      <div class="onb-swap">
+        <span class="onb-old"><b>40 WhatsApp groups</b><br><small>messages scroll away</small></span>
+        <span class="onb-arrow">→</span>
+        <span class="onb-new">1 app<br><small>entries stay until they are taken</small></span>
+      </div>
+      <p class="onb-small">Only students with a verified novasbe.pt address get in.</p>` },
+    { cls: "onb-inside", html: `
+      <div class="onb-stage onb-stage--small">${BEA(false)}<span class="onb-bubble onb-bubble--small">Pick a tab!</span></div>
+      <h2>What's inside</h2>
+      <p>Four tabs, each with its own colour.</p>
+      <div class="onb-kinds">
+        <div data-kind="housing">${svg("housing")}<b>Housing</b><span>Rooms, studios, flats. Link your Idealista or Uniplaces ad.</span></div>
+        <div data-kind="ticket">${svg("ticket")}<b>Tickets</b><span>Parties, concerts, games, sorted by day.</span></div>
+        <div data-kind="item">${svg("item")}<b>Market</b><span>Bikes, desks, books, anything you sell.</span></div>
+        <div data-kind="group">${svg("group")}<b>Groups</b><span>A free spot in a project group, for your courses.</span></div>
+      </div>` },
+    { cls: "onb-how", html: `
+      <div class="onb-stage onb-stage--small">${BEA(false)}</div>
+      <h2>How it works</h2>
+      <ol class="onb-steps">
+        <li><span class="n" data-kind="housing">${svg("find", 20)}</span><div><b>Find it, or put it up</b><span>Search a tab, or tap + to offer something in a minute.</span></div></li>
+        <li><span class="n" data-kind="ticket">${svg("chat", 20)}</span><div><b>Message the owner</b><span>You see how many asked before you:</span>
+          <span class="onb-queue"><i></i><i></i><i class="me"></i><em>You are 3rd in line</em></span></div></li>
+        <li><span class="n" data-kind="group">${svg("done", 20)}</span><div><b>Done, it disappears</b><span>The owner closes the entry and everyone sees it is taken.</span></div></li>
+      </ol>` },
+  ];
+
+  const SPOTS = [
+    { el: ".tabbar", title: "The four tabs", text: "Switch between Housing, Tickets, Market, Groups and your Chats down here." },
+    { el: ".search", title: "Search and filters", text: "Look for anything in the tab you are in. Housing also filters by rent, area and minutes to campus." },
+    { el: ".plus", title: "Put something up", text: "Tap + to offer something. For a room, paste its link and we fill in part of the form." },
+    { el: ".card", title: "Open an entry", text: "Photos, the real monthly cost, the queue, and a button to message the owner." },
+    { el: '.tab[href="/chats"]', title: "Your chats", text: "Everything you are talking about, by entry. That's it, have fun!" },
+  ].filter((s) => document.querySelector(s.el));
+
+  const root = document.createElement("div");
+  root.className = "onb";
+  root.setAttribute("role", "dialog");
+  root.setAttribute("aria-modal", "true");
+  root.setAttribute("aria-label", "Welcome tour");
+  document.body.append(root);
+  document.documentElement.classList.add("onb-open");
+
+  function done() {
+    try { localStorage.setItem("cm-tour-done", "1"); } catch (e) {}
+    root.remove();
+    document.documentElement.classList.remove("onb-open");
+    document.removeEventListener("keydown", keys);
+    window.removeEventListener("resize", onResize);
+    if (asked) {
+      const u = new URL(location.href); u.searchParams.delete("tour");
+      history.replaceState(null, "", u.pathname + u.search);
+    }
+  }
+
+  // ---- part 1: the welcome cards
+  let c = 0, mode = "cards", s = 0;
+  function cards() {
+    mode = "cards";
+    const last = c === CARDS.length - 1;
+    root.className = "onb";
+    root.innerHTML = `
+      <div class="onb-sheet">
+        <button type="button" class="onb-skip">Skip</button>
+        <div class="onb-track" style="--i:${c}">
+          ${CARDS.map((k, n) => `<section class="onb-card ${k.cls}" ${n === c ? "" : 'aria-hidden="true"'}>${k.html}</section>`).join("")}
+        </div>
+        <div class="onb-foot">
+          <span class="onb-dots">${CARDS.map((_, n) => `<i class="${n === c ? "on" : ""}"></i>`).join("")}</span>
+          ${c > 0 ? '<button type="button" class="onb-back">Back</button>' : ""}
+          <button type="button" class="onb-next">${last ? "Show me around" : "Next"}</button>
+        </div>
+        ${last ? '<button type="button" class="onb-later">No thanks, I\'ll explore myself</button>' : ""}
+      </div>`;
+    root.querySelector(".onb-skip").onclick = done;
+    root.querySelector(".onb-next").onclick = () => (last ? spots() : (c++, cards()));
+    const back = root.querySelector(".onb-back");
+    if (back) back.onclick = () => { c--; cards(); };
+    const later = root.querySelector(".onb-later");
+    if (later) later.onclick = done;
+    root.querySelector(".onb-next").focus();
+    swipe(root.querySelector(".onb-track"));
+  }
+
+  function swipe(el) {
+    let x0 = null;
+    el.addEventListener("touchstart", (e) => { x0 = e.touches[0].clientX; }, { passive: true });
+    el.addEventListener("touchend", (e) => {
+      if (x0 === null) return;
+      const dx = e.changedTouches[0].clientX - x0; x0 = null;
+      if (dx < -50 && c < CARDS.length - 1) { c++; cards(); }
+      if (dx > 50 && c > 0) { c--; cards(); }
+    });
+  }
+
+  // ---- part 2: Bea points at the real buttons
+  function spots() {
+    if (!SPOTS.length) return done();
+    mode = "spots";
+    root.className = "onb onb--spots";
+    root.innerHTML = `<div class="onb-dim"></div><div class="onb-hole"></div><div class="onb-tip"></div>`;
+    spot();
+  }
+
+  function spot() {
+    const t = SPOTS[s];
+    const el = document.querySelector(t.el);
+    el.scrollIntoView({ block: "center", behavior: "instant" });
+    const last = s === SPOTS.length - 1;
+    const tip = root.querySelector(".onb-tip");
+    tip.innerHTML = `
+      <div class="onb-tip-top">${BEA_FACE}<div><b>${t.title}</b><p>${t.text}</p></div></div>
+      <div class="onb-foot">
+        <span class="onb-dots">${SPOTS.map((_, n) => `<i class="${n === s ? "on" : ""}"></i>`).join("")}</span>
+        ${last ? "" : '<button type="button" class="onb-back onb-end">Skip</button>'}
+        <button type="button" class="onb-next">${last ? "Let's go" : "Next"}</button>
+      </div>`;
+    tip.querySelector(".onb-next").onclick = () => (last ? done() : (s++, spot()));
+    const end = tip.querySelector(".onb-end");
+    if (end) end.onclick = done;
+    place();
+    tip.querySelector(".onb-next").focus();
+  }
+
+  function place() {
+    if (mode !== "spots") return;
+    const el = document.querySelector(SPOTS[s].el);
+    const r = el.getBoundingClientRect(), pad = 6;
+    const x = r.left - pad, y = r.top - pad, w = r.width + pad * 2, h = r.height + pad * 2;
+    const rad = Math.min(18, h / 2), W = window.innerWidth, H = window.innerHeight;
+    // The dark layer with a rounded hole cut out where the button is.
+    root.querySelector(".onb-dim").style.clipPath = `path(evenodd, "M0 0H${W}V${H}H0Z ` +
+      `M${x + rad} ${y}H${x + w - rad}A${rad} ${rad} 0 0 1 ${x + w} ${y + rad}V${y + h - rad}` +
+      `A${rad} ${rad} 0 0 1 ${x + w - rad} ${y + h}H${x + rad}A${rad} ${rad} 0 0 1 ${x} ${y + h - rad}` +
+      `V${y + rad}A${rad} ${rad} 0 0 1 ${x + rad} ${y}Z")`;
+    Object.assign(root.querySelector(".onb-hole").style, {
+      top: y + "px", left: x + "px", width: w + "px", height: h + "px", borderRadius: rad + "px",
+    });
+    const tip = root.querySelector(".onb-tip");
+    const up = r.top + r.height / 2 > window.innerHeight / 2;
+    tip.classList.toggle("onb-tip--up", up);
+    tip.style.top = up ? "" : r.bottom + 18 + "px";
+    tip.style.bottom = up ? window.innerHeight - r.top + 18 + "px" : "";
+    const cx = Math.min(Math.max(r.left + r.width / 2, 40), window.innerWidth - 40);
+    tip.style.setProperty("--arrow-x", cx - tip.getBoundingClientRect().left + "px");
+  }
+
+  function onResize() { place(); }
+  function keys(e) {
+    if (e.key === "Escape") return done();
+    if (mode === "cards") {
+      if (e.key === "ArrowRight" && c < CARDS.length - 1) { c++; cards(); }
+      if (e.key === "ArrowLeft" && c > 0) { c--; cards(); }
+    }
+  }
+  document.addEventListener("keydown", keys);
+  window.addEventListener("resize", onResize);
+  cards();
+})();
