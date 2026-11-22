@@ -600,7 +600,9 @@ img { display: block; max-width: 100%; }
 .autofill-row .input { flex: 1; min-width: 0; }
 .autofill-go { width: auto; height: auto; padding: 0 16px; font-size: 15px; }
 .autofill-go[disabled] { opacity: 0.5; cursor: default; }
-.autofill-shot { margin-top: 8px; height: 44px; font-size: 15px; gap: 8px; }
+/* Air above it, because what sits over it is a field with its own note
+   under it and the two would otherwise read as one block. */
+.autofill-shot { margin-top: 16px; height: 44px; font-size: 15px; gap: 8px; }
 .autofill-shot.is-busy { opacity: 0.5; pointer-events: none; }
 .autofill-status { text-align: left; margin: 6px 2px 0; }
 .autofill-status.is-ok { color: var(--accent); font-weight: 600; }

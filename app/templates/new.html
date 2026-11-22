@@ -117,6 +117,14 @@
           </div>
           <button class="btn btn--quiet autofill-go" type="button" id="autofill-go">Fill in</button>
         </div>
+        {#- Under the field it belongs to, the way a room does it, and not
+            at the foot of the whole box where it was answering for the
+            link and the screenshots at once. While you type it is replaced
+            by the name of the site it recognised. -#}
+        <p class="note linkfield-status" id="link-status" aria-live="polite">
+          Optional. A link goes on your entry as a button. Filling in works
+          with Luma, DICE, Xceed, BOL and Eventbrite.
+        </p>
       </div>
       {% endif %}
       {% if SCREENSHOTS_ON() %}
@@ -127,17 +135,19 @@
       <input class="sr" id="autofill_shot" type="file" multiple
              accept="image/png,image/jpeg,image/webp">
       {% endif %}
-      <p class="note autofill-status{% if tab.kind == 'ticket' %} linkfield-status{% endif %}"
-         id="autofill-status" aria-live="polite">
+      {#- The second note, under the screenshot button, and the line that
+          whatever was filled in reports back to. It is always drawn, even
+          with screenshots switched off, because filling in from a ticket
+          link writes its answer here. -#}
+      <p class="note autofill-status" id="autofill-status" aria-live="polite">
         {% if tab.kind == 'ticket' %}
-          Optional. A link goes on your entry as a button. Filling in works
-          with Luma, DICE, Xceed, BOL and Eventbrite.
-          {% if SCREENSHOTS_ON() %}Screenshots work with any site, also Shotgun and RA.{% endif %}
+          {% if SCREENSHOTS_ON() %}Screenshots work with any site, also Shotgun
+          and Resident Advisor, and are read by Claude without being stored.{% endif %}
         {% else %}
-          Optional. Already on Idealista, Imovirtual or Uniplaces? Take up to
-          {{ SCREENSHOTS_MAX }} screenshots of the advert and pick them all at once.
+          Already on Idealista, Imovirtual or Uniplaces? Take up to
+          {{ SCREENSHOTS_MAX }} screenshots of the advert and pick them all at
+          once. They are read by Claude and not stored.
         {% endif %}
-        {% if SCREENSHOTS_ON() %}Screenshots are read by Claude and not stored.{% endif %}
         You check everything before publishing.
       </p>
     </div>
