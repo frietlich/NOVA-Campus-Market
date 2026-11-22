@@ -6,7 +6,13 @@
 <div class="app chat-page">
 
   <div class="chat-head">
-    <a class="icon-btn" data-back href="/chats" aria-label="Back to the chats">{{ icon.back() }}</a>
+    {#- Back to wherever this chat was opened from. Written from an entry, the
+        arrow goes to that entry, and its own arrow then goes on to the tab,
+        so the way out is the way in, one step at a time. Only when the chat
+        came from the chats tab does the arrow hand over to the history, which
+        keeps the list where it was scrolled to. -#}
+    <a class="icon-btn"{% if back == '/chats' %} data-back{% endif %} href="{{ back }}"
+       aria-label="{{ 'Back to the chats' if back == '/chats' else 'Back to the entry' }}">{{ icon.back() }}</a>
     {# Picture and name both lead to whoever you are talking to. #}
     <a href="/student/{{ other.id }}" aria-label="{{ other.name }}'s profile">
       {{ av.avatar(other.name, other.photo, "sm") }}
@@ -61,6 +67,7 @@
   </div>
 
   <form class="composer" method="post" action="/chat/{{ conv.id }}">
+    {% if back != '/chats' %}<input type="hidden" name="back" value="{{ back }}">{% endif %}
     <label class="sr" for="body">Message</label>
     <input id="body" name="body" type="text" placeholder="Message" autocomplete="off">
     <button class="send" type="submit" aria-label="Send message">{{ icon.send() }}</button>

@@ -1462,7 +1462,10 @@ def listing_chat(request: Request, listing_id: int):
     if row is None or row["owner_id"] == me["id"]:
         return go(f"/listing/{listing_id}")
     conv_id = db.open_conversation(listing_id, me["id"])
-    return go(f"/chat/{conv_id}")
+    # The way back belongs to the entry you wrote from, not to the chats
+    # tab. Writing about a room and landing in a list of chats loses the
+    # room you were looking at.
+    return go(f"/chat/{conv_id}?back=/listing/{listing_id}")
 
 
 # --------------------------------------------------------------- putting up
@@ -2174,7 +2177,7 @@ def chats(request: Request, side: str = "", kind: str = "", bundle: str = "",
 
 
 @app.get("/chat/{conv_id}")
-def chat(request: Request, conv_id: int):
+def chat(request: Request, conv_id: int, back: str = ""):
     me = me_or_none(request)
     if me is None:
         return go("/start")
@@ -2189,12 +2192,12 @@ def chat(request: Request, conv_id: int):
             else conv["archived_starter"])
     return page(request, "chat.html", conv=conv, other=db.get_user(other_id),
                 messages=db.messages_of(conv_id), archived=bool(away),
-                active="chats", me=me)
+                active="chats", me=me, back=ours(back) or "/chats")
 
 
 @app.post("/chat/{conv_id}")
 def chat_send(request: Request, background: BackgroundTasks, conv_id: int,
-              body: str = Form("")):
+              body: str = Form(""), back: str = Form("")):
     me = me_or_none(request)
     if me is None:
         return go("/start")
@@ -2203,7 +2206,8 @@ def chat_send(request: Request, background: BackgroundTasks, conv_id: int,
         return page(request, "missing.html", active="chats")
     if db.send_message(conv_id, me["id"], body):
         background.add_task(push.new_message, conv, me["id"], body.strip())
-    return go(f"/chat/{conv_id}")
+    keep = ours(back)
+    return go(f"/chat/{conv_id}?back={quote(keep, safe='/')}" if keep else f"/chat/{conv_id}")
 
 
 @app.post("/chat/{conv_id}/archive")
