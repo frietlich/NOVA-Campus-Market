@@ -18,6 +18,45 @@
   </form>
 {% endmacro %}
 
+{# The bell for this one event: tell me when somebody else puts up a ticket
+   for the same day, time and place, whatever they call it. It sits beside
+   the heart because both are the same kind of thing, a quiet note to
+   yourself about this entry, and neither should take the floor from the
+   one button that says what to do next. What the bell means is said by the
+   message that comes up when you tap it. #}
+{% macro watch_button(listing, watching_event) %}
+  {% if listing.type == 'ticket' and listing.event_date and PUSH_ON() %}
+    <form method="post" action="/notify/event" {{ 'data-push-ask' if not watching_event }}>
+      <input type="hidden" name="listing_id" value="{{ listing.id }}">
+      <input type="hidden" name="on" value="{{ '0' if watching_event else '1' }}">
+      <button class="save save--head watch--head {{ 'watch--on' if watching_event }}" type="submit"
+              aria-pressed="{{ 'true' if watching_event else 'false' }}"
+              aria-label="{{ 'Stop hearing about this event' if watching_event
+                             else 'Tell me about more tickets for this event' }}">
+        {{ icon.bell(21, 1.8) }}
+      </button>
+    </form>
+  {% endif %}
+{% endmacro %}
+
+{# The same bell on a group, keyed on the course instead of on the event.
+   Somebody who needs a team for Investments hears about every group that
+   goes up for it, whatever the owner calls the entry. #}
+{% macro watch_course_button(listing, watching_course) %}
+  {% if listing.type == 'group' and listing.course_id and PUSH_ON() %}
+    <form method="post" action="/notify/course" {{ 'data-push-ask' if not watching_course }}>
+      <input type="hidden" name="listing_id" value="{{ listing.id }}">
+      <input type="hidden" name="on" value="{{ '0' if watching_course else '1' }}">
+      <button class="save save--head watch--head {{ 'watch--on' if watching_course }}" type="submit"
+              aria-pressed="{{ 'true' if watching_course else 'false' }}"
+              aria-label="{{ 'Stop hearing about this course' if watching_course
+                             else 'Tell me about more groups for this course' }}">
+        {{ icon.bell(21, 1.8) }}
+      </button>
+    </form>
+  {% endif %}
+{% endmacro %}
+
 {% block body %}
 <div class="app detail" data-kind="{{ listing.type }}">
 
@@ -29,7 +68,12 @@
     <div class="ticket-head">
       <div class="ticket-top">
         <a class="ticket-back" href="{{ back }}" aria-label="Back">{{ icon.back() }}</a>
-        {% if listing.owner_id != me.id %}{{ save_button(listing, saved, 'head') }}{% endif %}
+        {% if listing.owner_id != me.id %}
+          <div class="ticket-acts">
+            {{ watch_button(listing, watching_event) }}
+            {{ save_button(listing, saved, 'head') }}
+          </div>
+        {% endif %}
       </div>
       <div class="stub">
         <div class="stub-day">
@@ -84,7 +128,12 @@
     <div class="board">
       <div class="ticket-top">
         <a class="ticket-back" href="{{ back }}" aria-label="Back">{{ icon.back() }}</a>
-        {% if listing.owner_id != me.id %}{{ save_button(listing, saved, 'head') }}{% endif %}
+        {% if listing.owner_id != me.id %}
+          <div class="ticket-acts">
+            {{ watch_course_button(listing, watching_course) }}
+            {{ save_button(listing, saved, 'head') }}
+          </div>
+        {% endif %}
       </div>
 
       <div class="notice">
@@ -254,28 +303,6 @@
         </span>
         <span class="where-go">Open in maps</span>
       </a>
-    {% endif %}
-
-    {% if listing.type == 'ticket' and listing.event_date and listing.owner_id != me.id and PUSH_ON() %}
-      {# The bell for this one event: tell me when somebody else puts up a
-         ticket for the same day, time and place, whatever they call it. #}
-      <form method="post" action="/notify/event" {{ 'data-push-ask' if not watching_event }}>
-        <input type="hidden" name="listing_id" value="{{ listing.id }}">
-        <input type="hidden" name="on" value="{{ '0' if watching_event else '1' }}">
-        <button class="watch {{ 'watch--on' if watching_event }}" type="submit"
-                aria-pressed="{{ 'true' if watching_event else 'false' }}">
-          <span class="watch-icon">{{ icon.bell(19, 1.8) }}</span>
-          <span class="watch-text">
-            {% if watching_event %}
-              <b>You are watching this event</b>
-              <span>Tap to stop. All your events are in Profile, Notifications.</span>
-            {% else %}
-              <b>Notify me about more tickets</b>
-              <span>For this event, whatever the next seller calls it.</span>
-            {% endif %}
-          </span>
-        </button>
-      </form>
     {% endif %}
 
     <div class="rule"></div>

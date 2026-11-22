@@ -279,22 +279,20 @@ img { display: block; max-width: 100%; }
 .notify-areas.is-muted .switch { pointer-events: none; }
 
 /* The bell for one event, on a ticket's page. */
-.watch {
-  width: 100%; margin-top: 14px; padding: 12px 14px;
-  display: flex; align-items: center; gap: 12px; text-align: left;
-  background: var(--card); color: var(--ink);
-  border: 1px solid var(--line); border-radius: var(--r-tile);
-  font: inherit; cursor: pointer;
-}
-.watch-icon {
-  width: 36px; height: 36px; flex: none; border-radius: 999px;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--accent-soft); color: var(--accent);
-}
-.watch-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.watch-text b { font-size: 15px; }
-.watch-text span { font-size: 12px; color: var(--muted); }
-.watch--on .watch-icon { background: var(--accent); color: #FFFFFF; }
+/* The bell beside the heart in the head of a ticket. It was a wide row
+   with two lines of text, sitting in the middle of the page between the
+   address and the seller, which is nowhere. It borrows the heart's own
+   shape, so the two read as a pair.
+
+   On, it fills in dark rather than in a colour. The head of a ticket is
+   already a strong colour and a second one there would only argue with it,
+   while black and white says pressed on any of them.
+
+   The rule that paints it on sits with the other .save rules further down,
+   where the white it has to beat is written. */
+
+/* The pair in the corner. */
+.ticket-acts { display: flex; align-items: center; gap: 8px; }
 
 .event-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
 .event-row .row-body { flex: 1; }
@@ -305,8 +303,19 @@ img { display: block; max-width: 100%; }
   font-weight: 600; cursor: pointer;
 }
 
-.push-device { display: flex; flex-direction: column; gap: 8px; }
-.push-device .note { text-align: left; margin: 0 2px; }
+/* The state of this device, as a card like everything else on the page.
+   It was a loose line of the small grey print the forms use for a footnote,
+   which is the wrong weight for the one line that says whether any of this
+   reaches you at all. */
+.push-device {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 16px 14px;
+  border-radius: var(--r-card);
+  background: var(--card);
+}
+
+.push-status { margin: 0; font-size: 14px; line-height: 1.5; color: var(--ink); }
+.push-small { margin: 0; font-size: 13px; line-height: 1.5; color: var(--muted); }
 .push-device .btn { height: 46px; font-size: 16px; }
 
 .dot {
@@ -2093,6 +2102,13 @@ img { display: block; max-width: 100%; }
 
 :root[data-theme="dark"] .save--on { color: #FF6B55; }
 
+/* The bell, on. Dark fill rather than a colour, see the note beside
+   .ticket-acts. It is written twice because dark mode states the white of
+   .save--head again, and a rule has to out-weigh the one it means to
+   replace, not merely follow it. */
+.save--head.watch--on { background: #0B0B0F; color: #FFFFFF; }
+:root[data-theme="dark"] .save--head.watch--on { background: #0B0B0F; color: #FFFFFF; }
+
 /* --------------------------------------------- the notice on the board */
 
 /* Groups has no photo, and a ticket stub would be the wrong object. What a
@@ -2478,3 +2494,19 @@ img { display: block; max-width: 100%; }
 .fold-rows { display: none; }
 .fold > input:checked ~ .rows .fold-rows { display: block; }
 .fold > input:checked ~ .rows .fold-head .ch-chev { transform: rotate(180deg); }
+
+/* The bell in front of the notifications row on the profile. Not a
+   thumbnail, so no tinted square around it, just the sign itself at the
+   width the rows keep free on the left. */
+.row-sign {
+  flex: none;
+  width: 38px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--accent);
+}
+
+/* The settings page carries more explaining than any other screen, and in
+   the twelve pixel grey that the forms use for a footnote it read as fine
+   print. One size up, on this page only. */
+.notify .row-meta,
+.notify .note { font-size: 13px; }

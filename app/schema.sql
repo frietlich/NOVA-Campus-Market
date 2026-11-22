@@ -194,6 +194,19 @@ CREATE TABLE IF NOT EXISTS event_watches (
 );
 CREATE INDEX IF NOT EXISTS idx_event_watches_event ON event_watches (event_date, event_time, place_key);
 
+-- One course a student wants to hear about: tell me when somebody else puts
+-- up a group for it. The same thing as a watched event one table up, only
+-- what makes two of them the same is the course rather than a day, a time
+-- and a place.
+CREATE TABLE IF NOT EXISTS course_watches (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id),
+    course_id  INTEGER NOT NULL REFERENCES courses(id),
+    created_at TEXT    NOT NULL,
+    UNIQUE (user_id, course_id)
+);
+CREATE INDEX IF NOT EXISTS idx_course_watches_course ON course_watches (course_id);
+
 -- One search a student wants to hear about, with every filter it had: tell
 -- me when something new goes up that this search would find. params is the
 -- search as it stood in the address of the tab, so a new entry is checked

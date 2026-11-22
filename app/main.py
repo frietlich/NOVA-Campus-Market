@@ -9,7 +9,7 @@ import os
 import re
 import unicodedata
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import List
 from urllib.parse import quote, urlencode, urlparse
 
@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import (categories, db, housing, mailer, passwords, programmes, push,
+from . import (categories, db, housing, mailer, maps, passwords, programmes, push,
                screenshots, ticket_import)
 
 # .env first, so CAMPUS_SECRET and the mail account can live in it.
@@ -163,7 +163,7 @@ def day_label(iso_date):
     if not iso_date:
         return "NO DATE"
     d = datetime.strptime(iso_date, "%Y-%m-%d").date()
-    today = datetime.now().astimezone().date()
+    today = date.fromisoformat(db.active_day())
     if d == today:
         return "Today"
     if (d - today).days == 1:
@@ -201,7 +201,7 @@ def days_left(iso_date):
     if not iso_date:
         return ""
     d = datetime.strptime(iso_date, "%Y-%m-%d").date()
-    gap = (d - datetime.now().astimezone().date()).days
+    gap = (d - date.fromisoformat(db.active_day())).days
     if gap < 0:
         return "overdue"
     if gap == 0:
@@ -334,9 +334,41 @@ ADDRESS_MAX = 120
 TICKET_MAX = 50
 
 
+# A Portuguese post code, 1200-109. Every address in the country has one
+# and it is what turns a street name into somewhere you can actually be
+# sent. The ticket addresses in the app all carried one from the start, the
+# housing ones never did, because the example under the box only showed a
+# street and people wrote what the example showed.
+POST_CODE = re.compile(r"\b\d{4}-\d{3}\b")
+
+
+def address_problem(text):
+    """What is wrong with an address, or None when it will do.
+
+    Deliberately loose about everything except the post code. People write
+    Rua, R., Avenida and Av., with and without a floor, and a form that
+    argues with all of that is a form nobody finishes. The post code is the
+    one part that is either there or not.
+    """
+    text = (text or "").strip()
+    if not text:
+        return "empty"
+    if len(text) > ADDRESS_MAX:
+        return f"An address can be at most {ADDRESS_MAX} characters."
+    if not POST_CODE.search(text):
+        return ("That needs the full address, with the post code, "
+                "like Cais da Viscondessa, 1200-109 Lisboa.")
+    return None
+
+
 def today_iso():
-    """Today where the school is, for a date box that cannot go backwards."""
-    return datetime.now().astimezone().date().isoformat()
+    """Today where the school is, for a date box that cannot go backwards.
+
+    The day turns over at six in the morning, not at midnight, see
+    db.active_day. So at two in the morning you can still put up a ticket
+    for the party you are standing outside of.
+    """
+    return db.active_day()
 
 # What a price may be. The shape is what stops a word, a minus sign or
 # 1e9 from ever reaching float(), which used to take the whole page down.
@@ -416,7 +448,7 @@ def by_course(rows):
             blocks.append(block)
         block["rows"].append(row)
 
-    today = datetime.now().astimezone().date().isoformat()
+    today = db.active_day()
     def gone(row):
         return bool(row["hand_in"]) and row["hand_in"] < today
 
@@ -1322,13 +1354,16 @@ def listing_detail(request: Request, listing_id: int, back: str = ""):
         row = db.get_listing(listing_id)
     watching = (row["type"] == "ticket" and bool(row["event_date"])
                 and db.is_watching_event(me["id"], event_key(row)))
+    on_course = (row["type"] == "group" and bool(row["course_id"])
+                 and db.is_watching_course(me["id"], row["course_id"]))
     return page(request, "detail.html", listing=row, photos=db.photos_of(listing_id),
                 tab=BY_KIND[row["type"]], me=me,
                 back=ours(back) or request.session.get("last_place")
                      or BY_KIND[row["type"]]["path"],
                 tabs=tear_tabs(row) if row["type"] == "group" else [],
                 saved=db.is_saved(me["id"], listing_id),
-                saves=db.save_count(listing_id), watching_event=watching)
+                saves=db.save_count(listing_id), watching_event=watching,
+                watching_course=on_course)
 
 
 @app.post("/listing/{listing_id}/close")
@@ -1446,6 +1481,21 @@ def new_ticket_autofill(request: Request, url: str = Form("")):
     if me_or_none(request) is None:
         return JSONResponse({"ok": False, "reason": "login"}, status_code=401)
     return JSONResponse(ticket_import.autofill(url))
+
+
+@app.post("/new/address-from-link")
+def new_address_from_link(request: Request, url: str = Form("")):
+    """A maps link turned into a street address. Answers in JSON.
+
+    The page reads a link that spells the address out by itself. This is
+    for the two kinds that do not: a link to a place, which carries its
+    name and a pair of coordinates, and the short one a phone makes when
+    you press Share, which carries nothing at all until it is followed.
+    Only the hosts in maps.HOSTS are ever fetched.
+    """
+    if me_or_none(request) is None:
+        return JSONResponse({"ok": False, "reason": "login"}, status_code=401)
+    return JSONResponse(maps.address_from_link(url))
 
 
 @app.post("/new/screenshot")
@@ -1573,8 +1623,11 @@ async def new_listing(request: Request,
             return oops("Say from when the place is free.")
         if not place.strip():
             return oops("Pick the area the place is in.")
-        if not address.strip():
+        wrong = address_problem(address)
+        if wrong == "empty":
             return oops("A place needs its address.")
+        if wrong:
+            return oops(wrong)
 
         rent, wrong = clean_price(price)
         if wrong:
@@ -1621,7 +1674,7 @@ async def new_listing(request: Request,
         if free < 1 or free >= size:
             return oops(f"With a group of {size} you can offer at most "
                               f"{size - 1} spots, because one of them is yours.")
-        if hand_in.strip() < datetime.now().astimezone().date().isoformat():
+        if hand_in.strip() < today_iso():
             return oops("That date has passed. Pick the last day somebody "
                               "can still join.")
 
@@ -1639,12 +1692,13 @@ async def new_listing(request: Request,
         # party in one bundle, and the address is what opens in maps.
         if not place.strip():
             return oops("A ticket needs the name of the venue.")
-        if not address.strip():
+        wrong = address_problem(address)
+        if wrong == "empty":
             return oops("A ticket needs the address of the venue.")
+        if wrong:
+            return oops(wrong)
         if len(place.strip()) > PLACE_MAX:
             return oops(f"A venue name can be at most {PLACE_MAX} characters.")
-        if len(address.strip()) > ADDRESS_MAX:
-            return oops(f"An address can be at most {ADDRESS_MAX} characters.")
         # The day of the event still counts, a party is sold until the door,
         # but yesterday is nothing anybody can buy any more.
         if event_date.strip() < today_iso():
@@ -2278,6 +2332,7 @@ def notifications_form(request: Request, done: str = ""):
     return page(request, "notifications.html", me=me, prefs=db.prefs_of(me["id"]),
                 areas=push.AREAS, devices=len(db.devices_of(me["id"])), done=done,
                 events=db.events_watched(me["id"]), searches=db.searches_watched(me["id"]),
+                courses_watched=db.courses_watched(me["id"]),
                 tab_names={t["kind"]: t["label"] for t in TABS})
 
 
@@ -2317,6 +2372,33 @@ def notify_event_remove(request: Request, watch_id: int = Form(0)):
         return go("/start")
     db.unwatch_event(me["id"], watch_id=watch_id)
     return go("/profile/notifications?done=removed")
+
+
+@app.post("/notify/course")
+def notify_course(request: Request, listing_id: int = Form(0), on: str = Form("1")):
+    """The bell on a group: tell me about every group for this same course."""
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    row = db.get_listing(listing_id)
+    if row is None or row["type"] != "group" or not row["course_id"]:
+        return go("/groups")
+    if on == "1":
+        db.watch_course(me["id"], row["course_id"])
+    else:
+        db.unwatch_course(me["id"], course_id=row["course_id"])
+    return go(f"/listing/{listing_id}?done="
+              + ("watching-course" if on == "1" else "unwatched-course"))
+
+
+@app.post("/notify/course/remove")
+def notify_course_remove(request: Request, watch_id: int = Form(0)):
+    """Stop watching one course, from the list in the settings."""
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    db.unwatch_course(me["id"], watch_id=watch_id)
+    return go("/profile/notifications?done=removed-course")
 
 
 @app.post("/notify/watch")

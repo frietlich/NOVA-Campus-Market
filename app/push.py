@@ -33,18 +33,23 @@ import base64
 import json
 import os
 import sys
+from datetime import datetime
 
 from . import db
 
 AREAS = [
-    ("messages", "New messages",      "When somebody writes to you in a chat."),
-    ("ticket",   "Tickets",           "Your saved searches and the events you watch."),
-    ("housing",  "Housing",           "Your saved searches."),
-    ("item",     "Market",            "Your saved searches."),
+    ("messages", "New messages",      "When somebody writes to you."),
+    ("ticket",   "Tickets",           "Saved searches and saved events."),
+    ("housing",  "Housing",           "Saved searches."),
+    ("item",     "Market",            "Saved searches."),
+    # Groups are the one tab with no bell to save a search on, so the only
+    # thing that rings here is a course somebody is watching.
+    ("group",    "Groups",            "Saved courses."),
 ]
 AREA_LABELS = {key: name for key, name, _ in AREAS}
 
-WHAT = {"ticket": "New ticket", "housing": "New place", "item": "New in Market"}
+WHAT = {"ticket": "New ticket", "housing": "New place", "item": "New in Market",
+        "group": "New group"}
 
 
 # --------------------------------------------------------------------- keys
@@ -140,6 +145,41 @@ def _money(value):
     return f"€{value:g}"
 
 
+def _line(listing):
+    """The second line of a notification: what you want to know at a glance.
+
+    A notification is two lines on a lock screen, so the second one has to
+    be the three things that decide whether you open it. It used to be
+    price, raw date and place for everything, which left a group with an
+    empty line, because a group has neither a price nor a place, and gave
+    housing the key the filter uses rather than the name of the town.
+    """
+    kind = listing["type"]
+    if kind == "group":
+        spots = listing["quantity"] or 1
+        bits = [listing["course_name"] if "course_name" in listing.keys() else "",
+                f"{spots} spot{'' if spots == 1 else 's'} left"]
+    elif kind == "housing":
+        from . import housing as places
+        bits = [_money(listing["price"]),
+                places.AREA_LABELS.get(listing["place"] or "", listing["place"] or "")]
+    elif kind == "ticket":
+        bits = [_money(listing["price"]), _day(listing["event_date"]), listing["place"] or ""]
+    else:
+        bits = [_money(listing["price"]), listing["place"] or ""]
+    return " · ".join(b for b in bits if b)
+
+
+def _day(iso_date):
+    """21 Nov, the way a person says a date."""
+    if not iso_date:
+        return ""
+    try:
+        return datetime.strptime(iso_date, "%Y-%m-%d").strftime("%-d %b")
+    except ValueError:
+        return iso_date
+
+
 def new_message(conv, sender_id, body):
     """Tell the other person in a chat that there is something new."""
     receiver = conv["owner_id"] if sender_id == conv["starter_id"] else conv["starter_id"]
@@ -153,20 +193,18 @@ def new_message(conv, sender_id, body):
 def new_listing(listing, event_key=None, search_finds=None):
     """Tell everyone who wants to hear about this new entry. Once each.
 
-    First whoever watches this very event, when it is a ticket and event_key
-    says which event it is. Then whoever saved a search on this tab that
-    finds the entry; search_finds(kind, params, listing_id) runs that search
-    the way the tab does. Nobody hears about their own entry, nobody twice,
-    and nobody who switched the area off.
+    First whoever watches this very thing. For a ticket that is the event,
+    and event_key says which event it is. For a group it is the course, so
+    somebody looking for a team in Investments hears about every group that
+    goes up for it, whatever the owner called the entry. Then whoever saved
+    a search on this tab that finds the entry; search_finds(kind, params,
+    listing_id) runs that search the way the tab does. Nobody hears about
+    their own entry, nobody twice, and nobody who switched the area off.
     """
     kind = listing["type"]
     if kind not in WHAT:
         return 0
-    bits = [_money(listing["price"])]
-    if kind == "ticket":
-        bits.append(listing["event_date"] or "")
-    bits.append(listing["place"] or "")
-    body = " · ".join(b for b in bits if b)
+    body = _line(listing)
     url = f"/listing/{listing['id']}"
     told = {listing["owner_id"]}
     reached = 0
@@ -179,6 +217,11 @@ def new_listing(listing, event_key=None, search_finds=None):
             if wants(user_id):
                 told.add(user_id)
                 reached += send(user_id, f"Another ticket: {listing['title']}", body, url)
+    if kind == "group" and listing["course_id"]:
+        for user_id in db.course_watchers(listing["course_id"]):
+            if wants(user_id):
+                told.add(user_id)
+                reached += send(user_id, f"Another spot: {listing['title']}", body, url)
     if search_finds:
         for watcher in db.search_watchers(kind):
             user_id = watcher["user_id"]

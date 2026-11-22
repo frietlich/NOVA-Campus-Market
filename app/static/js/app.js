@@ -966,21 +966,25 @@
   const ios = document.getElementById("push-ios");
 
   const showOn = () => {
-    status.textContent = "Notifications are on for this device.";
+    status.textContent = "On for this device.";
     on.hidden = true;
     test.hidden = false;
   };
   if (iphone && !standalone) ios.hidden = false;
   if (!supported) {
     on.hidden = true;
-    if (!iphone) status.textContent = "This browser cannot show notifications.";
+    if (!iphone) status.textContent = "This browser cannot do notifications.";
   } else if (Notification.permission === "granted") {
     navigator.serviceWorker.getRegistration("/")
       .then((registration) => registration && registration.pushManager.getSubscription())
       .then((subscription) => { if (subscription) showOn(); })
       .catch(() => {});
   } else if (Notification.permission === "denied") {
-    status.textContent = "Notifications are blocked for this site in your browser settings.";
+    // No second chance. A browser that has been told no never asks again,
+    // so the button below could only ever do nothing. It goes, and the
+    // line says where the answer can be changed.
+    on.hidden = true;
+    status.textContent = "Blocked for this site in your browser settings.";
   }
 
   on.addEventListener("click", async () => {
@@ -988,8 +992,10 @@
     try {
       const result = await enable();
       if (result === "on") showOn();
-      else if (result === "denied") status.textContent = "Notifications are blocked for this site in your browser settings.";
-      else status.textContent = "This browser cannot show notifications.";
+      else if (result === "denied") {
+        on.hidden = true;
+        status.textContent = "Blocked for this site in your browser settings.";
+      } else status.textContent = "This browser cannot do notifications.";
     } catch (e) {
       status.textContent = "That did not work. Try again in a moment.";
     } finally {
@@ -1007,5 +1013,129 @@
     } finally {
       test.disabled = false;
     }
+  });
+})();
+
+// A maps link dropped into the address box.
+//
+// People do not type a street, they copy the place out of maps, and the
+// address box takes the link rather than refusing a line that is plainly
+// not an address.
+//
+// A link only sometimes spells the address out. Google writes whatever was
+// searched for after /place/, so searching an address gives the address but
+// tapping a bar gives "K Urban Beach Club", and the short link a phone makes
+// when you press Share carries nothing at all. Those two go to the server,
+// which can follow a short link and look a coordinate up. Reading it here
+// first means a link that already says the address costs nobody a request.
+(function mapsLinks() {
+  const boxes = document.querySelectorAll("input#address");
+  if (!boxes.length) return;
+
+  const PIN = /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/;
+  const HAS_NUMBER = /\d/;
+  const WHY = {
+    not_maps: "That is a link, but not to Google or Apple maps.",
+    off_list: "That link leads off maps. Copy the address instead.",
+    unreachable: "Maps did not answer. Try again in a moment.",
+    no_point: "There is no place in that link. Open it in maps and copy "
+            + "the address line under the name.",
+    nothing_there: "Nothing with a street name at that spot. Type the "
+                 + "address instead.",
+    login: "Sign in again to use this.",
+  };
+
+  function mapsHost(url) {
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    return host === "maps.apple.com"
+        // Apple's own short domain, a top level domain of its own rather
+        // than anything under apple.com. This is what an iPhone shares.
+        || host === "maps.apple"
+        || host === "maps.google.com"
+        || host === "maps.app.goo.gl"
+        || host === "goo.gl"
+        || /(^|\.)google\.[a-z]{2,3}(\.[a-z]{2})?$/.test(host);
+  }
+
+  function addressIn(url) {
+    // What sits after /place/ is whatever was searched for, so it is only
+    // an address when it carries a number. A name is the very thing this
+    // is meant to keep out of the box.
+    const place = url.pathname.match(/\/maps\/place\/([^/]+)/);
+    if (place) {
+      const found = decodeURIComponent(place[1].replace(/\+/g, " ")).trim();
+      if (found && !found.startsWith("@") && !PIN.test(found) && HAS_NUMBER.test(found)) {
+        return found;
+      }
+    }
+    for (const key of ["address", "q", "daddr", "destination"]) {
+      const value = (url.searchParams.get(key) || "").trim();
+      if (value && !PIN.test(value) && HAS_NUMBER.test(value)) return value;
+    }
+    return null;
+  }
+
+  boxes.forEach((box) => {
+    const note = box.parentNode.querySelector("[data-address-note]");
+    const wasSaying = note ? note.textContent : "";
+    let back;
+    const say = (words, keep) => {
+      if (!note) return;
+      clearTimeout(back);
+      note.textContent = words || wasSaying;
+      if (words && !keep) back = setTimeout(() => { note.textContent = wasSaying; }, 7000);
+    };
+    const put = (address) => {
+      box.value = address.slice(0, box.maxLength > 0 ? box.maxLength : 120);
+      box.classList.add("is-filled");
+      box.addEventListener("input", () => box.classList.remove("is-filled"),
+                           { once: true });
+      say("");
+    };
+
+    let asking = false;
+    const read = async () => {
+      const text = box.value.trim();
+      // Not a link at all, so this is somebody typing. Anything the box
+      // complained about a moment ago is about a line that is gone.
+      if (!/^https?:\/\//i.test(text)) {
+        say("");
+        return;
+      }
+      let url;
+      try {
+        url = new URL(text);
+      } catch (err) {
+        return;
+      }
+      if (!mapsHost(url)) {
+        say(WHY.not_maps);
+        return;
+      }
+      const here = addressIn(url);
+      if (here) {
+        put(here);
+        return;
+      }
+      if (asking) return;
+      asking = true;
+      say("Looking that up…", true);
+      try {
+        const body = new FormData();
+        body.append("url", text);
+        const res = await fetch("/new/address-from-link", { method: "POST", body });
+        const data = await res.json();
+        if (data.ok) put(data.address);
+        else say(WHY[data.reason] || WHY.nothing_there);
+      } catch (err) {
+        say("That did not work. Try again in a moment.");
+      } finally {
+        asking = false;
+      }
+    };
+
+    // After the paste, so the box already holds the link.
+    box.addEventListener("paste", () => setTimeout(read, 0));
+    box.addEventListener("change", read);
   });
 })();
