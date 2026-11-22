@@ -888,6 +888,19 @@
     }
   };
 
+  // Dead until there is a link worth sending, the rule the housing form
+  // already follows. The check that watches the field works out whether it
+  // knows the site and writes the answer into data-state, so watching that
+  // attribute is both the simplest way to ask and the only one that does
+  // not depend on which of the two listeners the browser runs first.
+  const field = input.closest(".linkfield");
+  if (field) {
+    const sync = () => { go.disabled = field.dataset.state !== "ok"; };
+    new MutationObserver(sync).observe(field,
+      { attributes: true, attributeFilter: ["data-state"] });
+    sync();
+  }
+
   go.addEventListener("click", run);
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); run(); }
