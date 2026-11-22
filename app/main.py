@@ -846,7 +846,7 @@ def dock_for(request, me, template):
               "dock_open": None, "dock_with": None, "dock_messages": []}
 
     asked = (request.query_params.get("chat") or "").strip()
-    if asked.isdigit():
+    if safe_id(asked) is not None:
         conv = db.get_conversation(int(asked))
         if db.can_see_conversation(conv, me["id"]):
             other_id = (conv["starter_id"] if conv["owner_id"] == me["id"]
@@ -924,7 +924,8 @@ def speculative(request):
 def me_or_none(request):
     user_id = request.session.get("user_id")
     user = db.get_user(user_id) if user_id else None
-    if user and user["verified"] and db.is_nova_email(user["email"]):
+    if (user and user["verified"] and db.is_nova_email(user["email"])
+            and request.session.get("session_version", 0) == user["session_version"]):
         return user
     return None
 
@@ -949,6 +950,17 @@ def go(path):
     return RedirectResponse(path, status_code=303)
 
 
+def safe_id(value):
+    value = str(value)
+    return int(value) if value.isascii() and value.isdigit() and len(value) <= 18 else None
+
+
+def sign_in(request, user_id):
+    request.session.clear()
+    request.session["user_id"] = user_id
+    request.session["session_version"] = db.get_user(user_id)["session_version"]
+
+
 def ours(path):
     """A page of this app, or nothing.
 
@@ -959,7 +971,8 @@ def ours(path):
     how a browser reads //somewhere.else as another site.
     """
     path = (path or "").strip()
-    if not path.startswith("/") or path.startswith("//"):
+    if (not path.startswith("/") or path.startswith("//") or "\\" in path
+            or any(ord(c) < 32 for c in path)):
         return ""
     return path
 
@@ -995,7 +1008,7 @@ def send_code(user, why):
     """
     age = db.code_age(user["id"])
     if age is not None and age < RESEND_SECONDS:
-        return ""
+        return "" if user["code_purpose"] == why else "Wait one minute before requesting a different code."
     if not mailer.is_set_up() and not LOCAL_DEMO:
         return "Email delivery is not configured. Please contact the app team."
     try:
@@ -1062,7 +1075,7 @@ async def join(request: Request,
     # The ticked courses. They come as a list, so they are read from the form
     # itself rather than as one named argument.
     body = await request.form()
-    picked = [v for v in body.getlist("course_id") if str(v).isdigit()]
+    picked = [safe_id(v) for v in body.getlist("course_id") if safe_id(v) is not None]
 
     def fail(message):
         return join_page(request, form, message, picked)
@@ -1116,7 +1129,7 @@ async def join(request: Request,
     if saved:
         db.update_profile(user_id, name, chosen, cems, saved)
 
-    db.set_enrolments(user_id, set(map(int, picked)) & db.valid_course_ids(chosen))
+    db.set_enrolments(user_id, set(picked) & db.valid_course_ids(chosen))
 
     request.session["pending_id"] = user_id
     problem = send_code(db.get_user(user_id), "join")
@@ -1144,7 +1157,7 @@ def verify(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = F
         return page(request, "verify.html", pending=pending,
                     error=CODE_ERRORS[result])
     request.session.clear()
-    request.session["user_id"] = user_id
+    sign_in(request, user_id)
     # Straight in. Whoever left the courses blank is not stopped for them
     # here. Groups says so itself the first time it is opened, and the
     # profile has the list whenever they want it.
@@ -1199,7 +1212,7 @@ def login(request: Request, email: str = Form(""), password: str = Form("")):
         return go(verify_url(problem))
 
     request.session.clear()
-    request.session["user_id"] = user["id"]
+    sign_in(request, user["id"])
     return go("/housing")
 
 
@@ -1278,7 +1291,7 @@ def reset(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = Fo
 
     db.set_password(user_id, passwords.hash_password(password))
     request.session.pop("reset_id", None)
-    request.session["user_id"] = user_id
+    sign_in(request, user_id)
     return go("/housing")
 
 
@@ -1301,7 +1314,7 @@ def dev_login(request: Request, user_id: int = Form(...)):
     if not user or not user["verified"] or not db.is_nova_email(user["email"]):
         return HTMLResponse("Access refused", status_code=403)
     request.session.clear()
-    request.session["user_id"] = user_id
+    sign_in(request, user_id)
     return go("/housing")
 
 
@@ -1391,7 +1404,7 @@ def tab_page(request, kind, q, scope="mine", cat="", day="", sort="",
                 link=link_maker(tab["path"], params),
                 watching=(kind in SEARCH_KEYS and db.is_watching_search(
                     me["id"], kind, search_of(kind, request.query_params))),
-                here=str(request.url.path) + (f"?{request.url.query}" if request.url.query else ""))
+                here=here(request))
 
 
 @app.get("/housing")
@@ -1443,8 +1456,8 @@ async def courses_save(request: Request):
     if me is None:
         return go("/start")
     form = await request.form()
-    picked = [v for v in form.getlist("course_id") if str(v).isdigit()]
-    db.set_enrolments(me["id"], set(map(int, picked)) & db.valid_course_ids(me["programme"]))
+    picked = [safe_id(v) for v in form.getlist("course_id") if safe_id(v) is not None]
+    db.set_enrolments(me["id"], set(picked) & db.valid_course_ids(me["programme"]))
     back = ours(form.get("back")) or "/profile"
     return go(back if str(back).startswith("/") else "/profile")
 
@@ -1722,7 +1735,7 @@ async def new_listing(request: Request,
     # holds it. Without this a long entry is lost to one wrong field, and
     # changing an entry would be worse still, since the loss is the entry.
     typed = {
-        "title": title, "description": description, "price": price,
+        "title": title, "description": description, "price": price, "external_url": external_url,
         "info": info, "category": category, "condition": condition,
         "event_date": event_date, "event_time": event_time, "place": place,
         "address": address, "quantity": quantity, "course_id": course_id,
@@ -1869,8 +1882,8 @@ async def new_listing(request: Request,
         # and the venue together are what decide that two tickets are to
         # the same event. Leave one out and a ticket stands on its own
         # beside the party it belongs to.
-        if not event_time.strip():
-            return oops("A ticket needs the time the event starts.")
+        if not re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", event_time.strip()):
+            return oops("Enter a valid start time (HH:MM).")
         # Both of these are compulsory because both are read by somebody
         # else. The venue with the day is what puts two tickets to the same
         # party in one bundle, and the address is what opens in maps.
@@ -1973,7 +1986,7 @@ async def new_listing(request: Request,
     # one is now the form itself and an arrow pointing there is a trap.
     done = "saved" if changing is not None else "published"
     where = f"/listing/{listing_id}?done={done}"
-    if changing is not None and back.startswith("/") and not back.startswith("//"):
+    if changing is not None and ours(back):
         where += "&back=" + quote(back)
     return go(where)
 
@@ -2269,6 +2282,19 @@ def chat(request: Request, conv_id: int, back: str = ""):
                 active="chats", me=me, back=ours(back) or "/chats")
 
 
+@app.get("/chat/{conv_id}/messages")
+def chat_messages(request: Request, conv_id: int):
+    me = me_or_none(request)
+    conv = db.get_conversation(conv_id) if me else None
+    if not me or not db.can_see_conversation(conv, me["id"]):
+        return JSONResponse({"error": "Access refused"}, status_code=403)
+    if not speculative(request):
+        db.mark_read(conv_id, me["id"])
+    messages = db.messages_of(conv_id)
+    html = templates.env.get_template("partials/messages.html").render(messages=messages, me=me)
+    return JSONResponse({"messages": [dict(m) for m in messages], "html": html})
+
+
 @app.post("/chat/{conv_id}")
 def chat_send(request: Request, background: BackgroundTasks, conv_id: int,
               body: str = Form(""), back: str = Form("")):
@@ -2281,6 +2307,8 @@ def chat_send(request: Request, background: BackgroundTasks, conv_id: int,
     if db.send_message(conv_id, me["id"], body):
         background.add_task(push.new_message, conv, me["id"], body.strip())
     keep = ours(back)
+    if keep and request.query_params.get("beside") == "1":
+        return go(keep)
     return go(f"/chat/{conv_id}?back={quote(keep, safe='/')}" if keep else f"/chat/{conv_id}")
 
 
@@ -2477,6 +2505,7 @@ def password_change(request: Request, current: str = Form(""),
         return fail(wrong)
 
     db.set_password(me["id"], passwords.hash_password(password))
+    sign_in(request, me["id"])
     return go("/profile")
 
 
@@ -2622,7 +2651,7 @@ def notify_watch(request: Request, kind: str = Form(""), back: str = Form("")):
     if kind not in SEARCH_KEYS:
         return go("/profile/notifications")
     # Only ever back to a page of our own.
-    back = back if back.startswith("/") and not back.startswith("//") else BY_KIND[kind]["path"]
+    back = ours(back) or BY_KIND[kind]["path"]
     params = search_of(kind, back.partition("?")[2])
     if db.is_watching_search(me["id"], kind, params):
         db.unwatch_search(me["id"], kind, params)
@@ -2659,8 +2688,12 @@ def profile(request: Request):
 @app.middleware("http")
 async def security_checks(request, call_next):
     from urllib.parse import urlsplit
-    if request.url.path.startswith("/static/uploads/") and me_or_none(request) is None:
+    from posixpath import normpath
+    clean_path = "/" + normpath(request.scope["path"].replace("\\", "/")).lstrip("/").lower()
+    if clean_path.startswith("/static/uploads/") and me_or_none(request) is None:
         return HTMLResponse("Sign in required", status_code=403)
+    if any(part.isdigit() and safe_id(part) is None for part in request.url.path.split("/")):
+        return HTMLResponse("Invalid address", status_code=404)
     if request.method in ("POST", "PUT", "PATCH", "DELETE"):
         if request.url.path in ("/join", "/forgot", "/verify", "/verify/resend", "/forgot/reset"):
             from hashlib import sha256
@@ -2681,7 +2714,7 @@ async def security_checks(request, call_next):
     # have the file's own timestamp in their address, so a new one is a new
     # address, and telling the browser to forget them means fetching the
     # same unchanged file on every single page.
-    if not request.url.path.startswith("/static/"):
+    if not request.url.path.startswith("/static/") or clean_path.startswith("/static/uploads/"):
         response.headers["Cache-Control"] = "no-store"
     if not LOCAL_DEMO:
         response.headers["Strict-Transport-Security"] = "max-age=31536000"

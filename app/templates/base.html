@@ -40,7 +40,7 @@
 <div class="shell{{ ' shell--dock' if dock }}{{ ' shell--out' if not me }}">
   {% if me %}{% include "partials/tabbar.html" %}{% endif %}
   <div class="shell-main">{% block body %}{% endblock %}</div>
-  {% if dock %}{% include "partials/dock.html" %}{% endif %}
+  {% if dock %}{% include "partials/dock.html" %}<button type="button" class="dock-reopen" data-open-dock>Show chats</button>{% endif %}
 </div>
 {#- A short confirmation after the moments that matter. The page that sends you
     here adds ?done=... to the address; the script removes it again. -#}

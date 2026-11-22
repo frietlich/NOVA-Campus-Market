@@ -1,0 +1,47 @@
+MAIN APP AUDIT FIXES — REVIEW NOTES
+
+Base: origin/main at 7d7eda1. Branch: fix/audit-security-chat.
+No production data, email credentials or API keys are included.
+
+Changes
+- Concurrent requests for the same conversation now resolve to one conversation.
+  The connection is closed on both success and failure, avoiding database locks.
+- Uploaded files require sign-in after path normalization, including duplicate
+  separators, dot segments, case changes and encoded Windows separators.
+  Responses for uploads are not cached.
+- Password changes and resets increment a session version. Older sessions are
+  rejected; the browser completing the change stays signed in. Existing users
+  receive the new column through the existing non-destructive setup migration.
+- Side-chat back navigation clears chat= while keeping other search parameters.
+  Sending in the side panel stays on the original listing/tab.
+- Visible conversations retrieve replies every three seconds. Access is checked
+  for every request. Hidden tabs/panels do not poll; typed text is untouched.
+  Messages share an escaped template so dates and read receipts stay consistent.
+- The desktop chat panel can be hidden and reopened.
+- Detail columns respond to available content width, rather than viewport width.
+  Ticket time/quantity wrap when necessary instead of overlapping.
+- Invalid Unicode/oversized IDs no longer reach integer conversion or SQLite.
+- Ticket times are validated on the server and external links survive form errors.
+- Closing an already closed listing does not send duplicate closure notices.
+- Switching verification-code purpose during the one-minute cooldown shows an
+  explicit wait message. The cooldown is retained; no false delivery success.
+- CAMPUS_DB in .env is loaded before the database module chooses its path.
+- README demo seeding instructions include the required explicit --wipe flag.
+
+Validation
+Run: python -m pytest -q
+Regression tests: tests/test_audit_regressions.py
+All tests use isolated databases; mail and API delivery are not real.
+Browser checked at 320, 390, 768, 1100, 1280, 1440 and 1920 pixels:
+no page overflow or ticket-field overlap; side-chat send/back/hide/reopen and
+incoming reply without reload were exercised using fake accounts.
+
+Before deployment
+Back up the real database before updating. The migration adds a column and
+preserves existing rows. Restart the server after pulling the branch.
+Frido should review the diff and let CI finish before merging. Nobody has
+merged this branch automatically. Hosted HTTPS/proxy behavior, production
+storage and real outgoing email still require a deployment smoke test.
+
+Final local result: 196 tests passed, 62 subtests passed. Two pre-existing
+FastAPI startup deprecation warnings remain. JavaScript syntax check passed.

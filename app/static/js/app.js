@@ -1500,3 +1500,39 @@
   mark();
   window.addEventListener("resize", mark);
 })();
+
+// Only refresh the visible message area, leaving typed text and the page alone.
+(function liveChat() {
+  document.querySelector('[data-close-dock]')?.addEventListener('click', () => {
+    document.querySelector('.shell').classList.add('shell--chat-hidden');
+  });
+  document.querySelector('[data-open-dock]')?.addEventListener('click', () => {
+    document.querySelector('.shell').classList.remove('shell--chat-hidden');
+  });
+  document.querySelectorAll('[data-live-chat]').forEach((thread) => {
+    let previous = null;
+    let stopped = false;
+    async function refresh() {
+      if (stopped) return;
+      try {
+        if (!document.hidden && thread.offsetParent !== null) {
+          const response = await fetch('/chat/' + thread.dataset.liveChat + '/messages', { cache: 'no-store' });
+          if (response.status === 403) { stopped = true; return; }
+          if (response.ok) {
+            const data = await response.json();
+            const fingerprint = JSON.stringify(data.messages);
+            if (fingerprint !== previous) {
+              const nearEnd = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 80;
+              // HTML is rendered by our escaped Jinja template, never built from raw message text.
+              thread.innerHTML = data.html;
+              if (nearEnd) thread.scrollTop = thread.scrollHeight;
+              previous = fingerprint;
+            }
+          }
+        }
+      } catch (_) { /* A temporary connection failure retries next time. */ }
+      setTimeout(refresh, 3000);
+    }
+    setTimeout(refresh, 3000);
+  });
+})();

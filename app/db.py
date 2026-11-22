@@ -12,6 +12,8 @@ import hmac
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
+from . import mailer
+mailer.load_env()
 from . import categories
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -61,6 +63,7 @@ CODE_TRIES = 5
 LATER_COLUMNS = {
     "users": [
         ("code_sent", "TEXT"),
+        ("session_version", "INTEGER NOT NULL DEFAULT 0"),
         ("code_purpose", "TEXT"),
         ("code_tries", "INTEGER NOT NULL DEFAULT 0"),
         # light, dark, or empty for whatever the phone is set to
@@ -246,7 +249,7 @@ def set_theme(user_id, theme):
 def set_password(user_id, hashed):
     """Store a new password. It arrives hashed, never as what was typed."""
     conn = connect()
-    conn.execute("UPDATE users SET password = ? WHERE id = ?", (hashed, user_id))
+    conn.execute("UPDATE users SET password = ?, session_version = session_version + 1 WHERE id = ?", (hashed, user_id))
     conn.commit()
     conn.close()
 
@@ -665,7 +668,7 @@ def close_listing(listing_id, owner_id):
     """
     conn = connect()
     cur = conn.execute(
-        "UPDATE listings SET status = 'closed' WHERE id = ? AND owner_id = ?",
+        "UPDATE listings SET status = 'closed' WHERE id = ? AND owner_id = ? AND status != 'closed'",
         (listing_id, owner_id),
     )
     changed = cur.rowcount > 0
@@ -1000,22 +1003,18 @@ def open_conversation(listing_id, starter_id):
     conversation and nobody sees anyone else's.
     """
     conn = connect()
-    row = conn.execute(
-        "SELECT * FROM conversations WHERE listing_id = ? AND starter_id = ?",
-        (listing_id, starter_id),
-    ).fetchone()
-    if row is None:
-        cur = conn.execute(
-            "INSERT INTO conversations (listing_id, starter_id, created_at)"
-            " VALUES (?, ?, ?)",
-            (listing_id, starter_id, now()),
-        )
-        conn.commit()
-        conv_id = cur.lastrowid
-    else:
-        conv_id = row["id"]
-    conn.close()
-    return conv_id
+    try:
+        with conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO conversations (listing_id, starter_id, created_at)"
+                " VALUES (?, ?, ?)", (listing_id, starter_id, now()))
+            row = conn.execute(
+                "SELECT id FROM conversations WHERE listing_id = ? AND starter_id = ?",
+                (listing_id, starter_id)).fetchone()
+        return row["id"]
+    finally:
+        conn.close()
+
 
 
 def get_conversation(conv_id):

@@ -11,6 +11,7 @@
 {% import "partials/avatar.html" as av %}
 
 <aside class="dock" aria-label="Chats">
+  <button type="button" class="link dock-close" data-close-dock aria-label="Hide chat panel">Hide chats ×</button>
 
   {% if dock_open %}
     <div class="dock-head">
@@ -26,22 +27,11 @@
          aria-label="Open the entry this is about">{{ icon.external(16) }}</a>
     </div>
 
-    <div class="dock-thread" data-dock-thread>
-      {% if dock_messages %}
-        <span class="day">{{ dock_messages[0].created_at | when }}</span>
-        {% for m in dock_messages %}
-          {%- if m.kind == 'closed' %}
-            <span class="note-pill">{{ m.body }}</span>
-          {%- else %}
-            <div class="bubble {{ 'bubble--me' if m.sender_id == me.id else 'bubble--them' }}">{{ m.body }}</div>
-          {%- endif %}
-        {% endfor %}
-      {% else %}
-        <p class="dock-nothing">No messages yet. Say something.</p>
-      {% endif %}
+    <div class="dock-thread" data-dock-thread data-live-chat="{{ dock_open.id }}">
+      {% with messages=dock_messages %}{% include "partials/messages.html" %}{% endwith %}
     </div>
 
-    <form class="composer composer--dock" method="post" action="/chat/{{ dock_open.id }}">
+    <form class="composer composer--dock" method="post" action="/chat/{{ dock_open.id }}?beside=1">
       {#- Back to this very page with the thread still open, so sending a
           message does not throw you out of whatever you were reading. -#}
       <input type="hidden" name="back" value="{{ here_with_chat }}">
