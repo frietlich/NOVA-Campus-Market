@@ -78,6 +78,15 @@ PLATFORM_NAMES = sorted({name for _, name in PLATFORMS})
 BLOCKS_APPS = {"feverup.com", "ra.co", "fourvenues.com",
                "ticketline.sapo.pt", "blueticket.meo.pt"}
 
+# The ones left over: every site we both recognise and can read. Worked out
+# from the two lists above rather than typed out, because it is written on
+# the form and a hand-written copy of a list goes stale. It already had:
+# Shotgun was readable for a day before anybody noticed the form still did
+# not mention it.
+READABLE_NAMES = sorted({name for domain, name in PLATFORMS
+                         if not any(d in BLOCKS_APPS
+                                    for d, n in PLATFORMS if n == name)})
+
 LINK_LIMIT = 500
 PAGE_LIMIT = 4_000_000
 TIMEOUT = 8

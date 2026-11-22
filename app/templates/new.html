@@ -124,9 +124,12 @@
             at the foot of the whole box where it was answering for the
             link and the screenshots at once. While you type it is replaced
             by the name of the site it recognised. -#}
+        {#- The list is worked out from the code, not written here, so it
+            cannot fall behind the sites again. -#}
         <p class="note linkfield-status" id="link-status" aria-live="polite">
           Optional. A link goes on your entry as a button. Filling in works
-          with Luma, DICE, Xceed, BOL and Eventbrite.
+          with {{ TICKETS.READABLE_NAMES[:-1] | join(', ') }} and
+          {{ TICKETS.READABLE_NAMES[-1] }}.
         </p>
       </div>
       {% endif %}

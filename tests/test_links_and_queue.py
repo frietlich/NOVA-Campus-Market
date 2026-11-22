@@ -84,6 +84,24 @@ class TicketLinkTests(unittest.TestCase):
         self.assertTrue(housing.blocks_apps("https://idealista.pt/imovel/1/"))
         self.assertFalse(housing.blocks_apps("https://badi.com/room/1"))
 
+    def test_the_readable_list_is_the_rest(self):
+        """It is on the form, so it has to follow the code and not a memory.
+
+        Shotgun was readable for a day while the form still left it out.
+        """
+        self.assertEqual(ticket_import.READABLE_NAMES,
+                         ["BOL", "DICE", "Eventbrite", "Luma", "Shotgun", "Xceed"])
+        shut = {name for domain, name in ticket_import.PLATFORMS
+                if domain in ticket_import.BLOCKS_APPS}
+        self.assertEqual(set(ticket_import.READABLE_NAMES) | shut,
+                         set(ticket_import.PLATFORM_NAMES))
+        self.assertFalse(set(ticket_import.READABLE_NAMES) & shut)
+
+    def test_a_site_on_several_domains_counts_once(self):
+        """Eventbrite has eight. One of them blocked would shut the name."""
+        self.assertIn("Eventbrite", ticket_import.READABLE_NAMES)
+        self.assertEqual(len(ticket_import.PLATFORM_NAMES), 11)
+
     def test_the_button_names_the_site(self):
         other = ticket_import.platform_of("https://shotgun.live/en/events/x")
         self.assertEqual(other["name"], "Shotgun")
