@@ -7,6 +7,8 @@ If you need something the app cannot do yet, add a function here first.
 import os
 import re
 import secrets
+import hashlib
+import hmac
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
@@ -51,7 +53,7 @@ NAME_MAX = 40
 # A code is good for this long, and for this many wrong guesses. After that a
 # new one has to be sent. Without the limit a script could simply try all one
 # million codes and take over any account.
-CODE_MINUTES = 15
+CODE_MINUTES = 10
 CODE_TRIES = 5
 
 # Columns added after the first version. setup() puts them into an older
@@ -59,6 +61,7 @@ CODE_TRIES = 5
 LATER_COLUMNS = {
     "users": [
         ("code_sent", "TEXT"),
+        ("code_purpose", "TEXT"),
         ("code_tries", "INTEGER NOT NULL DEFAULT 0"),
         # light, dark, or empty for whatever the phone is set to
         ("theme", "TEXT NOT NULL DEFAULT ''"),
@@ -105,6 +108,9 @@ def setup():
         schema = f.read()
     conn = connect()
     conn.executescript(schema)
+    conn.execute("""CREATE TABLE IF NOT EXISTS security_limits (
+        key TEXT PRIMARY KEY, start INTEGER NOT NULL, count INTEGER NOT NULL
+    )""")
     for table, columns in LATER_COLUMNS.items():
         have = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
         for name, kind in columns:
@@ -152,7 +158,7 @@ def active_day():
 
 def is_nova_email(email):
     """True only for a Nova address. This is the whole door policy."""
-    return bool(email) and bool(EMAIL_SHAPE.fullmatch(email.strip().lower()))
+    return isinstance(email, str) and bool(EMAIL_SHAPE.fullmatch(email.strip().lower()))
 
 
 def get_user(user_id):
@@ -244,67 +250,74 @@ def set_password(user_id, hashed):
     conn.close()
 
 
-def new_code(user_id):
-    """Make a fresh 6 digit code, store it, give it back so we can send it.
+def code_digest(user_id, code, purpose):
+    secret = os.environ.get("CAMPUS_SECRET", "")
+    if len(secret) < 32:
+        raise RuntimeError("Configure CAMPUS_SECRET before generating codes.")
+    return hmac.new(secret.encode(), f"{user_id}:{purpose}:{code}".encode(),
+                    hashlib.sha256).hexdigest()
 
-    secrets and not random, because random is predictable by design and a
-    code is exactly the kind of thing nobody must be able to predict.
-    """
+
+def new_code(user_id, purpose="join"):
+    if purpose not in ("join", "login", "reset"):
+        raise ValueError("Unknown verification purpose.")
     code = f"{secrets.randbelow(1_000_000):06d}"
     conn = connect()
-    conn.execute(
-        "UPDATE users SET code = ?, code_sent = ?, code_tries = 0 WHERE id = ?",
-        (code, now(), user_id),
-    )
-    conn.commit()
-    conn.close()
-    return code
+    try:
+        with conn:
+            conn.execute("BEGIN IMMEDIATE")
+            user = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+            if not user or not is_nova_email(user["email"]):
+                raise ValueError("A valid Nova account is required.")
+            if user["code_sent"]:
+                age = (datetime.now(timezone.utc) - datetime.fromisoformat(user["code_sent"])).total_seconds()
+                if age < 60:
+                    raise ValueError("Wait one minute before requesting a new code.")
+            conn.execute(
+                "UPDATE users SET code=?,code_sent=?,code_tries=0,code_purpose=? WHERE id=?",
+                (code_digest(user_id, code, purpose), now(), purpose, user_id))
+        return code
+    finally:
+        conn.close()
 
 
 def code_age(user_id):
-    """Seconds since the last code went out, or None when there is none."""
     user = get_user(user_id)
-    if user is None or not user["code"] or not user["code_sent"]:
+    if user is None or not user["code_sent"]:
         return None
-    sent = datetime.fromisoformat(user["code_sent"])
-    return (datetime.now(timezone.utc) - sent).total_seconds()
+    return (datetime.now(timezone.utc) - datetime.fromisoformat(user["code_sent"])).total_seconds()
 
 
-def check_code(user_id, code):
-    """Check a code. Gives back one word:
-
-    "ok"        right, and the user is now verified
-    "wrong"     not the code, try again
-    "expired"   older than CODE_MINUTES, a new one is needed
-    "locked"    too many wrong guesses, a new one is needed
-    "none"      there is no code to check against
-    """
-    user = get_user(user_id)
-    if user is None or not user["code"]:
-        return "none"
-    age = code_age(user_id)
-    if age is None or age > CODE_MINUTES * 60:
-        return "expired"
-    if user["code_tries"] >= CODE_TRIES:
-        return "locked"
-
+def cancel_code(user_id, code, purpose):
     conn = connect()
-    if not secrets.compare_digest(str(code).strip(), user["code"]):
-        conn.execute(
-            "UPDATE users SET code_tries = code_tries + 1 WHERE id = ?", (user_id,)
-        )
-        conn.commit()
-        conn.close()
-        return "locked" if user["code_tries"] + 1 >= CODE_TRIES else "wrong"
-
-    conn.execute(
-        "UPDATE users SET verified = 1, code = NULL, code_sent = NULL,"
-        " code_tries = 0 WHERE id = ?",
-        (user_id,),
-    )
-    conn.commit()
+    with conn:
+        conn.execute("UPDATE users SET code=NULL WHERE id=? AND code=?",
+                     (user_id, code_digest(user_id, code, purpose)))
     conn.close()
-    return "ok"
+
+
+def check_code(user_id, code, purpose="join"):
+    conn = connect()
+    try:
+        with conn:
+            conn.execute("BEGIN IMMEDIATE")
+            user = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+            if not user or not user["code"] or user["code_purpose"] != purpose:
+                return "none"
+            age = (datetime.now(timezone.utc) - datetime.fromisoformat(user["code_sent"])).total_seconds()
+            if age >= CODE_MINUTES * 60:
+                return "expired"
+            if user["code_tries"] >= CODE_TRIES:
+                return "locked"
+            if not hmac.compare_digest(code_digest(user_id, str(code).strip(), purpose), user["code"]):
+                conn.execute("UPDATE users SET code_tries=code_tries+1 WHERE id=?", (user_id,))
+                return "locked" if user["code_tries"] + 1 >= CODE_TRIES else "wrong"
+            conn.execute(
+                "UPDATE users SET verified=1,code=NULL,code_purpose=NULL,code_tries=0 WHERE id=?",
+                (user_id,))
+            return "ok"
+    finally:
+        conn.close()
 
 
 # ------------------------------------------------------------------ listings
@@ -1093,7 +1106,7 @@ def send_message(conv_id, sender_id, body):
     or nothing.
     """
     body = body.strip()
-    if not body:
+    if not body or len(body) > 500 or not can_see_conversation(get_conversation(conv_id), sender_id):
         return None
     conn = connect()
     cur = conn.execute(
@@ -1143,6 +1156,28 @@ def unread_total(user_id):
     return row["n"]
 
 
+def take_security_attempt(key, limit=10, window=600):
+    """Shared throttle. Stored in SQLite so restarting does not clear it."""
+    import time
+    current = int(time.time())
+    conn = connect()
+    try:
+        with conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT * FROM security_limits WHERE key=?", (key,)).fetchone()
+            if not row or current - row["start"] >= window:
+                conn.execute(
+                    "INSERT OR REPLACE INTO security_limits VALUES (?,?,1)", (key, current))
+                conn.execute("DELETE FROM security_limits WHERE start<?", (current-86400,))
+                return True
+            if row["count"] >= limit:
+                return False
+            conn.execute("UPDATE security_limits SET count=count+1 WHERE key=?", (key,))
+            return True
+    finally:
+        conn.close()
+
+
 # ------------------------------------------------------------- screenshots
 
 def take_ai_read(user_id, limit, pictures=1):
@@ -1151,10 +1186,13 @@ def take_ai_read(user_id, limit, pictures=1):
     Counted before the read, so a student who keeps retrying a failing
     screenshot still stops at the limit.
     """
+    if not isinstance(pictures, int) or pictures < 1:
+        return False
     day = datetime.now(timezone.utc).date().isoformat()
     conn = connect()
     try:
         with conn:
+            conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
                 "SELECT count FROM ai_reads WHERE user_id = ? AND day = ?",
                 (user_id, day)).fetchone()

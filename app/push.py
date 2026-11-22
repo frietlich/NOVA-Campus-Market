@@ -92,27 +92,57 @@ def make_keys():
 
 # ------------------------------------------------------------------ sending
 
+def valid_endpoint(endpoint):
+    """Only known browser push providers, never arbitrary server addresses."""
+    from urllib.parse import urlsplit
+    if not isinstance(endpoint, str) or any(c.isspace() for c in endpoint):
+        return False
+    try:
+        parsed = urlsplit(endpoint)
+        return (parsed.scheme == "https" and parsed.port in (None, 443)
+                and not parsed.username and not parsed.password and not parsed.fragment
+                and bool(parsed.path) and bool(parsed.hostname)
+                and (parsed.hostname in {"fcm.googleapis.com", "updates.push.services.mozilla.com"}
+                     or parsed.hostname.endswith(".push.apple.com")
+                     or parsed.hostname.endswith(".notify.windows.com")))
+    except ValueError:
+        return False
+
+
 def _webpush(device, payload):
     """One notification to one device. False when the device is gone for good."""
     from pywebpush import WebPushException, webpush
+    from requests import Session
+    if not valid_endpoint(device["endpoint"]):
+        return False
+
+    class NoRedirectSession(Session):
+        def request(self, method, url, **kwargs):
+            kwargs["allow_redirects"] = False
+            return super().request(method, url, **kwargs)
+
     try:
-        webpush(
-            subscription_info={"endpoint": device["endpoint"],
-                               "keys": {"p256dh": device["p256dh"], "auth": device["auth"]}},
-            data=json.dumps(payload),
-            vapid_private_key=_private_key(),
-            vapid_claims={"sub": _subject()},
-            ttl=60 * 60 * 24,
-            timeout=10,
-        )
+        with NoRedirectSession() as session:
+            response = webpush(
+                subscription_info={"endpoint": device["endpoint"],
+                                   "keys": {"p256dh": device["p256dh"], "auth": device["auth"]}},
+                data=json.dumps(payload),
+                vapid_private_key=_private_key(),
+                vapid_claims={"sub": _subject()},
+                ttl=60 * 60 * 24,
+                timeout=10,
+                requests_session=session,
+            )
+            if 300 <= response.status_code < 400:
+                return False
     except WebPushException as error:
         status = getattr(error.response, "status_code", None)
         # 404 and 410 mean the browser threw the subscription away, for
         # example because notifications were turned off in its settings.
-        print(f"  push to user {device['user_id']} failed: {status} {error}", flush=True)
+        print(f"  push to user {device['user_id']} failed: HTTP {status}", flush=True)
         return status not in (404, 410)
     except Exception as error:
-        print(f"  push to user {device['user_id']} failed: {error}", flush=True)
+        print(f"  push to user {device['user_id']} failed: {type(error).__name__}", flush=True)
         return True
     return True
 

@@ -229,11 +229,12 @@ class PageTests(unittest.TestCase):
         self.addCleanup(env.stop)
         from fastapi.testclient import TestClient
         from app import main
-        self.client = TestClient(main.app)
+        self.client = TestClient(main.app, headers={"origin": "http://testserver"})
         self.client.__enter__()
         self.user = db.create_user("44444@novasbe.pt", "Page P.")
         with db.connect() as conn:
             conn.execute("UPDATE users SET verified = 1 WHERE id = ?", (self.user,))
+        conn.close()
         self.client.post("/dev", data={"user_id": self.user})
 
     def tearDown(self):
@@ -276,7 +277,7 @@ class PageTests(unittest.TestCase):
         self.assertIn('value="housing" checked', page)
 
     def test_a_device_is_saved_and_checked(self):
-        good = {"endpoint": "https://push.example/abc", "keys": {"p256dh": "k", "auth": "a"}}
+        good = {"endpoint": "https://fcm.googleapis.com/fcm/send/abc", "keys": {"p256dh": "k", "auth": "a"}}
         self.assertEqual(self.client.post("/push/device", json=good).status_code, 200)
         self.assertEqual(len(db.devices_of(self.user)), 1)
         bad = dict(good, endpoint="http://127.0.0.1/steal")

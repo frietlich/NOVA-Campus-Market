@@ -13,9 +13,9 @@ from datetime import date, datetime, timedelta, timezone
 from typing import List
 from urllib.parse import quote, urlencode, urlparse
 
-from fastapi import BackgroundTasks, FastAPI, Form, Query, Request, UploadFile, File
+from fastapi import BackgroundTasks, FastAPI, Form, Query, Request, UploadFile, File, HTTPException
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -28,7 +28,10 @@ mailer.load_env()
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 UPLOADS = os.path.join(HERE, "static", "uploads")
-SECRET = os.environ.get("CAMPUS_SECRET") or "change-me-before-you-deploy"
+LOCAL_DEMO = os.environ.get("CAMPUS_SECURITY_DEMO") == "1"
+SECRET = os.environ.get("CAMPUS_SECRET", "")
+if len(SECRET) < 32:
+    raise RuntimeError("Set CAMPUS_SECRET to at least 32 random characters.")
 
 # The four tabs. Everything about a tab is in this one list.
 TABS = [
@@ -71,7 +74,7 @@ FRESH_DAYS = 7
 FRESH_MAX = 10
 
 app = FastAPI(title="Campus Market")
-app.add_middleware(SessionMiddleware, secret_key=SECRET, max_age=60 * 60 * 24 * 30)
+
 app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
 
 templates = Jinja2Templates(directory=os.path.join(HERE, "templates"))
@@ -847,7 +850,10 @@ def speculative(request):
 
 def me_or_none(request):
     user_id = request.session.get("user_id")
-    return db.get_user(user_id) if user_id else None
+    user = db.get_user(user_id) if user_id else None
+    if user and user["verified"] and db.is_nova_email(user["email"]):
+        return user
+    return None
 
 
 def waiting_or_none(request, key):
@@ -917,8 +923,17 @@ def send_code(user, why):
     age = db.code_age(user["id"])
     if age is not None and age < RESEND_SECONDS:
         return ""
-    code = db.new_code(user["id"])
+    if not mailer.is_set_up() and not LOCAL_DEMO:
+        return "Email delivery is not configured. Please contact the app team."
+    try:
+        code = db.new_code(user["id"], why)
+    except ValueError as error:
+        return str(error)
+    if LOCAL_DEMO and not mailer.is_set_up():
+        print(f"LOCAL DEMO ONLY: {why} code for {user['email']}: {code}", flush=True)
+        return ""
     if not mailer.send_code(user["email"], code, why):
+        db.cancel_code(user["id"], code, why)
         return "We could not send the e-mail. Try again in a minute."
     return ""
 
@@ -1004,11 +1019,16 @@ async def join(request: Request,
         return fail(wrong)
 
     if photo is not None and photo.filename and not is_picture(photo):
-        return fail("That file is not a picture. Use a jpg, png or heic.")
+        return fail("Upload a valid JPEG, PNG or WebP image.")
 
     existing = db.get_user_by_email(email)
     if existing is not None and existing["verified"]:
         return fail("That address already has an account. Log in instead.")
+
+    try:
+        saved = await save_image(photo)
+    except HTTPException as error:
+        return fail(str(error.detail))
 
     hashed = passwords.hash_password(password)
     if existing is None:
@@ -1020,7 +1040,6 @@ async def join(request: Request,
         db.update_profile(user_id, name, chosen, cems, None)
         db.set_password(user_id, hashed)
 
-    saved = await save_image(photo)
     if saved:
         db.update_profile(user_id, name, chosen, cems, saved)
 
@@ -1047,11 +1066,11 @@ def verify(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = F
         return go("/start")
     user_id = pending["id"]
     code = "".join([d1, d2, d3, d4, d5, d6]).strip()
-    result = db.check_code(user_id, code)
+    result = db.check_code(user_id, code, "join")
     if result != "ok":
         return page(request, "verify.html", pending=pending,
                     error=CODE_ERRORS[result])
-    request.session.pop("pending_id", None)
+    request.session.clear()
     request.session["user_id"] = user_id
     # Straight in. Whoever left the courses blank is not stopped for them
     # here. Groups says so itself the first time it is opened, and the
@@ -1083,6 +1102,16 @@ def login_form(request: Request):
 
 @app.post("/login")
 def login(request: Request, email: str = Form(""), password: str = Form("")):
+    from hashlib import sha256
+    account = email.strip().lower()[:254]
+    key = sha256(f"login:{account}".encode()).hexdigest()
+    if not db.take_security_attempt(key, limit=20):
+        response = page(request, "login.html", email=email,
+                        error="Too many attempts. Please wait ten minutes.")
+        response.status_code = 429
+        return response
+    if not db.is_nova_email(email) or not 1 <= len(password) <= 128:
+        return page(request, "login.html", email=email, error="That e-mail and password do not go together.")
     user = db.get_user_by_email(email)
 
     # The same answer whether the address is unknown or the password is wrong,
@@ -1093,7 +1122,7 @@ def login(request: Request, email: str = Form(""), password: str = Form("")):
 
     if not user["verified"]:
         request.session["pending_id"] = user["id"]
-        problem = send_code(user, "login")
+        problem = send_code(user, "join")
         return go(verify_url(problem))
 
     request.session.clear()
@@ -1170,7 +1199,7 @@ def reset(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = Fo
     wrong = passwords.problem(password)
     if wrong:
         return fail(wrong)
-    result = db.check_code(user_id, "".join([d1, d2, d3, d4, d5, d6]).strip())
+    result = db.check_code(user_id, "".join([d1, d2, d3, d4, d5, d6]).strip(), "reset")
     if result != "ok":
         return fail(CODE_ERRORS[result])
 
@@ -1185,11 +1214,19 @@ def reset(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = Fo
 @app.get("/dev")
 def dev_form(request: Request):
     """Development login. Delete this page once the real one works."""
-    return page(request, "dev.html", users=db.all_users())
+    if not LOCAL_DEMO:
+        return HTMLResponse("Not found", status_code=404)
+    return page(request, "dev.html", users=[user for user in db.all_users()
+                if user["verified"] and db.is_nova_email(user["email"])])
 
 
 @app.post("/dev")
 def dev_login(request: Request, user_id: int = Form(...)):
+    if not LOCAL_DEMO:
+        return HTMLResponse("Not found", status_code=404)
+    user = db.get_user(user_id)
+    if not user or not user["verified"] or not db.is_nova_email(user["email"]):
+        return HTMLResponse("Access refused", status_code=403)
     request.session.clear()
     request.session["user_id"] = user_id
     return go("/housing")
@@ -1478,8 +1515,11 @@ def new_ticket_autofill(request: Request, url: str = Form("")):
     Only links to the sites in ticket_import.PLATFORMS are ever fetched. The
     seller sees the filled form and checks it before anything is published.
     """
-    if me_or_none(request) is None:
+    me = me_or_none(request)
+    if me is None:
         return JSONResponse({"ok": False, "reason": "login"}, status_code=401)
+    if not db.take_security_attempt(f"ticket-import:{me['id']}", limit=30):
+        return JSONResponse({"ok": False, "reason": "limit"}, status_code=429)
     return JSONResponse(ticket_import.autofill(url))
 
 
@@ -1574,7 +1614,7 @@ async def new_listing(request: Request,
     # Changing an entry goes through the same form and the same checks. Only
     # the owner, and the kind cannot be swapped, because it comes from the
     # entry and not from the request.
-    changing = db.get_listing(int(edit_id)) if edit_id.strip().isdigit() else None
+    changing = db.get_listing(int(edit_id)) if edit_id.isascii() and edit_id.isdigit() and len(edit_id) <= 18 else None
     if changing is not None and changing["owner_id"] != me["id"]:
         changing = None
     if edit_id.strip() and changing is None:
@@ -1589,6 +1629,10 @@ async def new_listing(request: Request,
         return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
                     my_courses=mine, v=typed, error=message, back=ours(back),
                     edit_id=changing["id"] if changing else None)
+
+    for number in (quantity, course_id, group_size, months_min, minutes_campus, flatmates):
+        if number.strip() and (not number.isascii() or not number.isdigit() or len(number) > 9):
+            return oops("Enter whole numbers in the number fields.")
 
     if len(title.strip()) > TITLE_MAX:
         return oops(f"A title can be at most {TITLE_MAX} characters.")
@@ -1710,6 +1754,27 @@ async def new_listing(request: Request,
         if many < 1 or many > TICKET_MAX:
             return oops(f"Say how many tickets you have, 1 to {TICKET_MAX}.")
 
+    for entered_date in (event_date, hand_in, available_from):
+        if entered_date.strip():
+            try:
+                datetime.strptime(entered_date.strip(), "%Y-%m-%d")
+            except ValueError:
+                return oops("Enter a valid date in YYYY-MM-DD format.")
+    # Validate photos before changing the database. Remove earlier files if a later photo fails.
+    image_names = []
+    uploads = [photo for photo in (photos or []) if photo and photo.filename] if kind != "ticket" else []
+    if len(uploads) > 10:
+        return oops("Upload at most ten photos.")
+    try:
+        for upload in uploads:
+            image_names.append(await save_image(upload))
+    except HTTPException as error:
+        for name in image_names:
+            os.remove(os.path.join(UPLOADS, name))
+        response = oops(str(error.detail))
+        response.status_code = 400
+        return response
+
     fields = dict(
         title=title.strip(),
         description=description.strip(),
@@ -1754,19 +1819,9 @@ async def new_listing(request: Request,
     else:
         listing_id = db.create_listing(owner_id=me["id"], kind=kind, **fields)
 
-    # Pictures added while changing an entry go after the ones already there.
     position = len(db.photos_of(listing_id)) if changing is not None else 0
-    for upload in (photos or []) if kind != "ticket" else []:
-        if not upload or not upload.filename:
-            continue
-        ext = os.path.splitext(upload.filename)[1].lower()
-        if ext not in (".jpg", ".jpeg", ".png", ".webp", ".heic"):
-            continue
-        name = f"{uuid.uuid4().hex}{ext}"
-        with open(os.path.join(UPLOADS, name), "wb") as out:
-            out.write(await upload.read())
+    for position, name in enumerate(image_names, start=position):
         db.add_photo(listing_id, name, position)
-        position += 1
 
     # Everyone watching this tab hears about a new entry, after the page has
     # answered. A change to an entry that is already up rings nobody.
@@ -1782,7 +1837,7 @@ async def new_listing(request: Request,
     return go(where)
 
 
-PICTURE_TYPES = (".jpg", ".jpeg", ".png", ".webp", ".heic")
+PICTURE_TYPES = (".jpg", ".jpeg", ".png", ".webp")
 
 
 def is_picture(upload):
@@ -1793,14 +1848,25 @@ def is_picture(upload):
 
 
 async def save_image(upload):
-    """Write one uploaded picture to the uploads folder. Gives back its name."""
-    if not is_picture(upload):
+    from io import BytesIO
+    from PIL import Image, ImageOps, UnidentifiedImageError
+    from fastapi import HTTPException
+    if not upload or not upload.filename:
         return None
-    ext = os.path.splitext(upload.filename)[1].lower()
-    name = f"{uuid.uuid4().hex}{ext}"
-    with open(os.path.join(UPLOADS, name), "wb") as out:
-        out.write(await upload.read())
-    return name
+    data = await upload.read(5_000_001)
+    if len(data) > 5_000_000:
+        raise HTTPException(400, "Images must be under 5 MB.")
+    try:
+        with Image.open(BytesIO(data), formats=["JPEG", "PNG", "WEBP"]) as picture:
+            if picture.width * picture.height > 20_000_000:
+                raise HTTPException(400, "Image dimensions are too large.")
+            picture = ImageOps.exif_transpose(picture).convert("RGB")
+            picture.thumbnail((1400, 1400))
+            name = uuid.uuid4().hex + ".jpg"
+            picture.save(os.path.join(UPLOADS, name), "JPEG", quality=85)
+            return name
+    except (OSError, UnidentifiedImageError, Image.DecompressionBombError):
+        raise HTTPException(400, "Upload a valid JPEG, PNG or WebP image.") from None
 
 
 # -------------------------------------------------------------------- chats
@@ -2216,10 +2282,14 @@ async def profile_edit(request: Request,
     # quietly keeping the old one.
     if photo is not None and photo.filename and not is_picture(photo):
         return edit_page(request, me,
-                         "That file is not a picture. Use a jpg, png or heic.",
+                         "Upload a valid JPEG, PNG or WebP image.",
                          form_name=name, current=programme)
 
-    db.update_profile(me["id"], name, chosen, cems, await save_image(photo))
+    try:
+        saved = await save_image(photo)
+    except HTTPException as error:
+        return edit_page(request, me, str(error.detail), form_name=name, current=programme)
+    db.update_profile(me["id"], name, chosen, cems, saved)
     return go("/profile")
 
 
@@ -2291,7 +2361,7 @@ async def push_device(request: Request):
         p256dh, auth = keys["p256dh"], keys["auth"]
     except (ValueError, KeyError, TypeError):
         return JSONResponse({"ok": False}, status_code=400)
-    if not (isinstance(endpoint, str) and endpoint.startswith("https://")
+    if not (push.valid_endpoint(endpoint)
             and len(endpoint) < 1000 and isinstance(p256dh, str) and len(p256dh) < 200
             and isinstance(auth, str) and len(auth) < 100):
         return JSONResponse({"ok": False}, status_code=400)
@@ -2442,3 +2512,32 @@ def profile(request: Request):
                 my_courses=db.courses_of(me["id"]),
                 saved=db.saved_listings(me["id"]),
                 chat_count=len(db.conversations_of(me["id"])), me=me)
+
+
+@app.middleware("http")
+async def security_checks(request, call_next):
+    from urllib.parse import urlsplit
+    if request.url.path.startswith("/static/uploads/") and me_or_none(request) is None:
+        return HTMLResponse("Sign in required", status_code=403)
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        if request.url.path in ("/join", "/forgot", "/verify", "/verify/resend", "/forgot/reset"):
+            from hashlib import sha256
+            address = request.client.host if request.client else "unknown"
+            key = sha256(f"{request.url.path}:{address}".encode()).hexdigest()
+            if not db.take_security_attempt(key, limit=2000):
+                return HTMLResponse("Too many attempts. Please wait ten minutes.", status_code=429)
+        origin = request.headers.get("origin") or request.headers.get("referer")
+        source = urlsplit(origin) if origin else None
+        if not source or source.scheme != request.url.scheme or source.netloc != request.url.netloc:
+            return HTMLResponse("Request origin refused", status_code=403)
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "same-origin"
+    response.headers["Content-Security-Policy"] = "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    response.headers["Cache-Control"] = "no-store"
+    if not LOCAL_DEMO:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
+    return response
+
+
+app.add_middleware(SessionMiddleware, secret_key=SECRET, max_age=60 * 60 * 8, https_only=not LOCAL_DEMO, same_site="lax")

@@ -8,7 +8,7 @@ what is in `docs/tasks.docx`. Read both before you write code.
 
 ## Run it
 
-You need Python 3.10 or newer (3.15 is what we test with). From this folder, once:
+You need Python 3.12 or newer (3.12 is used in CI). From this folder, once:
 
     python3 -m venv .venv
     source .venv/bin/activate
@@ -36,10 +36,16 @@ blank lands in the app all the same, and Groups asks for them itself the first
 time it is opened. After that you sign in at `/login` with the address and the
 password. Forgotten passwords go through `/forgot`, which sends a fresh code.
 
-Without a mail account the code is printed in the terminal where the server
-runs. Copy it from there. With one, it arrives by e-mail, see below.
+Production email verification requires a configured SMTP sender. For private
+local development, copy `.env.example` to `.env`, generate a random
+CAMPUS_SECRET of at least 32 characters, and set CAMPUS_SECURITY_DEMO=1.
+With demo mode enabled and no SMTP configured, verification codes appear in
+the terminal. This bypasses mailbox ownership checks and must never be enabled
+on a public server. With SMTP configured, codes are sent by email instead.
+All team members need to update their local .env; no credentials go into Git.
+See docs/security-review.md for installation, tests and deployment checks.
 
-The quick one is at `/dev`. Pick any fake student and you are that person. Use
+In explicit local demo mode, the quick one is at `/dev`. Pick any fake student and you are that person. Use
 this while building. It goes away once we are happy with the real one.
 
 The student you are by default is Marco C., `58412@novasbe.pt`. Every demo
@@ -81,7 +87,7 @@ building and a small test. For the real launch we want a proper provider.
 
 A 6-digit code is only a million possibilities, so it gets three limits.
 
-* It works for 15 minutes.
+* It works for 10 minutes.
 * After 5 wrong tries it is dead and a new one has to be sent.
 * A new one is sent at most once a minute per address.
 
@@ -375,7 +381,8 @@ A real map on the page instead of a link out, which needs a mapping library,
 an API key and a way to turn an address into coordinates. Tests, one file per
 area, which is the biggest single gap against the plan. Filters for Housing
 the way Market has them. Editing an entry you already put up. The mail
-provider, so the 6-digit code arrives by e-mail instead of in the terminal.
+provider, so the 6-digit code arrives by e-mail. Codes are never printed in production. Explicit private demo mode can print
+them when SMTP is absent; see the development setup above.
 
 ## Rules we agreed on
 
@@ -400,6 +407,25 @@ Students can select predefined courses on **My courses** and at signup. They can
 create a course. Unsupported programmes have no predefined offerings yet.
 The existing seed command still **deletes the local database**, so do not run it on
 real or shared data. This branch does not change other contributors' code.
+
+## Verification and security
+
+See [Security review](docs/security-review.md) for the test commands, required
+environment settings and deployment checks.
+
+
+## HTTPS behind a hosting proxy
+
+Use the public HTTPS hostname unchanged when forwarding requests. For a local
+reverse proxy on the same machine, run:
+
+    uvicorn app.main:app --proxy-headers --forwarded-allow-ips=127.0.0.1
+
+Replace that trusted IP with the actual proxy addresses required by your host.
+Do not trust arbitrary public clients. The proxy must set X-Forwarded-Proto to
+https and preserve Host. Otherwise the origin check rejects form submissions.
+Before release, test registration, login, listing forms and import requests at
+the public HTTPS address. Set CAMPUS_SECURITY_DEMO=0 and configure SMTP there.
 
 ## Bachelor course catalogue (2026/27)
 

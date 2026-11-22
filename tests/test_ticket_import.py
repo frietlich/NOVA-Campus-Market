@@ -167,7 +167,7 @@ class PageTests(unittest.TestCase):
     def test_the_form_fills_only_for_someone_logged_in(self):
         from fastapi.testclient import TestClient
         from app import main
-        with TestClient(main.app) as client:
+        with TestClient(main.app, headers={"origin": "http://testserver"}) as client:
             answer = client.post("/new/ticket-autofill", data={"url": "dice.fm/x"})
         self.assertEqual(answer.status_code, 401)
 
