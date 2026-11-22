@@ -69,6 +69,15 @@ PLATFORMS = [
 ]
 PLATFORM_NAMES = sorted({name for _, name in PLATFORMS})
 
+# Of those, the ones we can recognise but never read. Fever, Resident
+# Advisor and Fourvenues refuse apps outright, Ticketline refuses the
+# connection, and Blueticket sends every visitor into a waiting room on
+# another site. Their links are still worth keeping: the entry gets a
+# button to the event either way. Only the filling in cannot work, and the
+# form says so before anybody presses it.
+BLOCKS_APPS = {"feverup.com", "ra.co", "fourvenues.com",
+               "ticketline.sapo.pt", "blueticket.meo.pt"}
+
 LINK_LIMIT = 500
 PAGE_LIMIT = 4_000_000
 TIMEOUT = 8
@@ -87,6 +96,12 @@ def platform_for_host(host):
         if host == domain or host.endswith("." + domain):
             return name
     return None
+
+
+def blocks_apps(url):
+    """True when this is a site we know and know we cannot read."""
+    found = platform_of(url)
+    return bool(found) and found["domain"] in BLOCKS_APPS
 
 
 def platform_of(url):

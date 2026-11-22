@@ -58,6 +58,32 @@ class TicketLinkTests(unittest.TestCase):
         self.assertIsNone(ticket_import.clean_url("https://idealista.pt/imovel/1/"))
         self.assertIsNone(housing.clean_listing_url("https://lu.ma/logos-gcp2"))
 
+    def test_the_sites_that_shut_apps_out_are_known_as_such(self):
+        """Their links are still kept, the form only warns before you press."""
+        for shut in ("https://feverup.com/m/1", "https://ra.co/events/1",
+                     "https://www.fourvenues.com/x", "https://ticketline.sapo.pt/x",
+                     "https://blueticket.meo.pt/x"):
+            with self.subTest(link=shut):
+                self.assertTrue(ticket_import.blocks_apps(shut))
+                self.assertIsNotNone(ticket_import.clean_url(shut))
+
+    def test_the_sites_we_can_read_are_not_on_that_list(self):
+        for fine in ("https://lu.ma/x", "https://dice.fm/event/x",
+                     "https://xceed.me/x", "https://bol.pt/x",
+                     "https://www.eventbrite.pt/e/1", "https://shotgun.live/x"):
+            with self.subTest(link=fine):
+                self.assertFalse(ticket_import.blocks_apps(fine))
+
+    def test_a_site_we_do_not_know_at_all_is_not_called_blocked(self):
+        """Blocked means known and unreadable, not simply unknown."""
+        self.assertFalse(ticket_import.blocks_apps("https://example.com/x"))
+        self.assertFalse(ticket_import.blocks_apps(None))
+
+    def test_both_kinds_answer_blocking_the_same_way(self):
+        """The form asks one question of either module, so both must take it."""
+        self.assertTrue(housing.blocks_apps("https://idealista.pt/imovel/1/"))
+        self.assertFalse(housing.blocks_apps("https://badi.com/room/1"))
+
     def test_the_button_names_the_site(self):
         other = ticket_import.platform_of("https://shotgun.live/en/events/x")
         self.assertEqual(other["name"], "Shotgun")

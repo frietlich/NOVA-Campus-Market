@@ -2512,6 +2512,11 @@ img { display: block; max-width: 100%; }
 .linkfield[data-state="ok"] .linkfield-status b { color: var(--c-housing); }
 .linkfield[data-state="bad"] .prefixed { border-color: #D64531; }
 .linkfield[data-state="bad"] .linkfield-status { color: #C0392B; }
+/* The caveat inside an otherwise green line: this site is one we know and
+   one we cannot read. Warning colour, not error, because the link itself
+   is fine and will go on the entry. */
+.linkfield-shut { color: #A4511B; font-weight: 600; }
+@media (prefers-color-scheme: dark) { .linkfield-shut { color: #FFB27A; } }
 
 /* Where it is, and where else it stands. The rows the rest of the app
    uses, set loose on a page that is not a list, with a line between them

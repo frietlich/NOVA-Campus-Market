@@ -1182,6 +1182,7 @@
     || document.querySelector(".linkfield-status");
   if (!status) return;
   const platforms = JSON.parse(box.dataset.platforms || "[]");
+  const blocking = JSON.parse(box.dataset.blocking || "[]");
   const names = box.dataset.names || "";
   const hint = status.innerHTML;
 
@@ -1197,7 +1198,8 @@
     for (const [domain, name] of platforms) {
       if (host === domain || host.endsWith("." + domain)) {
         url.protocol = "https:"; url.port = ""; url.hash = "";
-        return { name, href: url.toString() };
+        return { name, href: url.toString(),
+                 shut: blocking.includes(domain) };
       }
     }
     return null;
@@ -1222,6 +1224,17 @@
       open.href = found.href; open.target = "_blank"; open.rel = "noopener noreferrer";
       open.textContent = "Open it to check ↗";
       status.append(b, " Students get a button to it. ", open);
+      // Some of the sites we recognise shut apps out altogether. The link
+      // is still worth keeping, so the button stays alive and says what to
+      // expect instead of going dead with no reason given.
+      if (found.shut) {
+        const warn = document.createElement("span");
+        warn.className = "linkfield-shut";
+        warn.textContent = found.name + " does not let apps read it, so filling"
+          + " in may come back empty or patchy. The link goes on your entry"
+          + " either way.";
+        status.append(" ", warn);
+      }
     } else {
       box.dataset.state = "bad";
       const msg = "That is not a link from a housing site we know. Use " + names + ".";
@@ -1455,7 +1468,6 @@
   }
 
   function report(data) {
-    sayingBlocked = false;
     const where = data.site ? " from " + data.site : "";
     if (data.ok) {
       const done = fill(data.fields || {});
@@ -1464,8 +1476,15 @@
         return;
       }
     }
-    if (data.reason === "blocked" || data.reason === "unreachable") {
-      say((data.site || "That site") + " does not let apps read its adverts. Fill in the form yourself, the link still goes on your entry.", "warn");
+    // The line under the field has already warned that a site like this
+    // may give nothing. This one says what actually came back, which is a
+    // different thing, so it must not repeat the warning word for word.
+    if (data.reason === "blocked") {
+      say("Nothing came back from " + (data.site || "that site")
+          + ". Fill the form in yourself.", "warn");
+    } else if (data.reason === "unreachable") {
+      say((data.site || "That site") + " did not answer. Check the link, or"
+          + " fill the form in yourself.", "warn");
     } else if (data.reason === "limit") {
       say("You have filled in from links a lot in the last hour. Try again later, or fill in the form yourself.", "warn");
     } else if (data.reason === "site") {
@@ -1477,30 +1496,14 @@
 
   // Idealista and Imovirtual refuse apps, so their links never go to the
   // server: the button says so and the paste box opens instead.
-  const blocking = JSON.parse(linkBox.dataset.blocking || "[]");
-  let sayingBlocked = false;
-  function blockedSite() {
-    try {
-      const v = link.value.trim();
-      const host = new URL(v.includes("://") ? v : "https://" + v).hostname.toLowerCase();
-      return blocking.find((d) => host === d || host.endsWith("." + d)) || null;
-    } catch (e) { return null; }
-  }
+  // Alive for anything we recognise, the sites that shut apps out
+  // included. Idealista used to grey it out, which left somebody holding
+  // a link and a dead button. Pressing it there comes back empty within a
+  // moment, nothing is fetched and no daily allowance is spent, and the
+  // line under the field has already said to expect as much. A button you
+  // can press and learn from beats one that only sits there.
   function syncButton() {
-    const ok = linkBox.dataset.state === "ok";
-    const blocked = ok && blockedSite();
-    go.disabled = !ok || Boolean(blocked);
-    // The button keeps its one word. Why it is greyed out belongs in the
-    // line under the field, where everything else is explained, not in a
-    // button that would grow to a sentence and break the row.
-    if (blocked) {
-      say("That site does not let apps read its adverts. Fill the form in"
-          + " yourself, the link still goes on your entry.", "warn");
-      sayingBlocked = true;
-    } else if (sayingBlocked) {
-      result.hidden = true;
-      sayingBlocked = false;
-    }
+    go.disabled = linkBox.dataset.state !== "ok";
   }
   link.addEventListener("input", syncButton);
   syncButton();
