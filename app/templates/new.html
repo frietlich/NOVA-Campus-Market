@@ -23,37 +23,6 @@
 
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
 
-    {% if tab.kind == 'housing' %}
-    {# Already up on a housing site? Paste the link and the form fills itself
-       in; the entry also gets a button to the advert. Some sites (Idealista)
-       do not let apps read them, then the paste box below takes the text. #}
-    <div class="autofill">
-      <div class="autofill-head">
-        <b>Already on a housing site?</b>
-        <span>Paste the link. From Uniplaces, Spotahome, HousingAnywhere, OLX, Badi or
-          Erasmusu we fill in the form for you. Idealista and Imovirtual do not allow
-          that, but their link still goes on your entry as a button.</span>
-      </div>
-      <div class="linkfield" data-platforms='{{ HOUSING.PLATFORMS | tojson }}'
-           data-blocking='{{ HOUSING.BLOCKS_APPS | list | tojson }}'
-           data-names="{{ HOUSING.PLATFORM_NAMES | join(', ') }}">
-        <div class="prefixed">
-          <span class="linkfield-icon">{{ icon.link(18) }}</span>
-          <input id="external_url" name="external_url" type="text" inputmode="url"
-                 autocomplete="off" autocapitalize="off" spellcheck="false"
-                 maxlength="500" placeholder="Paste the link, e.g. idealista.pt/…"
-                 aria-label="Link to the same place on a housing site">
-        </div>
-        <p class="linkfield-status" id="link-status" aria-live="polite">
-          Works with {{ HOUSING.PLATFORM_NAMES | join(', ') }}. Optional.
-        </p>
-      </div>
-      <button class="btn btn--small" type="button" id="autofill-go" disabled>Fill in from this link</button>
-
-      <p class="autofill-result" id="autofill-result" role="status" hidden></p>
-    </div>
-    {% endif %}
-
     {# A ticket is a line of text and a group entry is a question, so
        neither of them has anything to photograph. #}
     {% if tab.kind not in ('ticket', 'group') %}
@@ -84,6 +53,39 @@
         Only your own courses are in here.
         <a class="link link--tiny" href="/courses?back=/new%3Fkind%3Dgroup">Change them here</a>
       </p>
+    {% endif %}
+
+    {% if tab.kind == 'housing' %}
+    {# Already up on a housing site? Paste the link: the entry gets a button
+       to the advert, and the sites that allow it fill the form in. For the
+       ones that do not (Idealista, Imovirtual) the screenshots right below
+       do it instead. #}
+    <div class="autofill">
+      <div class="autofill-head">
+        <b>Already on a housing site?</b>
+        <span>Paste the link. From Uniplaces, Spotahome, HousingAnywhere, OLX, Badi or
+          Erasmusu we fill in the form for you. Idealista and Imovirtual do not allow
+          that, but their link still goes on your entry as a button{% if SCREENSHOTS_ON() %},
+          and screenshots of the advert, just below, fill it in instead{% endif %}.</span>
+      </div>
+      <div class="linkfield" data-platforms='{{ HOUSING.PLATFORMS | tojson }}'
+           data-blocking='{{ HOUSING.BLOCKS_APPS | list | tojson }}'
+           data-names="{{ HOUSING.PLATFORM_NAMES | join(', ') }}">
+        <div class="prefixed">
+          <span class="linkfield-icon">{{ icon.link(18) }}</span>
+          <input id="external_url" name="external_url" type="text" inputmode="url"
+                 autocomplete="off" autocapitalize="off" spellcheck="false"
+                 maxlength="500" placeholder="Paste the link, e.g. idealista.pt/…"
+                 aria-label="Link to the same place on a housing site">
+        </div>
+        <p class="linkfield-status" id="link-status" aria-live="polite">
+          Works with {{ HOUSING.PLATFORM_NAMES | join(', ') }}. Optional.
+        </p>
+      </div>
+      <button class="btn btn--small" type="button" id="autofill-go" disabled>Fill in from this link</button>
+
+      <p class="autofill-result" id="autofill-result" role="status" hidden></p>
+    </div>
     {% endif %}
 
     {# Fill the form in from somewhere else instead of typing it twice.
