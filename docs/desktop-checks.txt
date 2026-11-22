@@ -1,5 +1,8 @@
 DESKTOP AND MOBILE REVIEW — 22 NOVEMBER 2026
-Branch: fix/audit-security-chat. Main is not merged by this work.
+Branch: fix/audit-security-chat. Main is not modified by this work.
+Review base: 6ea5a22, which removes desktop from main. This branch proposes
+restoring the complete tested layout plus the chat and security corrections.
+The combined app tree was checked to match the tested version exactly.
 
 Pages and states checked in the browser
 Housing, Tickets, Market, Groups; all four listing detail types; all four new

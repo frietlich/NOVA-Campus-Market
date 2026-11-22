@@ -1,6 +1,8 @@
 MAIN APP AUDIT FIXES — REVIEW NOTES
 
-Base: origin/main at 7d7eda1. Branch: fix/audit-security-chat.
+Current review base: origin/main at 6ea5a22. Branch: fix/audit-security-chat.
+The initial audit used 7d7eda1. Main subsequently removed desktop support;
+this proposal deliberately restores the complete tested desktop layout.
 No production data, email credentials or API keys are included.
 
 Changes
