@@ -323,3 +323,61 @@ def test_invalid_numeric_fields_do_not_crash(world, value):
         "kind":"item", "title":"Desk", "description":"A used desk", "quantity":value})
     assert response.status_code == 200
     assert "Enter whole numbers" in response.text
+
+
+def test_ticket_import_requires_origin_login_and_per_user_limit(world, monkeypatch):
+    from app import ticket_import
+    monkeypatch.setattr(ticket_import, "autofill", lambda url: {"ok": True, "fields": {"title":"Mock event"}})
+    _, clients = world
+    assert clients[0].post("/new/ticket-autofill", data={"url":"dice.fm/x"}).status_code == 403
+    guest = TestClient(app)
+    assert guest.post("/new/ticket-autofill", headers=ORIGIN).status_code == 401
+    for _ in range(30):
+        assert clients[0].post("/new/ticket-autofill", data={"url":"dice.fm/x"}, headers=ORIGIN).status_code == 200
+    assert clients[0].post("/new/ticket-autofill", headers=ORIGIN).status_code == 429
+    assert clients[1].post("/new/ticket-autofill", headers=ORIGIN).status_code == 200
+
+
+def test_push_devices_reject_internal_and_unapproved_servers(world):
+    _, clients = world
+    for endpoint in ("https://127.0.0.1/x", "https://localhost/x", "https://evil.example/x",
+                     "https://fcm.googleapis.com.evil.example/x", "https://fcm.googleapis.com:444/x",
+                     "https://user:pass@fcm.googleapis.com/x"):
+        response = clients[0].post("/push/device", headers=ORIGIN,
+            json={"endpoint":endpoint,"keys":{"p256dh":"k","auth":"a"}})
+        assert response.status_code == 400
+
+
+def test_ai_quota_is_atomic_across_concurrent_requests(world):
+    users, _ = world
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        accepted = list(pool.map(lambda _: db.take_ai_read(users[0], 2), range(8)))
+    assert accepted.count(True) == 2
+    assert not db.take_ai_read(users[0], 2, -1)
+
+
+def test_push_does_not_follow_redirects(monkeypatch):
+    from app import push
+    from requests import Session
+    from types import SimpleNamespace
+    device = {"user_id":1,"endpoint":"https://fcm.googleapis.com/fcm/send/mock","p256dh":"key","auth":"a"}
+    def fake_webpush(**kwargs):
+        kwargs["requests_session"].request("POST", device["endpoint"])
+        return SimpleNamespace(status_code=302)
+    with patch("pywebpush.webpush", side_effect=fake_webpush), patch.object(Session, "request") as request:
+        assert push._webpush(device, {}) is False
+        assert request.call_args.kwargs["allow_redirects"] is False
+    with patch("pywebpush.webpush") as send:
+        assert push._webpush(dict(device,endpoint="https://127.0.0.1/x"), {}) is False
+        send.assert_not_called()
+
+
+@pytest.mark.parametrize("endpoint", [
+    "https://fcm.googleapis.com/fcm/send/mock",
+    "https://updates.push.services.mozilla.com/wpush/v2/mock",
+    "https://web.push.apple.com/mock",
+    "https://wns2-test.notify.windows.com/mock",
+])
+def test_supported_browser_push_providers(endpoint):
+    from app import push
+    assert push.valid_endpoint(endpoint)

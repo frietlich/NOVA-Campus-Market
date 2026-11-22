@@ -1,6 +1,21 @@
 <!doctype html>
-<html lang="en">
+{#- The page says which of the two looks it is wearing, so the stylesheet
+    never has to ask the system itself. "system" is the one the server
+    cannot answer, and the little script below settles it before anything
+    is drawn, which is why it sits here and not in the deferred file. -#}
+<html lang="en" data-theme="{{ 'dark' if theme == 'dark' else 'light' }}">
 <head>
+{% if theme not in ('dark', 'light') %}
+<script>
+  try {
+    if (matchMedia("(prefers-color-scheme: dark)").matches) {
+      document.documentElement.dataset.theme = "dark";
+    }
+  } catch (err) {
+    // an old browser that cannot be asked, light it is
+  }
+</script>
+{% endif %}
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <title>Campus Market{% block title %}{% endblock %}</title>
@@ -10,6 +25,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Campus Market">
 <link rel="manifest" href="/static/manifest.webmanifest">
+{% if PUSH_ON() %}<meta name="push-key" content="{{ PUSH_KEY() }}">{% endif %}
 <link rel="apple-touch-icon" href="{{ asset('img/icon-180.png') }}">
 <link rel="icon" href="{{ asset('img/favicon.svg') }}" type="image/svg+xml">
 <link rel="icon" href="{{ asset('img/icon-192.png') }}" sizes="192x192">
@@ -24,6 +40,10 @@
   'saved': 'Your changes are saved.',
   'closed': 'Entry closed. It is gone from the list.',
   'reopened': 'It is back up and visible again.',
+  'watching': 'You will hear when somebody else sells a ticket for this event.',
+  'unwatched': 'No more notifications for this event.',
+  'search-on': 'Search saved. You will hear when something new fits it.',
+  'search-off': 'No more notifications for this search.',
 } -%}
 {%- set done = request.query_params.get('done') if request else None -%}
 {%- if done in TOASTS -%}

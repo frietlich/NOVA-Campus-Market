@@ -9,7 +9,10 @@
     <div class="sheet-head">
       <span class="side"><a class="link link--plain" href="/profile">Cancel</a></span>
       <span class="mid">Edit profile</span>
-      <span class="side side--right"><button class="link" type="submit">Save</button></span>
+      {#- No Save up here. There is one at the foot of the form, and two
+          of the same button on one screen only makes people wonder which
+          of them does the real thing. -#}
+      <span class="side"></span>
     </div>
 
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
@@ -64,7 +67,7 @@
       This is how you sign in, so it cannot be changed.
     </p>
 
-    <span class="section" style="margin: 26px 0 8px 2px">PASSWORD</span>
+    <span class="section" style="margin: 26px 0 8px 2px">Password</span>
     <a class="row rows" href="/profile/password" style="padding: 14px">
       <div class="row-body">
         <span class="row-name" style="color: var(--accent)">Change password</span>
@@ -74,9 +77,7 @@
     <div style="height: 28px"></div>
 
     <button class="btn" type="submit">Save</button>
-    <p class="note" style="padding-bottom: calc(var(--foot) + 20px)">
-      Visible to verified Nova students only.
-    </p>
+    <div style="height: calc(var(--foot) + 20px)"></div>
 
   </form>
 </div>

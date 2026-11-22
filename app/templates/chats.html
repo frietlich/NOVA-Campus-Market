@@ -113,7 +113,7 @@
     {% if bundles %}
       <div class="chips" style="margin-top: 8px">
         {% for b in bundles %}
-          <a href="/chats?side={{ side }}&bundle={{ b.key }}" data-kind="{{ b.kind }}"
+          <a href="/chats?side={{ side }}&bundle={{ b.key | urlencode }}" data-kind="{{ b.kind }}"
              class="chip chip--kind {{ 'chip--on' if bundle == b.key }}">
             {{ b.label }} <span class="chip-count">{{ b.count }}</span>
             {%- if b.unread %}<span class="chip-dot" aria-label="Unread"></span>{% endif -%}

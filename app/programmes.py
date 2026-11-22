@@ -20,8 +20,6 @@ MASTER = [
     "Master in Finance",
     "Master in Impact Entrepreneurship and Innovation",
     "Master in International Development and Public Policy",
-    "Master in Law and Economics of the Sea",
-    "Master in Law and Management",
     "Master in Management",
 ]
 

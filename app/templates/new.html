@@ -55,6 +55,43 @@
       </p>
     {% endif %}
 
+    {# Fill the form in from somewhere else instead of typing it twice.
+       Tickets: the link to the event, or screenshots. Housing: screenshots,
+       for the sites like Idealista that cannot be read by link. Nothing here
+       is required, and the student checks everything before publishing. #}
+    {% if tab.kind == 'ticket' or (tab.kind == 'housing' and SCREENSHOTS_ON()) %}
+    <div class="autofill-box" id="autofill" data-kind="{{ tab.kind }}" data-max="{{ SCREENSHOTS_MAX }}">
+      {% if tab.kind == 'ticket' %}
+      <label class="label" for="autofill_url">Link to the event</label>
+      <div class="autofill-row">
+        <input class="input" id="autofill_url" type="text" inputmode="url"
+               autocomplete="off" autocapitalize="off" spellcheck="false"
+               maxlength="500" placeholder="luma.com/… or dice.fm/event/…">
+        <button class="btn btn--quiet autofill-go" type="button" id="autofill-go">Fill in</button>
+      </div>
+      {% endif %}
+      {% if SCREENSHOTS_ON() %}
+      <label class="btn btn--quiet autofill-shot" for="autofill_shot" id="autofill-shot-label">
+        {{ icon.picture(18, 1.7) }}
+        {% if tab.kind == 'ticket' %}Or fill in from a screenshot{% else %}Fill in from screenshots of the advert{% endif %}
+      </label>
+      <input class="sr" id="autofill_shot" type="file" multiple
+             accept="image/png,image/jpeg,image/webp">
+      {% endif %}
+      <p class="note autofill-status" id="autofill-status" aria-live="polite">
+        {% if tab.kind == 'ticket' %}
+          Optional. Links work with Luma, DICE, Xceed, BOL and Eventbrite.
+          {% if SCREENSHOTS_ON() %}Screenshots work with any site, also Shotgun and RA.{% endif %}
+        {% else %}
+          Optional. Already on Idealista, Imovirtual or Uniplaces? Take up to
+          {{ SCREENSHOTS_MAX }} screenshots of the advert and pick them all at once.
+        {% endif %}
+        {% if SCREENSHOTS_ON() %}Screenshots are read by Claude and not stored.{% endif %}
+        You check everything before publishing.
+      </p>
+    </div>
+    {% endif %}
+
     <label class="label" for="title">Title</label>
     <input class="input" id="title" name="title" type="text" required maxlength="{{ TITLE_MAX }}"
            placeholder="{% if tab.kind == 'housing' %}Room in a 3-bed flat{% elif tab.kind == 'ticket' %}Student night, Urban Beach{% elif tab.kind == 'item' %}iPad Air, 11 inch{% else %}Econometrics, final project{% endif %}" value="{{ v.title }}" autocomplete="off">

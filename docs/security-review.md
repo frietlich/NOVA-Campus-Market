@@ -66,3 +66,33 @@ proxy configuration and verify the actual public deployment before release.
 
 Earlier dependencies were flagged by pip-audit. The upgraded lock must be
 tested against any later changes to main before merge.
+
+
+## Compatibility with the latest imports and notifications
+
+The branch includes current main's course catalogue, listing editing, ticket
+and housing screenshot imports, and push notification features. Runtime locks
+include Anthropic 2.12.0, Pillow 13.0.0, pywebpush 2.5.0 and Windows timezone data.
+
+Ticket-link import requires a verified session and a valid request origin,
+and is limited to 30 requests per account per ten minutes. Screenshot quotas
+are updated atomically so concurrent requests cannot exceed the daily limit.
+Push destinations are restricted to browser providers over HTTPS on port 443;
+redirects are not followed. Stored legacy destinations are checked again before
+sending. Push errors do not log endpoint tokens or message bodies.
+
+The provider list follows official documentation:
+- Google: https://firebase.google.com/docs/cloud-messaging/network-configuration
+- Mozilla: https://mozilla-services.github.io/autopush-rs/
+- Apple: https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/
+- Microsoft: https://learn.microsoft.com/en-us/windows/apps/develop/notifications/push-notifications/firewall-allowlist-config
+
+All automated email, AI and push tests use test settings and mocks. Developer
+.env credentials are explicitly excluded from tests and Git. SMTP login is a
+separate manual check; tests do not send real messages or spend API credit.
+
+After merging, set the shared sender credentials in the hosting service's
+private environment settings. A Git merge does not copy anyone's local .env.
+Set CAMPUS_SECURITY_DEMO=0, keep a stable random session secret, configure only
+trusted HTTPS proxy addresses, and test real inbox delivery plus persistent
+storage on the public deployment before calling it release-ready.

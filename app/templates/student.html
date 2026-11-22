@@ -1,31 +1,71 @@
 {% extends "base.html" %}
 {% import "partials/icons.html" as icon %}
 {% import "partials/avatar.html" as av %}
-{% import "partials/card.html" as c %}
 {% block title %} · {{ them.name }}{% endblock %}
 {% block body %}
 <div class="app">
   <div class="screen">
 
-    <div class="sheet-head">
-      <span class="side"><a class="link link--plain" data-back href="{{ back }}">Back</a></span>
-      <span class="mid">{{ them.name }}</span>
-      <span class="side"></span>
+    {#- The same head, panel and rows as your own profile. It is the same
+        thing being looked at, somebody and what they have up, so it is
+        built out of the same pieces rather than out of lookalikes. -#}
+    <div class="head" style="margin-left: -10px">
+      <div style="display: flex; align-items: center; gap: 4px">
+        {#- data-back sends the arrow through the browser's history, which
+            keeps your scroll. Not on the way back from an entry, see the
+            route, where history leads to that entry and back here. -#}
+        <a class="icon-btn"{% if hop %} data-back{% endif %} href="{{ back }}" aria-label="Back">{{ icon.back() }}</a>
+        <span style="font-size: 17px; font-weight: 600">Profile</span>
+      </div>
     </div>
 
-    <div class="photo-pick" style="margin-top: 8px">
-      <span class="avatar avatar--xl">{{ av.avatar(them.name, them.photo, "xl") }}</span>
-      <b style="margin-top: 10px; font-size: 18px">{{ them.name }}</b>
-      <span class="note" style="margin: 2px 0 0">{{ them.programme | programme(them.cems) }}</span>
+    <div class="panel">
+      <div class="panel-top">
+        {{ av.avatar(them.name, them.photo, "lg") }}
+        <div class="panel-id">
+          <b>{{ them.name }}</b>
+          <span class="course">{{ them.programme | programme(them.cems) }}</span>
+          <span class="verified">{{ icon.check(14) }} Nova address verified</span>
+        </div>
+      </div>
     </div>
+
+    <span class="section">Up right now</span>
 
     {% if open_rows %}
-      <span class="section" style="margin: 26px 0 8px 2px">UP RIGHT NOW</span>
-      <div class="list">
-        {% for l in open_rows %}{{ c.card(l, owner=False) }}{% endfor %}
+      <div class="rows">
+        {% for l in open_rows %}
+          {% if not loop.first %}<div class="divider divider--tight"></div>{% endif %}
+          {#- The way back is in the address rather than left to the slot
+              in the session, which the tab underneath this profile is
+              already using. Without it, going back from one of these
+              landed on that tab and the profile you were reading was
+              gone. -#}
+          <a class="row" href="/listing/{{ l.id }}?back=/student/{{ them.id }}">
+            <div class="mini" data-kind="{{ l.type }}">
+              {% if l.photo %}<img src="/static/uploads/{{ l.photo }}" alt="">{% else %}{{ icon.of_kind(l.type, 19, 1.7) }}{% endif %}
+            </div>
+            <div class="row-body">
+              <span class="row-name truncate">{{ l.title }}</span>
+              <span class="row-meta truncate">
+                {%- if l.type == 'group' -%}
+                  {{ l.course_name or 'Group work' }}
+                {%- elif l.price is not none -%}
+                  {{ l.price | money }}
+                {%- else -%}
+                  Free
+                {%- endif -%}
+              </span>
+            </div>
+          </a>
+        {% endfor %}
       </div>
     {% else %}
-      <p class="note" style="margin-top: 26px">{{ them.name }} has nothing up at the moment.</p>
+      <div class="nothing">
+        {{ icon.plus(26, 1.7) }}
+        <b>Nothing up</b>
+        <p>{{ them.name }} has no entries at the moment.</p>
+      </div>
     {% endif %}
 
     <div style="height: calc(var(--foot) + 24px)"></div>
