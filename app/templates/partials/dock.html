@@ -10,8 +10,7 @@
 {% import "partials/icons.html" as icon %}
 {% import "partials/avatar.html" as av %}
 
-<aside class="dock" aria-label="Chats">
-  <button type="button" class="link dock-close" data-close-dock aria-label="Hide chat panel">Hide chats ×</button>
+<aside class="dock" id="chat-panel" aria-label="Chats">
 
   {% if dock_open %}
     <div class="dock-head">
@@ -25,6 +24,7 @@
       </a>
       <a class="icon-btn icon-btn--small" href="/listing/{{ dock_open.listing_id }}"
          aria-label="Open the entry this is about">{{ icon.external(16) }}</a>
+      <button type="button" class="icon-btn icon-btn--small dock-close" data-close-dock aria-label="Hide chat panel" title="Hide chats">{{ icon.close() }}</button>
     </div>
 
     <div class="dock-thread" data-dock-thread data-live-chat="{{ dock_open.id }}">
@@ -43,7 +43,10 @@
   {% else %}
     <div class="dock-head dock-head--list">
       <b>Chats</b>
-      <a class="link link--tiny" href="/chats">All chats</a>
+      <div class="dock-head-actions">
+        <a class="link link--tiny" href="/chats">All chats</a>
+        <button type="button" class="icon-btn icon-btn--small dock-close" data-close-dock aria-label="Hide chat panel" title="Hide chats">{{ icon.close() }}</button>
+      </div>
     </div>
 
     {% if dock_chats %}

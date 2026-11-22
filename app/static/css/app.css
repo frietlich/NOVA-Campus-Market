@@ -3064,10 +3064,14 @@ html.lightbox-open, html.lightbox-open body { overflow: hidden; }
 .stub { --split: clamp(68px, 24cqi, 96px); --split-right: 34px; }
 .stub-fields { flex-wrap: wrap; column-gap: 16px; row-gap: 8px; }
 .stub-fields .field { flex-shrink: 0; }
-.dock-close { align-self: flex-end; margin: 8px 12px 0; cursor: pointer; }
+.dock-head-actions { display: flex; align-items: center; gap: 12px; }
+.dock-close { border-radius: 10px; background: var(--fill); color: var(--muted); }
+.dock-close:hover { color: var(--ink); }
+.dock-close:focus-visible, .dock-reopen:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .dock-reopen { display: none; }
 @media (min-width: 1280px) {
   .shell--chat-hidden { grid-template-columns: var(--rail) minmax(0, 1fr); }
   .shell--chat-hidden .dock { display: none; }
-  .shell--chat-hidden .dock-reopen { display: block; position: fixed; right: 24px; bottom: 24px; z-index: 20; padding: 14px 22px; border-radius: 20px; background: var(--accent); color: white; }
+  /* The reopen control belongs to navigation, never on top of an advert. */
+  .shell--chat-hidden .dock-reopen { display: flex; width: 100%; color: var(--accent); background: var(--accent-soft); text-align: left; cursor: pointer; }
 }

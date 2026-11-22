@@ -1505,9 +1505,11 @@
 (function liveChat() {
   document.querySelector('[data-close-dock]')?.addEventListener('click', () => {
     document.querySelector('.shell').classList.add('shell--chat-hidden');
+    document.querySelectorAll('[data-beside]').forEach((box) => { box.value = ''; });
   });
   document.querySelector('[data-open-dock]')?.addEventListener('click', () => {
     document.querySelector('.shell').classList.remove('shell--chat-hidden');
+    document.querySelectorAll('[data-beside]').forEach((box) => { box.value = '1'; });
   });
   document.querySelectorAll('[data-live-chat]').forEach((thread) => {
     let previous = null;
