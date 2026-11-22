@@ -1,5 +1,6 @@
 """Official 2026/27 course catalogue, independent of student-submitted text."""
 import csv
+import hashlib
 import os
 
 CATALOGUE = os.path.join(os.path.dirname(__file__), 'data', 'course_catalogue.csv')
@@ -12,6 +13,9 @@ ALIASES = {
     'Business Analytics': ('Master in Business Analytics',),
     'Impact Entrepreneurship & Innovation': ('Master in Impact Entrepreneurship and Innovation',),
     'International Development & Public Policy': ('Master in International Development and Public Policy',),
+    'Bachelor in Management': ('Bachelor in Management',),
+    'Bachelor in Economics': ('Bachelor in Economics',),
+    'Bachelor in Ocean Studies': ('Bachelor in Ocean Studies',),
 }
 
 TYPE_PRIORITY = {'MANDATORY': 0, 'EXCLUSIVE_ELECTIVE': 1, 'ELECTIVE': 2, 'OUT_PROGRAM': 3}
@@ -37,6 +41,9 @@ def import_courses(conn):
             key = '2743-POLICY-ANALYSIS-EXERCISE'
         elif original == 'TBD':
             key = 'TBD-SOCIAL-ENTREPRENEURSHIP'
+        elif original in ('XXXX', '-'):  # Pending official Bachelor codes must not collide.
+            digest = hashlib.sha1((record['programme'] + ':' + name).encode('utf-8')).hexdigest()[:12]
+            key = 'PENDING-' + digest
         else:
             key = original
         if key not in seen:

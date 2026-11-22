@@ -333,3 +333,15 @@ Do not trust arbitrary public clients. The proxy must set X-Forwarded-Proto to
 https and preserve Host. Otherwise the origin check rejects form submissions.
 Before release, test registration, login, listing forms and import requests at
 the public HTTPS address. Set CAMPUS_SECURITY_DEMO=0 and configure SMTP there.
+
+## Bachelor course catalogue (2026/27)
+
+The official catalogue also covers the three Bachelor programmes: Management,
+Economics, and Ocean Studies. Their mandatory and elective classifications are
+programme-specific; BSc Management and Economics include internship/additional
+courses under **Out of Programme**. Career modules are excluded. Ocean Studies
+currently has only mandatory courses in the handbook; its electives are not
+yet announced. The five Ocean Studies courses displayed with code `XXXX` have
+unique internal identifiers so they do not merge into one. The duplicated
+Oceanography code in the handbook was reconciled to `1701` using its academic
+offer page. No database reset is needed: the catalogue syncs at startup.

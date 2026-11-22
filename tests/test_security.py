@@ -192,7 +192,7 @@ def test_expiry_five_guesses_and_cancelled_delivery(world):
 def test_production_cookie_and_dev_route_in_fresh_process(world):
     import subprocess, sys, textwrap
     env=os.environ.copy()
-    env.pop("CAMPUS_SECURITY_DEMO",None)
+    env["CAMPUS_SECURITY_DEMO"]="0"
     env["CAMPUS_DB"]=db.DB_PATH
     result=subprocess.run([sys.executable,"-c",textwrap.dedent("""
         from fastapi.testclient import TestClient
@@ -213,8 +213,8 @@ def test_production_cookie_and_dev_route_in_fresh_process(world):
 def test_missing_production_secret_refuses_start(world):
     import subprocess,sys
     env=os.environ.copy()
-    env.pop("CAMPUS_SECRET",None)
-    env.pop("CAMPUS_SECURITY_DEMO",None)
+    env["CAMPUS_SECRET"]=""
+    env["CAMPUS_SECURITY_DEMO"]="0"
     result=subprocess.run([sys.executable,"-c","import app.main"],env=env,
                           capture_output=True,text=True,timeout=20)
     assert result.returncode!=0
@@ -299,3 +299,27 @@ def test_bad_edit_profile_photo_keeps_form(world):
     assert response.status_code == 200
     assert "Upload a valid JPEG, PNG or WebP image." in response.text
     assert db.get_user(users[0])["name"] == before
+
+
+def test_listing_edit_preserves_owner_and_rejects_invalid_values(world):
+    users, clients = world
+    listing = db.create_listing(users[0], "item", "Desk", price=10)
+    fields = {"edit_id": str(listing), "kind":"item", "title":"Updated desk",
+              "description":"A used desk", "price":"12,50"}
+    assert clients[1].post("/new", data=fields, headers=ORIGIN).status_code == 200
+    assert db.get_listing(listing)["title"] == "Desk"
+    assert clients[0].post("/new", data=fields, headers=ORIGIN, follow_redirects=False).status_code == 303
+    assert db.get_listing(listing)["title"] == "Updated desk"
+    assert db.get_listing(listing)["price"] == 12.5
+    fields["price"] = "NaN"
+    assert clients[0].post("/new", data=fields, headers=ORIGIN).status_code == 200
+    assert db.get_listing(listing)["price"] == 12.5
+
+
+@pytest.mark.parametrize("value", ["²", "9" * 5000])
+def test_invalid_numeric_fields_do_not_crash(world, value):
+    _, clients = world
+    response = clients[0].post("/new", headers=ORIGIN, data={
+        "kind":"item", "title":"Desk", "description":"A used desk", "quantity":value})
+    assert response.status_code == 200
+    assert "Enter whole numbers" in response.text
