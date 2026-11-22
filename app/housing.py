@@ -46,6 +46,15 @@ FEATURES = [
     ("air_conditioning", "Air conditioning", "air-conditioning"),
     ("parking",          "Parking",          "car"),
     ("pets",             "Pets allowed",     "dog"),
+    # Added later. Heating is the one nobody thinks to ask about until
+    # January, and in a Lisbon flat it is often simply not there. The rest
+    # are the things a student carries up the stairs or wishes they had.
+    ("heating",          "Heating",          "flame"),
+    ("oven",             "Oven",             "cooker"),
+    ("dryer",            "Dryer",            "wind"),
+    ("elevator",         "Elevator",         "elevator"),
+    ("bike_storage",     "Bike storage",     "bike"),
+    ("garden",           "Garden",           "plant"),
 ]
 FEATURE_LABELS = {key: name for key, name, _ in FEATURES}
 FEATURE_ICONS = {key: icon for key, _, icon in FEATURES}
@@ -54,25 +63,30 @@ FEATURE_KEYS = set(FEATURE_LABELS)
 # Rent per month. Key, what the button says, floor, ceiling. The steps are
 # high because a whole flat for four goes well past a thousand, and because
 # a band nobody can reach is a band nobody presses.
+# Five, so the row fits on one line of a phone. The step at 1250 went,
+# because between a thousand and above there was nothing a student was
+# choosing between.
 RENT_BANDS = [
     ("",      "Any",      None, None),
     ("450",   "to 450",   None, 450),
     ("750",   "to 750",   None, 750),
     ("1000",  "to 1000",  None, 1000),
-    ("1250",  "to 1250",  None, 1250),
-    ("1250+", "above",    1250, None),
+    ("1000+", "above",    1000, None),
 ]
 RENT_LABELS = {key: name for key, name, _, _ in RENT_BANDS}
 RENT_BY_KEY = {band[0]: band for band in RENT_BANDS}
 
 # How long to the campus. It runs to a full hour because from Lisbon that is
 # what it honestly takes.
+# Ten minutes went, because the places that close are rare enough to find
+# by eye. An hour and a half came in, because half of what gets offered is
+# in Lisbon and from Lisbon to Carcavelos that is the honest number.
 CAMPUS_BANDS = [
-    ("",   "Any",     None),
-    ("10", "10 min",  10),
-    ("30", "30 min",  30),
-    ("45", "45 min",  45),
-    ("60", "1 hour",  60),
+    ("",   "Any",       None),
+    ("30", "30 min",    30),
+    ("45", "45 min",    45),
+    ("60", "1 hour",    60),
+    ("90", "1.5 hours", 90),
 ]
 CAMPUS_LABELS = {key: name for key, name, _ in CAMPUS_BANDS}
 CAMPUS_BY_KEY = {band[0]: band for band in CAMPUS_BANDS}
@@ -88,6 +102,17 @@ STAY_BANDS = [
 ]
 STAY_LABELS = {key: name for key, name, _ in STAY_BANDS}
 STAY_BY_KEY = {band[0]: band for band in STAY_BANDS}
+
+# Who else lives there. Nobody counts flatmates one by one when they are
+# looking, they decide between living alone, a small flat and a big one.
+MATES_BANDS = [
+    ("",  "Any",      None),
+    ("0", "Alone",    0),
+    ("2", "1 or 2",   2),
+    ("3", "3 or more", None),
+]
+MATES_LABELS = {key: name for key, name, _ in MATES_BANDS}
+MATES_BY_KEY = {band[0]: band for band in MATES_BANDS}
 
 SORTS = [
     ("",     "Move in soonest"),

@@ -6,7 +6,7 @@
 <div class="app chat-page">
 
   <div class="chat-head">
-    <a class="icon-btn" href="/chats" aria-label="Back to the chats">{{ icon.back() }}</a>
+    <a class="icon-btn" data-back href="/chats" aria-label="Back to the chats">{{ icon.back() }}</a>
     {# Picture and name both lead to whoever you are talking to. #}
     <a href="/student/{{ other.id }}" aria-label="{{ other.name }}'s profile">
       {{ av.avatar(other.name, other.photo, "sm") }}
@@ -17,13 +17,36 @@
         <a href="/listing/{{ conv.listing_id }}">{{ conv.title }}{% if conv.price is not none %} · {{ conv.price | money }}{% endif %}</a>
       </span>
     </div>
+
+    {#- Putting this chat away, and the way back out of the archive, in one
+        place that never moves. Not on your own entries though, there a
+        whole entry goes away at once and that button is on the entry.
+
+        An entry does not have to be closed for this. Somebody who stops
+        answering never closes anything, and their chat would otherwise sit
+        in your list for good. -#}
+    {% if conv.owner_id != me.id %}
+      <form method="post" action="/chat/{{ conv.id }}/{{ 'unarchive' if archived else 'archive' }}">
+        <button class="icon-btn" type="submit"
+                aria-label="{{ 'Take this chat out of your archive' if archived else 'Archive this chat' }}">
+          {%- if archived %}<span class="icon-disc">{{ icon.unarchive() }}</span>
+          {%- else %}{{ icon.archive() }}{% endif -%}
+        </button>
+      </form>
+    {% endif %}
   </div>
 
   <div class="thread" id="thread">
     {% if messages %}
       <span class="day">{{ messages[0].created_at | when }}</span>
       {% for m in messages %}
-        <div class="bubble {{ 'bubble--me' if m.sender_id == me.id else 'bubble--them' }}">{{ m.body }}</div>
+        {%- if m.kind == 'closed' %}
+          {#- The app talking, not a student, so it sits in the middle and
+              takes neither side's shape. #}
+          <span class="note-pill">{{ m.body }}</span>
+        {%- else %}
+          <div class="bubble {{ 'bubble--me' if m.sender_id == me.id else 'bubble--them' }}">{{ m.body }}</div>
+        {%- endif %}
       {% endfor %}
       {% if messages[-1].sender_id == me.id and messages[-1].read_at %}
         <span class="stamp">Read {{ messages[-1].read_at | when }}</span>
@@ -31,9 +54,10 @@
     {% else %}
       <div class="empty">
         <b>Say something</b>
-        <p>This is between you and {{ other.name }}. Nobody else sees it.</p>
+        <p>Start this chat with a first message.</p>
       </div>
     {% endif %}
+
   </div>
 
   <form class="composer" method="post" action="/chat/{{ conv.id }}">

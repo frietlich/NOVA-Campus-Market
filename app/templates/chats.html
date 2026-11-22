@@ -2,7 +2,7 @@
 {% import "partials/icons.html" as icon %}
 {% import "partials/avatar.html" as av %}
 {% import "partials/art.html" as art %}
-{% block title %} · Chats{% endblock %}
+{% block title %} · {{ 'Archive' if archived else 'Chats' }}{% endblock %}
 
 {#- The picture for an entry. Housing and Market keep their drawn cover,
     because a building and a bag are still a building and a bag at this size.
@@ -49,7 +49,12 @@
       {{ c.last_body or 'No messages yet' }}
     </span>
   </div>
-  <span class="ch-when">{{ c.last_at | when }}</span>
+  <span class="ch-side">
+    <span class="ch-when">{{ c.last_at | when }}</span>
+    {% if c.status == 'closed' %}
+      <span class="note-pill note-pill--mini">Entry closed</span>
+    {% endif %}
+  </span>
 </a>
 {% endmacro %}
 
@@ -57,6 +62,16 @@
 <div class="app app--tabs">
   <div class="screen">
 
+    {% if archived %}
+      <div class="head" style="margin-left: -10px">
+        <div style="display: flex; align-items: center; gap: 4px">
+          <a class="icon-btn" href="/chats?side={{ side }}" aria-label="Back to your chats">{{ icon.back() }}</a>
+          <span style="font-size: 17px; font-weight: 600">
+            {{ 'Archived entries' if side == 'sell' else 'Archived chats' }}
+          </span>
+        </div>
+      </div>
+    {% else %}
     <div class="head">
       <h1>Chats</h1>
       <a href="/profile" aria-label="Your profile">{{ av.avatar(me.name, me.photo) }}</a>
@@ -68,8 +83,9 @@
       <input id="q" name="q" type="search" value="{{ q }}" placeholder="Name, entry or message">
       <input type="hidden" name="side" value="{{ side }}">
     </form>
+    {% endif %}
 
-    {% if has_sell and has_buy %}
+    {% if has_sell and has_buy and not archived %}
       <div class="segment" style="margin: 12px 0">
         <a href="/chats?side=buy" aria-current="{{ 'true' if side == 'buy' else 'false' }}">
           You asked{% if unread_buy %} <i class="seg-dot"></i>{% endif %}
@@ -132,6 +148,19 @@
               <span class="ch-chev">{{ icon.chev() }}</span>
             </label>
 
+            {% if b.listing.status == 'closed' %}
+              <div class="ch-closed">
+                <span class="note-pill">Entry closed</span>
+                <form class="ch-closed-do" method="post" action="/listing/{{ b.listing.listing_id }}/{{ 'unarchive' if archived else 'archive' }}">
+                  <button class="row-btn" type="submit"
+                          aria-label="{{ 'Take this entry out of your archive' if archived else 'Archive this entry and every chat about it' }}">
+                    {%- if archived %}<span class="icon-disc">{{ icon.unarchive(17) }}</span>
+                    {%- else %}{{ icon.archive(18) }}{% endif -%}
+                  </button>
+                </form>
+              </div>
+            {% endif %}
+
             {#- Every chat is here, in the order of the clock. The ones
                 beyond the first few are only hidden by a rule, so when the
                 line below is pressed they appear in their own place instead
@@ -155,13 +184,27 @@
 
         {% for c in chats %}{{ chat_card(c, bundle != '') }}{% endfor %}
       </div>
+
     {% else %}
       <div class="empty">
         {{ icon.chat(34, 1.4) }}
-        {% if q %}
+        {% if archived %}
+          <b>Nothing archived</b>
+          <p>When an entry closes you can put the chat away, and it lands here.</p>
+          <a class="link" href="/chats?side={{ side }}">Back to your chats</a>
+        {% elif q %}
           <b>Nothing found</b>
           <p>No chat of yours matches that.</p>
           <a class="link" href="/chats?side={{ side }}">Clear the search</a>
+        {% elif kept %}
+          {#- Before the two below, because telling somebody they have no
+              chats right above a link to five of them would be a lie. -#}
+          <b>Nothing open</b>
+          {% if side == 'sell' %}
+            <p>Every entry of yours that somebody wrote about is archived.</p>
+          {% else %}
+            <p>Every chat of yours is archived.</p>
+          {% endif %}
         {% elif side == 'sell' %}
           <b>Nobody has written yet</b>
           <p>When a student asks about something you put up, it lands here.</p>
@@ -170,6 +213,21 @@
           <p>Open an entry and write to whoever put it up. The conversation lands here.</p>
         {% endif %}
       </div>
+    {% endif %}
+
+    {#- Outside the branch above, because a side where everything has been
+        archived shows the empty state and still has to offer the way in. -#}
+    {% if kept and not archived %}
+      <a class="ch-archive{{ ' ch-archive--low' if not (blocks or chats) }}"
+         href="/chats?side={{ side }}&archived=1">
+        {#- The same sign as the one in the chats, so this line is where
+            anybody who has not met it yet finds out what it means. -#}
+        {{ icon.archive(18) }}
+        <span>{{ 'Archived entries' if side == 'sell' else 'Archived chats' }}</span>
+        <span class="ch-count">{{ kept }}</span>
+        {%- if kept_unread %}<span class="chip-dot" aria-label="Unread"></span>{% endif -%}
+        <span class="ch-chev ch-chev--go">{{ icon.chev() }}</span>
+      </a>
     {% endif %}
 
   </div>

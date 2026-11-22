@@ -57,10 +57,12 @@
       {# Two lines of facts built from fields, not from a line somebody
          typed. The first one carries the two that decide everything, what
          it really costs and how far it is. #}
+      {#- All three say Bills first, so the eye lands on the same word
+          whichever of them it is and only has to read the end. -#}
       <span class="card-key truncate">
-        {%- if l.bills_included -%}bills included
-        {%- elif l.bills_estimate -%}plus about {{ l.bills_estimate | money }}
-        {%- else -%}plus bills{%- endif -%}
+        {%- if l.bills_included -%}Bills included
+        {%- elif l.bills_estimate -%}Bills around {{ l.bills_estimate | money }}
+        {%- else -%}Bills on top{%- endif -%}
         {%- if l.minutes_campus %} · {{ l.minutes_campus }} min to campus{% endif -%}
       </span>
       <span class="card-info truncate">
@@ -69,7 +71,15 @@
         {%- elif l.category == 'studio' or l.category == 'whole_flat' %} · on your own{% endif -%}
         {%- if l.months_min %} · {{ l.months_min }} months min{% endif -%}
       </span>
-      {% if owner %}<span class="card-owner truncate">{{ l.owner_name }} · {{ l.owner_programme | short }}</span>{% endif %}
+      {#- The area, where the name of whoever put it up used to be. Which
+          student it is decides nothing when you are looking for a room,
+          and where it is decides almost everything. It stands here even on
+          your own profile, for the same reason. -#}
+      {#- Carries the same class as the line above it, not the smaller one
+          the owner's name used to have, so the two read as one block. -#}
+      {% if l.place and l.place != 'other' %}
+        <span class="card-info truncate">{{ HOUSING.AREA_LABELS.get(l.place, l.place) }}</span>
+      {% endif %}
     {% elif l.type == 'group' %}
       {# No course line here. The course is the heading above the block. #}
       {# The deadline leads, so it never gets cut off the end of the line. #}
@@ -79,12 +89,12 @@
       {% if owner %}<span class="card-owner truncate">{{ l.owner_name }} · {{ l.owner_programme | short }}</span>{% endif %}
     {% else %}
       {% if l.course_name %}<span class="course-line truncate">{{ l.course_name }}</span>{% endif %}
-      <span class="card-info truncate">
-        {%- if l.type == 'item' and l.condition -%}
-          {{ l.condition | condition }}{% if l.info %} · {% endif %}
-        {%- endif -%}
-        {{ l.info }}
-      </span>
+      {#- A thing for sale says how worn it is. A ticket has the day and
+          the venue on the line above. The grey line somebody typed is gone
+          from every tab, it only ever repeated the description. -#}
+      {% if l.type == 'item' %}
+        <span class="card-info truncate">{{ l.condition | condition }}</span>
+      {% endif %}
       {% if owner %}<span class="card-owner truncate">{{ l.owner_name }} · {{ l.owner_programme | short }}</span>{% endif %}
     {% endif %}
   </div>

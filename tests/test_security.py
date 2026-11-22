@@ -78,7 +78,7 @@ def test_chat_privacy_and_owner_actions(world):
 def test_invalid_price_never_creates_listing(world, price):
     users, clients=world
     before=len(db.listings_of_user(users[0]))
-    response=clients[0].post("/new", data={"kind":"item","title":"Test","price":price}, headers=ORIGIN)
+    response=clients[0].post("/new", data={"kind":"item","title":"Test","description":"A used desk", "price":price}, headers=ORIGIN)
     assert response.status_code==200
     assert len(db.listings_of_user(users[0]))==before
 
@@ -86,13 +86,13 @@ def test_image_content_and_size(world):
     users, clients=world
     before=len(db.listings_of_user(users[0]))
     for data in (b"not-an-image", b"x"*5_000_001):
-        response=clients[0].post("/new",data={"kind":"item","title":"Bad photo","price":"5"},
+        response=clients[0].post("/new",data={"kind":"item","title":"Bad photo","description":"A used desk", "price":"5"},
                                files={"photos":("photo.jpg",data,"image/jpeg")},headers=ORIGIN)
         assert response.status_code==400
         assert len(db.listings_of_user(users[0]))==before
     output=io.BytesIO()
     Image.new("RGB",(20,20)).save(output,"PNG")
-    response=clients[0].post("/new",data={"kind":"item","title":"Photo","price":"5"},
+    response=clients[0].post("/new",data={"kind":"item","title":"Photo","description":"A used desk", "price":"5"},
                             files={"photos":("photo.png",output.getvalue(),"image/png")},
                             headers=ORIGIN,follow_redirects=False)
     assert response.status_code==303
@@ -226,6 +226,8 @@ def test_invalid_housing_bills_are_rejected(world, estimate):
     before = len(db.listings_of_user(users[0]))
     response = clients[0].post("/new", data={
         "kind":"housing", "title":"Test room", "price":"400", "bills_estimate":estimate,
+        "description":"A furnished room", "available_from":"2027-02-01", "place":"carcavelos",
+        "address":"Test Street 1", "deposit":"400", "months_min":"1", "minutes_campus":"10", "flatmates":"2",
     }, headers=ORIGIN)
     assert response.status_code == 200
     assert len(db.listings_of_user(users[0])) == before
@@ -234,7 +236,9 @@ def test_housing_fields_survive_valid_publication(world):
     users, clients = world
     response = clients[0].post("/new", data={
         "kind":"housing", "title":"New room", "price":"400", "bills_estimate":"35",
-        "category":"room", "flatmates":"2", "available_from":"2027-02-01",
+        "category":"shared_flat", "flatmates":"2", "available_from":"2027-02-01",
+        "description":"A furnished room", "place":"carcavelos", "address":"Test Street 1",
+        "deposit":"400", "months_min":"1", "minutes_campus":"10",
     }, headers=ORIGIN, follow_redirects=False)
     assert response.status_code == 303
     row = db.listings_of_user(users[0])[0]

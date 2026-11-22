@@ -7,11 +7,13 @@ the chips or pills that show them, and the check that stops anything we do not
 know from being stored.
 """
 
+# Five, because five pills fit on one line of a phone and six do not.
+# Culture was the one to go. A museum ticket is not resold and a cinema seat
+# is bought on the night, so the row was carrying a word nobody would press.
 TICKET = [
     ("party",   "Party"),
     ("concert", "Concert"),
     ("sports",  "Sports"),
-    ("culture", "Culture"),
     ("travel",  "Travel"),
     ("other",   "Other"),
 ]
