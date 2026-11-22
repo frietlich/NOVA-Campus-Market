@@ -895,9 +895,11 @@
   // not depend on which of the two listeners the browser runs first.
   const field = input.closest(".linkfield");
   if (field) {
-    const sync = () => { go.disabled = field.dataset.state !== "ok"; };
+    const sync = () => {
+      go.disabled = field.dataset.state !== "ok" || field.dataset.shut === "1";
+    };
     new MutationObserver(sync).observe(field,
-      { attributes: true, attributeFilter: ["data-state"] });
+      { attributes: true, attributeFilter: ["data-state", "data-shut"] });
     sync();
   }
 
@@ -1184,6 +1186,9 @@
   const platforms = JSON.parse(box.dataset.platforms || "[]");
   const blocking = JSON.parse(box.dataset.blocking || "[]");
   const names = box.dataset.names || "";
+  // "housing" used to be written into the message here, which the ticket
+  // form then said about a ticket link.
+  const what = box.dataset.what || "site";
   const hint = status.innerHTML;
 
   function recognise(text) {
@@ -1210,6 +1215,7 @@
     status.textContent = "";
     if (!text) {
       box.dataset.state = "";
+      delete box.dataset.shut;
       status.innerHTML = hint;
       field.setCustomValidity("");
       return;
@@ -1217,6 +1223,10 @@
     const found = recognise(text);
     if (found) {
       box.dataset.state = "ok";
+      // A good link, and the form will keep it. Whether anything can be
+      // read off it is a separate question, and the answer rides along so
+      // the Fill in button can ask it without working it out again.
+      if (found.shut) { box.dataset.shut = "1"; } else { delete box.dataset.shut; }
       field.setCustomValidity("");
       const b = document.createElement("b");
       b.textContent = "✓ " + found.name + " link.";
@@ -1230,14 +1240,15 @@
       if (found.shut) {
         const warn = document.createElement("span");
         warn.className = "linkfield-shut";
-        warn.textContent = found.name + " does not let apps read it, so filling"
-          + " in may come back empty or patchy. The link goes on your entry"
-          + " either way.";
+        warn.textContent = found.name + " does not let apps read it, so there"
+          + " is nothing to fill in from. Type it in, and the link still goes"
+          + " on your entry.";
         status.append(" ", warn);
       }
     } else {
       box.dataset.state = "bad";
-      const msg = "That is not a link from a housing site we know. Use " + names + ".";
+      delete box.dataset.shut;
+      const msg = "That is not a link from a " + what + " we know. Use " + names + ".";
       field.setCustomValidity(msg);
       status.textContent = msg;
     }
@@ -1503,7 +1514,7 @@
   // line under the field has already said to expect as much. A button you
   // can press and learn from beats one that only sits there.
   function syncButton() {
-    go.disabled = linkBox.dataset.state !== "ok";
+    go.disabled = linkBox.dataset.state !== "ok" || linkBox.dataset.shut === "1";
   }
   link.addEventListener("input", syncButton);
   syncButton();

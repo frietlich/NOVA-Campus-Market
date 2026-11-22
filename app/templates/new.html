@@ -69,6 +69,7 @@
     <div class="autofill">
       <div class="linkfield" data-platforms='{{ HOUSING.PLATFORMS | tojson }}'
            data-blocking='{{ HOUSING.BLOCKS_APPS | list | tojson }}'
+           data-what="housing site"
            data-names="{{ HOUSING.PLATFORM_NAMES | join(', ') }}">
         <div class="autofill-row">
           <div class="prefixed">
@@ -106,6 +107,7 @@
       <label class="label" for="autofill_url">Link to the event</label>
       <div class="linkfield" data-platforms='{{ TICKETS.PLATFORMS | tojson }}'
            data-blocking='{{ TICKETS.BLOCKS_APPS | list | tojson }}'
+           data-what="ticket site"
            data-names="{{ TICKETS.PLATFORM_NAMES | join(', ') }}">
         <div class="autofill-row">
           <div class="prefixed">
