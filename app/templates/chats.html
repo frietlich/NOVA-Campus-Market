@@ -85,7 +85,6 @@
     </form>
     {% endif %}
 
-    <div data-chat-overview>
     {% if has_sell and has_buy and not archived %}
       <div class="segment" style="margin: 12px 0">
         <a href="/chats?side=buy" aria-current="{{ 'true' if side == 'buy' else 'false' }}">
@@ -231,7 +230,7 @@
       </a>
     {% endif %}
 
-    </div>
   </div>
+  {% include "partials/tabbar.html" %}
 </div>
 {% endblock %}
