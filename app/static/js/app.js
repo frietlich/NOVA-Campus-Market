@@ -1526,8 +1526,12 @@
   const walking = store.get(WALK, sessionStorage);
   const asked = new URLSearchParams(location.search).get("tour") === "1";
   const bar = document.querySelector(".tabbar");
+  // It starts by itself only on the main screens. On a wide screen the rail
+  // is on every page, the forms included, and nobody wants a tour over a
+  // half-written entry.
+  const MAIN = ["/housing", "/tickets", "/market", "/groups", "/chats", "/profile"];
   if (walking === null) {
-    if (!bar) return;
+    if (!bar || !MAIN.includes(location.pathname.replace(/\/+$/, ""))) return;
     if (store.get("cm-tour-done") === "1" && !asked) return;
   }
 
@@ -1639,16 +1643,18 @@
       text: "Rent, area, bills included, minutes to campus, move-in date. Then sort by rent or by who's free first." },
     { ch: "housing", el: ".bell", title: "Let the rooms come to you",
       text: "Set your filters, then tap the bell. When a new room fits your search, your phone tells you." },
-    { ch: "housing", el: ".head-actions .plus:not(.bell)", title: "Renting out your room?",
+    { ch: "housing", el: () => document.querySelector(".head-actions .plus:not(.bell)") || document.querySelector(".tab--rail"), title: "Renting out your room?",
       text: "Tap +. Paste the Uniplaces or Idealista link, or a few screenshots of the ad, and the form fills itself in." },
     { ch: "housing", el: ".card", title: "The full picture",
       text: "Open a room: photos, rent plus bills worked out, a button to the original ad, and how many students reached out before you." },
+    { ch: "housing", el: ".dock", title: "Your chats, right beside you",
+      text: "On a big screen your chats stay open here. Read a room on the left and talk to the person letting it on the right." },
 
     { ch: "ticket", el: ".chips", title: "Tickets for what you're into",
       text: "Parties, concerts, sports and more. Tickets are sorted by day, so tonight is on top." },
     { ch: "ticket", el: ".card", title: "Sold out? Not here.",
       text: "Open a ticket and tap its bell: you hear when someone puts up another one for the same event." },
-    { ch: "ticket", el: ".head-actions .plus:not(.bell)", title: "Can't make it?",
+    { ch: "ticket", el: () => document.querySelector(".head-actions .plus:not(.bell)") || document.querySelector(".tab--rail"), title: "Can't make it?",
       text: "Sell your ticket in seconds: paste the Luma, DICE or Eventbrite link, or a screenshot, and it's filled in." },
 
     { ch: "item", el: ".filters", title: "Second-hand, first class",
@@ -1781,7 +1787,8 @@
     open();
     mode = "spots";
     const t = STEPS[s];
-    if (!root.classList.contains("onb--spots")) {
+    const fresh = !root.classList.contains("onb--spots");
+    if (fresh) {
       root.className = "onb onb--spots";
       root.innerHTML = `<div class="onb-dim"></div><div class="onb-hole"></div><div class="onb-tip"></div>`;
     }
@@ -1800,7 +1807,11 @@
     tip.querySelector(".onb-next").onclick = () => walk(s + 1, 1);
     tip.querySelector(".onb-prev").onclick = () => walk(s - 1, -1);
     tip.querySelector(".onb-end").onclick = done;
+    // A bubble that was just made appears where it belongs; only a bubble
+    // already on screen glides to its next place.
+    if (fresh) tip.style.transition = "none";
     place();
+    if (fresh) requestAnimationFrame(() => { tip.style.transition = ""; });
     tip.querySelector(".onb-next").focus({ preventScroll: true });
   }
 
@@ -1833,16 +1844,21 @@
     tip.classList.toggle("onb-tip--up", up);
     tip.style.top = up ? "" : Math.min(y + h + 16, H - tip.offsetHeight - 12) + "px";
     tip.style.bottom = up ? Math.max(H - y + 16, 12) + "px" : "";
-    // Measured from where the bubble ends up, not from where its little
-    // entrance animation happens to have it right now.
+    // Sideways the bubble follows what it points at, so on a wide screen it
+    // does not sit in the middle while the button is in the rail on the left.
+    // On a phone it is as wide as the screen and simply stays put.
     const cx = Math.min(Math.max(r.left + r.width / 2, 40), W - 40);
-    tip.style.setProperty("--arrow-x", cx - (W - tip.offsetWidth) / 2 + "px");
+    const tw = tip.offsetWidth;
+    const left = Math.min(Math.max(cx - tw / 2, 12), Math.max(W - tw - 12, 12));
+    tip.style.left = left + "px";
+    tip.style.setProperty("--arrow-x", Math.min(Math.max(cx - left, 22), tw - 22) + "px");
   }
 
   function finale() {
     open();
     mode = "end";
     store.drop(WALK, sessionStorage);
+    store.set("cm-tour-done", "1");
     root.className = "onb onb--end";
     root.innerHTML = `
       <div class="onb-sheet">

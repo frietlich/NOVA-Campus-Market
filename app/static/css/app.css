@@ -3257,8 +3257,8 @@ html.onb-open, html.onb-open body { overflow: hidden; }
 @keyframes onb-pulse-k { 50% { box-shadow: 0 0 0 3px #FFFFFF, 0 0 0 13px color-mix(in srgb, var(--k) 25%, transparent); } }
 .onb--spots[data-kind] .onb-next { background: var(--k); box-shadow: 0 6px 16px color-mix(in srgb, var(--k) 35%, transparent); }
 .onb--spots[data-kind] .bea-face { background: color-mix(in srgb, var(--k) 20%, var(--card)); }
-.onb-tip { animation: onb-tip-in 0.3s ease both; }
-@keyframes onb-tip-in { from { opacity: 0; transform: translate(-50%, 10px); } }
+.onb--spots .onb-tip { transform: none; transition: top 0.35s ease, bottom 0.35s ease, left 0.35s ease; animation: onb-tip-in 0.3s ease both; }
+@keyframes onb-tip-in { from { opacity: 0; transform: translateY(10px); } }
 .onb-ch {
   display: block; margin-bottom: 1px;
   font-size: 11px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase;
@@ -3343,4 +3343,17 @@ html.onb-open, html.onb-open body { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .onb-why-list li, .onb-tip, .onb-go, .onb-confetti, .onb-resume { animation: none; }
   .onb-confetti { display: none; }
+}
+
+/* On a wide screen the story is a card floating over the app, not a strip
+   the height of the window. */
+@media (min-width: 900px) {
+  .onb:not(.onb--spots):not(.onb--travel) { align-items: center; }
+  .onb-sheet {
+    height: min(780px, calc(100vh - 48px));
+    padding: 20px 0 22px;
+    border-radius: 28px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+  }
+  .onb-skip { top: 18px; }
 }
