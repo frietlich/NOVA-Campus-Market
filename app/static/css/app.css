@@ -876,27 +876,9 @@ img { display: block; max-width: 100%; }
 
 .rule { height: 1px; background: var(--line); margin: 20px 0; }
 
-/* The address, handed over to whatever map the phone already has. */
-.where {
-  display: flex; align-items: center; gap: 12px;
-  margin-top: 16px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-card);
-  color: inherit;
-}
-
-.where:active { background: #FAFAFC; }
-
-.where-pin { flex: none; color: var(--accent); display: flex; }
-
-.where-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.where-text b { font-size: 15px; font-weight: 600; }
-.where-text span { font-size: 13px; color: var(--muted); }
-
-.where-go { flex: none; font-size: 13px; font-weight: 600; color: var(--accent); }
-
-.owner { display: flex; align-items: center; gap: 12px; }
+/* Last on the page now, under the line and the posted-on note, so it
+   needs its own air above it. */
+.owner { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
 
 /* The picture and the name are one target, because they are one thing to
    press and the gap between them should not be a hole you can miss. */
@@ -2391,7 +2373,10 @@ img { display: block; max-width: 100%; }
 .fact > span { flex: 1; min-width: 0; color: var(--muted); }
 .fact b { font-weight: 600; }
 
-.block-head { display: block; margin-top: 18px; font-size: 14px; font-weight: 600; }
+/* The same size and the same weight as a label on a form. A heading on
+   an entry and a heading over a field are the same rank of thing, and
+   one point of difference between them only read as a mistake. */
+.block-head { display: block; margin: 18px 0 6px; font-size: 15px; font-weight: 600; }
 .text--flush { margin-top: 8px; }
 
 :root[data-theme="dark"] .app[data-kind] .fbtn--on,
@@ -2525,11 +2510,15 @@ img { display: block; max-width: 100%; }
 .linkfield[data-state="bad"] .prefixed { border-color: #D64531; }
 .linkfield[data-state="bad"] .linkfield-status { color: #C0392B; }
 
-/* The link to the same place on a housing site. It is the address block
-   with a different sign in front, so the two read as one pair instead of
-   one line and one poster. */
-.where--site { margin-top: 12px; }
-.where-go--icon { display: flex; align-items: center; }
+/* Where it is, and where else it stands. The rows the rest of the app
+   uses, set loose on a page that is not a list, with a line between them
+   when both are there. */
+.rows--out { margin-top: 16px; }
+.rows--out .row + .row { border-top: 1px solid var(--hair); }
+.rows--out .row-name { line-height: 1.35; }
+/* An arrow that leads out of the app is drawn pointing out already, so it
+   is the one that must not be turned on its side. */
+.row-go--flat { transform: none; align-items: center; }
 
 /* The queue: where you stand, or, for the owner, who asked in what order. */
 .queue {

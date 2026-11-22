@@ -292,41 +292,37 @@
         </div>
       {% endif %}
 
-      {% if listing.address %}
-        <a class="where" href="https://maps.google.com/?q={{ listing.address | urlencode }}"
-           target="_blank" rel="noopener">
-          <span class="where-pin">{{ icon.pin(19) }}</span>
-          {#- The area under the address only when the address does not already
-              say it. A full Portuguese address ends in the town, and reading
-              "Oeiras" twice under each other says nothing the line above has
-              not said. -#}
-          {% set area = HOUSING.AREA_LABELS.get(listing.place)
-                        if listing.place not in (None, '', 'other') else None %}
-          <span class="where-text">
-            <b>{{ listing.address }}</b>
-            {% if area and area | lower not in listing.address | lower %}
-              <span>{{ area }}</span>
-            {% endif %}
-          </span>
-          <span class="where-go">Open in maps</span>
-        </a>
-      {% endif %}
-
-      {# The same place on a housing site. Built exactly like the address
-         above it, because it is the same kind of thing: a line that says
-         where to go and hands you over to something outside the app. It
-         opens in a new tab, so Campus Market stays where you left it. #}
+      {#- Where it is and where else it stands, as the rows this app uses
+          everywhere else: a sign, a line that says the thing, a smaller one
+          that says what tapping does, and an arrow. The address used to
+          share its width with the words "Open in maps" and broke in the
+          middle because of it, which is no way to print an address. -#}
       {% set other = HOUSING.platform_of(listing.external_url) %}
-      {% if other %}
-        <a class="where where--site" href="{{ other.url }}" target="_blank"
-           rel="noopener noreferrer nofollow">
-          <span class="where-pin">{{ icon.globe(19) }}</span>
-          <span class="where-text">
-            <b>See it on {{ other.name }}</b>
-            <span>More photos and details · {{ other.domain }}</span>
-          </span>
-          <span class="where-go where-go--icon">{{ icon.external(18) }}<span class="sr">opens in a new tab</span></span>
-        </a>
+      {% if listing.address or other %}
+        <div class="rows rows--out">
+          {% if listing.address %}
+            <a class="row" href="https://maps.google.com/?q={{ listing.address | urlencode }}"
+               target="_blank" rel="noopener">
+              <span class="row-sign">{{ icon.pin(21, 1.7) }}</span>
+              <div class="row-body">
+                <span class="row-name">{{ listing.address }}</span>
+                <span class="row-meta">Open in maps</span>
+              </div>
+              <span class="row-go">{{ icon.chev(17) }}</span>
+            </a>
+          {% endif %}
+          {% if other %}
+            <a class="row" href="{{ other.url }}" target="_blank"
+               rel="noopener noreferrer nofollow">
+              <span class="row-sign">{{ icon.globe(21, 1.7) }}</span>
+              <div class="row-body">
+                <span class="row-name">See it on {{ other.name }}</span>
+                <span class="row-meta">{{ other.domain }}</span>
+              </div>
+              <span class="row-go row-go--flat">{{ icon.external(18) }}<span class="sr">opens in a new tab</span></span>
+            </a>
+          {% endif %}
+        </div>
       {% endif %}
 
       {% if listing.description %}
@@ -338,37 +334,21 @@
 
     {% if listing.type == 'ticket' and listing.address %}
       {# No map of our own. The phone already has one, so we hand the address
-         over to it. #}
-      <a class="where" href="https://maps.google.com/?q={{ listing.address | urlencode }}"
-         target="_blank" rel="noopener">
-        <span class="where-pin">{{ icon.pin(19) }}</span>
-        <span class="where-text">
-          <b>{{ listing.place or 'Where it is' }}</b>
-          <span>{{ listing.address }}</span>
-        </span>
-        <span class="where-go">Open in maps</span>
-      </a>
+         over to it. Same row as on a room: the name of the place, then the
+         address under it, because on a ticket the venue is what you know
+         and the street is the detail. #}
+      <div class="rows rows--out">
+        <a class="row" href="https://maps.google.com/?q={{ listing.address | urlencode }}"
+           target="_blank" rel="noopener">
+          <span class="row-sign">{{ icon.pin(21, 1.7) }}</span>
+          <div class="row-body">
+            <span class="row-name">{{ listing.place or 'Open in maps' }}</span>
+            <span class="row-meta">{{ listing.address }}</span>
+          </div>
+          <span class="row-go">{{ icon.chev(17) }}</span>
+        </a>
+      </div>
     {% endif %}
-
-    <div class="rule"></div>
-
-    <div class="owner">
-      {#- Picture and name together are the way to whoever put this up, the
-          same as in a chat. Verified stays outside, it is a fact about the
-          account and not somewhere to go. -#}
-      <a class="owner-who" href="/student/{{ listing.owner_id }}">
-        {{ av.avatar(listing.owner_name, listing.owner_photo, "md") }}
-        <div class="owner-body">
-          <span class="owner-name">{{ listing.owner_name }}</span>
-          <span class="owner-course">{{ listing.owner_programme | programme(listing.owner_cems) }}</span>
-        </div>
-      </a>
-      <span class="verified">{{ icon.check() }} Verified</span>
-    </div>
-
-    <p class="posted">Posted {{ listing.created_at | ago }} · {{ listing.views }} students viewed
-      this<span id="saves"{{ ' hidden' if not saves }}> · <span data-count>{{ saves }}</span>
-      saved</span></p>
 
     {# The queue. Whoever writes first is first, and everyone can see where
        they stand without asking "is it still available?". Buyers only see
@@ -385,7 +365,9 @@
           {% if asked %}
             <div class="queue-rows">
               {% for q in queue %}
-                <a class="queue-row" href="/chat/{{ q.conversation_id }}">
+                {#- Carries the way back, so the arrow in that chat returns to
+                    this entry and not to the list of chats. -#}
+                <a class="queue-row" href="/chat/{{ q.conversation_id }}?back=/listing/{{ listing.id }}">
                   <span class="queue-n">{{ loop.index }}</span>
                   {{ av.avatar(q.name, q.photo, "sm") }}
                   <span class="queue-who">
@@ -432,6 +414,28 @@
       {% endif %}
     {% endif %}
 
+    <div class="rule"></div>
+
+    <p class="posted">Posted {{ listing.created_at | ago }} · {{ listing.views }} students viewed
+      this<span id="saves"{{ ' hidden' if not saves }}> · <span data-count>{{ saves }}</span>
+      saved</span></p>
+
+    {#- Whoever put this up comes last, on every tab. Everything above is
+        the thing itself and where you stand with it; who is selling is what
+        you check once you are interested, not what you read first. -#}
+    <div class="owner">
+      {#- Picture and name together are the way to whoever put this up, the
+          same as in a chat. Verified stays outside, it is a fact about the
+          account and not somewhere to go. -#}
+      <a class="owner-who" href="/student/{{ listing.owner_id }}">
+        {{ av.avatar(listing.owner_name, listing.owner_photo, "md") }}
+        <div class="owner-body">
+          <span class="owner-name">{{ listing.owner_name }}</span>
+          <span class="owner-course">{{ listing.owner_programme | programme(listing.owner_cems) }}</span>
+        </div>
+      </a>
+      <span class="verified">{{ icon.check() }} Verified</span>
+    </div>
   </div>
 
   <div class="actionbar">
