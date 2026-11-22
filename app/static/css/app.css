@@ -2904,3 +2904,122 @@ html.onb-open, html.onb-open body { overflow: hidden; }
 .onb-queue i { width: 10px; height: 10px; border-radius: 999px; background: color-mix(in srgb, var(--c-ticket) 35%, transparent); }
 .onb-queue i.me { width: 16px; height: 16px; background: var(--c-ticket); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-ticket) 22%, transparent); }
 .onb-queue em { font-style: normal; font-size: 12px; font-weight: 700; color: var(--c-ticket); margin-left: 4px; }
+
+/* --- the story, card 2: why */
+.onb-why-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.onb-why-list li {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 12px; border-radius: var(--r-card);
+  background: var(--card); border: 1px solid var(--hair);
+  animation: onb-rise 0.45s ease both;
+}
+.onb-why-list li:nth-child(2) { animation-delay: 0.08s; }
+.onb-why-list li:nth-child(3) { animation-delay: 0.16s; }
+.onb-why-list .n {
+  width: 40px; height: 40px; flex: none; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--k-soft); color: var(--k);
+}
+.onb-why-list b { display: block; font-size: 15px; }
+.onb-why-list span:not(.n) { font-size: 13px; line-height: 1.45; color: var(--muted); }
+
+/* --- the walk: each chapter in the colour of its tab. Chats and the
+   profile have no colour of their own in the app, so they get one here. */
+.onb [data-kind="chats"], .onb[data-kind="chats"] { --k: #3E7BEA; }
+.onb [data-kind="me"], .onb[data-kind="me"] { --k: #D9468A; }
+.onb [data-kind="chats"], .onb[data-kind="chats"],
+.onb [data-kind="me"], .onb[data-kind="me"] { --k-soft: color-mix(in srgb, var(--k) 13%, transparent); }
+.onb--spots[data-kind] .onb-hole {
+  box-shadow: 0 0 0 3px #FFFFFF, 0 0 0 7px color-mix(in srgb, var(--k) 60%, transparent);
+  animation-name: onb-pulse-k;
+}
+@keyframes onb-pulse-k { 50% { box-shadow: 0 0 0 3px #FFFFFF, 0 0 0 13px color-mix(in srgb, var(--k) 25%, transparent); } }
+.onb--spots[data-kind] .onb-next { background: var(--k); box-shadow: 0 6px 16px color-mix(in srgb, var(--k) 35%, transparent); }
+.onb--spots[data-kind] .bea-face { background: color-mix(in srgb, var(--k) 20%, var(--card)); }
+.onb-tip { animation: onb-tip-in 0.3s ease both; }
+@keyframes onb-tip-in { from { opacity: 0; transform: translate(-50%, 10px); } }
+.onb-ch {
+  display: block; margin-bottom: 1px;
+  font-size: 11px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase;
+  color: var(--k, var(--c-housing));
+}
+.onb-chapters { display: flex; gap: 6px; margin: -2px 0 12px; }
+.onb-chapters span {
+  flex: 1; height: 26px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--tint); color: var(--faint);
+  transition: background 0.3s ease, color 0.3s ease;
+}
+.onb-chapters span.past { background: var(--k-soft); color: var(--k); opacity: 0.6; }
+.onb-chapters span.now { background: var(--k); color: #FFFFFF; }
+.onb-tip .onb-foot { gap: 4px; }
+.onb-tip .onb-end { margin-right: auto; padding: 0 6px; font-size: 13px; font-weight: 600; }
+.onb-tip .onb-prev { width: 46px; padding: 0; font-size: 18px; }
+
+/* Between two pages: the next chapter, for a blink. */
+.onb--travel { align-items: center; background: rgba(8, 8, 12, 0.72); }
+.onb-go {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 22px; border-radius: 999px;
+  background: var(--k); color: #FFFFFF;
+  font-size: 17px; font-weight: 800;
+  animation: onb-pop 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
+}
+
+/* The end. */
+.onb--end .onb-sheet { justify-content: center; }
+.onb--end .onb-card { flex: none; }
+.onb-foot--one .onb-next { flex: 1; }
+.onb-foot .onb-next { white-space: nowrap; }
+.onb-sheet .onb-foot .onb-next { padding: 0 18px; }
+.onb--spots[data-kind] button:focus-visible { outline-color: var(--k); }
+.onb-confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.onb-confetti i {
+  position: absolute; top: -12px; width: 8px; height: 14px; border-radius: 2px;
+  background: var(--c-housing);
+  animation: onb-fall 2.6s cubic-bezier(0.3, 0.6, 0.5, 1) both;
+}
+.onb-confetti i:nth-child(4n+1) { background: var(--c-ticket); }
+.onb-confetti i:nth-child(4n+2) { background: var(--c-item); }
+.onb-confetti i:nth-child(4n+3) { background: var(--c-group, #E8A317); }
+.onb-confetti i:nth-child(1)  { left: 4%;  animation-delay: 0s; }
+.onb-confetti i:nth-child(2)  { left: 10%; animation-delay: .25s; }
+.onb-confetti i:nth-child(3)  { left: 16%; animation-delay: .1s; }
+.onb-confetti i:nth-child(4)  { left: 22%; animation-delay: .4s; }
+.onb-confetti i:nth-child(5)  { left: 28%; animation-delay: .05s; }
+.onb-confetti i:nth-child(6)  { left: 34%; animation-delay: .3s; }
+.onb-confetti i:nth-child(7)  { left: 40%; animation-delay: .15s; }
+.onb-confetti i:nth-child(8)  { left: 46%; animation-delay: .45s; }
+.onb-confetti i:nth-child(9)  { left: 52%; animation-delay: .2s; }
+.onb-confetti i:nth-child(10) { left: 58%; animation-delay: 0s; }
+.onb-confetti i:nth-child(11) { left: 64%; animation-delay: .35s; }
+.onb-confetti i:nth-child(12) { left: 70%; animation-delay: .1s; }
+.onb-confetti i:nth-child(13) { left: 76%; animation-delay: .5s; }
+.onb-confetti i:nth-child(14) { left: 82%; animation-delay: .2s; }
+.onb-confetti i:nth-child(15) { left: 88%; animation-delay: .05s; }
+.onb-confetti i:nth-child(16) { left: 94%; animation-delay: .3s; }
+.onb-confetti i:nth-child(17) { left: 37%; animation-delay: .6s; }
+.onb-confetti i:nth-child(18) { left: 67%; animation-delay: .55s; }
+@keyframes onb-fall {
+  from { transform: translateY(0) rotate(0deg); opacity: 1; }
+  to { transform: translateY(105vh) rotate(540deg); opacity: 0.3; }
+}
+
+/* When the tour was left half way: a small pill to carry on. */
+.onb-resume {
+  position: fixed; z-index: 90; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--foot, 80px) + 14px);
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 6px 5px 5px; border-radius: 999px;
+  background: var(--card); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+  animation: onb-rise 0.35s ease both;
+}
+.onb-resume .bea-face { width: 34px; height: 34px; }
+.onb-resume button { border: none; background: none; font: inherit; cursor: pointer; }
+.onb-resume-go { padding: 8px 10px; font-size: 14px; font-weight: 700; color: var(--c-housing); }
+.onb-resume-x { width: 30px; height: 30px; border-radius: 999px; color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .onb-why-list li, .onb-tip, .onb-go, .onb-confetti, .onb-resume { animation: none; }
+  .onb-confetti { display: none; }
+}
