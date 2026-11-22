@@ -8,6 +8,7 @@ get back to a clean state. Every person and every entry in here is invented.
 import os
 import shutil
 import sqlite3
+import tempfile
 from datetime import datetime, timedelta, timezone
 
 from . import db, passwords
@@ -338,9 +339,35 @@ SAVES = [
 ]
 
 
-def main():
-    if os.path.exists(db.DB_PATH):
-        os.remove(db.DB_PATH)
+# This file throws a database away and writes a new one. That has already
+# cost this project a day of real entries once. Since then the rule is that
+# it never runs by accident, and the lock below is what holds the rule: it
+# refuses unless somebody says, in the same breath, that the database at
+# that exact path may be deleted.
+#
+# A test that wants the demo data patches db.DB_PATH to a temporary file and
+# passes wipe=True. A test that forgets gets an exception, not a deletion.
+class SeedRefused(RuntimeError):
+    """Raised instead of deleting a database nobody asked to delete."""
+
+
+def main(wipe=False):
+    """Write the whole fictional demo. Deletes the database at db.DB_PATH.
+
+    wipe has to be True, or the path has to be a throwaway one, or this
+    raises. Nothing here is reversible, so saying nothing means no.
+    """
+    target = os.path.abspath(db.DB_PATH)
+    throwaway = target.startswith((tempfile.gettempdir() + os.sep,
+                                   "/private" + tempfile.gettempdir() + os.sep))
+    if not wipe and not throwaway:
+        raise SeedRefused(
+            f"Refusing to delete {target}. This writes the demo data from "
+            "scratch and everything in that database is lost. Call "
+            "main(wipe=True), or point db.DB_PATH at a temporary file first.")
+
+    if os.path.exists(target):
+        os.remove(target)
     db.setup()
 
     conn = db.connect()
@@ -415,7 +442,8 @@ def main():
                              # which is how anybody writing it thinks of it.
                              # The column holds the sum, so it is worked out
                              # here rather than stored twice.
-                             deposit=rent * dep, minutes_campus=mins,
+                             deposit=(rent * dep if dep is not None else None),
+                             minutes_campus=mins,
                              flatmates=mates, features=has,
                              days_ago=2 + n, views=34 - n * 3)
     # Three places are real adverts on housing sites (checked 18 Nov 2026),
@@ -449,8 +477,12 @@ def main():
         "Room in Cascais, sea view": ["room-cascais.jpg"],
         "Room, pets welcome": ["room-pets.jpg", "room-pets-2.jpg", "room-pets-3.jpg"],
     }
+    # Beside the database, not beside this file. A test that points the
+    # database at a temporary folder used to get its photos copied into the
+    # real app/static/uploads anyway, ten of them, on every run.
     here = os.path.dirname(os.path.abspath(__file__))
-    uploads = os.path.join(here, "static", "uploads")
+    uploads = os.path.join(os.path.dirname(target) or ".", "static", "uploads") \
+        if throwaway else os.path.join(here, "static", "uploads")
     os.makedirs(uploads, exist_ok=True)
     for title, names in PHOTOS.items():
         for position, name in enumerate(names):
@@ -547,4 +579,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Run by hand, the lock is opened by hand too.
+    import sys
+    if "--wipe" not in sys.argv:
+        raise SystemExit(
+            "This deletes " + os.path.abspath(db.DB_PATH) + " and writes the "
+            "demo data from scratch.\nEverything in it is lost. Run it with "
+            "--wipe if that is really what you want.")
+    main(wipe=True)
