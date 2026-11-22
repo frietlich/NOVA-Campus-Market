@@ -1601,3 +1601,25 @@
   }
   setTimeout(refresh, 1000);
 })();
+
+// On the Chats page of a wide screen a chat opens in the pane beside the
+// list instead of on a page of its own. The address carries it as ?chat=<id>,
+// which the server reads, so a reload or a sent message keeps it open.
+// Listening on the document, because the list is redrawn as messages come in.
+(function chatPane() {
+  const pane = document.querySelector(".ch-pane");
+  if (!pane) return;
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest('a[href^="/chat/"]');
+    if (!link || pane.offsetParent === null) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+    const id = (link.getAttribute("href").match(/^\/chat\/(\d+)/) || [])[1];
+    if (!id) return;
+    event.preventDefault();
+    const url = new URL(location.href);
+    url.searchParams.set("chat", id);
+    location.assign(url.pathname + url.search);
+  });
+  const box = pane.querySelector("#pane-body");
+  if (box) box.focus({ preventScroll: true });
+})();

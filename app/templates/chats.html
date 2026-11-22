@@ -18,7 +18,7 @@
 {#- One chat inside a block of your own entry. Which entry it is about is
     written above it, so the person is what this row is for. -#}
 {% macro chat_row(c, tucked=false) %}
-<a class="ch-row{{ ' ch-row--more' if tucked }}" href="/chat/{{ c.id }}">
+<a class="ch-row{{ ' ch-row--more' if tucked }}{{ ' is-open' if pane_open and pane_open.id == c.id }}" href="/chat/{{ c.id }}">
   <span class="ch-face{{ ' ch-face--new' if c.unread }}"
         {% if c.unread %}aria-label="Unread"{% endif %}>
     {{ av.avatar(c.other_name, c.other_photo, "sm") }}
@@ -36,7 +36,7 @@
     event or one course it is the person, because the entry is the same for
     every row and the pill above already says which. -#}
 {% macro chat_card(c, by_person) %}
-<a class="ch-card" href="/chat/{{ c.id }}">
+<a class="ch-card{{ ' is-open' if pane_open and pane_open.id == c.id }}" href="/chat/{{ c.id }}">
   <span class="ch-face{{ ' ch-face--new' if c.unread }}"
         {% if c.unread %}aria-label="Unread"{% endif %}>
     {% if by_person %}{{ av.avatar(c.other_name, c.other_photo, "sm") }}
@@ -59,7 +59,7 @@
 {% endmacro %}
 
 {% block body %}
-<div class="app app--tabs">
+<div class="app app--tabs{{ ' chats-split' if pane_on }}">
   <div class="screen">
 
     {% if archived %}
@@ -233,5 +233,6 @@
 
     </div>
   </div>
+  {% if pane_on %}{% include "partials/chat_pane.html" %}{% endif %}
 </div>
 {% endblock %}

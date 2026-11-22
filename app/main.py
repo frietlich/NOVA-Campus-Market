@@ -478,11 +478,21 @@ def by_course(rows):
     return blocks
 
 
-def month_label(iso_date):
-    """Free from January, the heading over a block of places."""
+def month_label(iso_date, today=None):
+    """Free from January, the heading over a block of places.
+
+    A date that has already come means the place is free today, so it says
+    so instead of naming a month that is over. A month in another year
+    carries the year: in November, "January" alone could be either one.
+    """
     if not iso_date:
         return "Date not given"
+    today = today or today_iso()
+    if iso_date <= today:
+        return "Free now"
     d = datetime.strptime(iso_date, "%Y-%m-%d")
+    if iso_date[:4] != today[:4]:
+        return f"Free from {d:%B %Y}"
     return f"Free from {d:%B}"
 
 
@@ -857,6 +867,21 @@ def dock_for(request, me, template):
             values["dock_messages"] = db.messages_of(conv["id"])
             values["here_with_chat"] = here(request, chat=conv["id"])
     return values
+
+
+def chat_pane(request, me):
+    """The conversation shown beside the list on the Chats page, wide screens.
+
+    The same rules as the column on every other page: the thread is named
+    in the address as ?chat=<id>, and one you are not part of never opens.
+    The phone never shows it; there a chat is still a page of its own.
+    """
+    values = dock_for(request, me, "chats-pane")
+    return {"pane_on": True,
+            "pane_open": values.get("dock_open"),
+            "pane_with": values.get("dock_with"),
+            "pane_messages": values.get("dock_messages") or [],
+            "pane_back": values.get("here_with_chat")}
 
 
 def here(request, chat=None):
@@ -2273,7 +2298,8 @@ def chats(request: Request, side: str = "", kind: str = "", bundle: str = "",
                                 if r["owner_id"] == me["id"]),
                 unread_buy=sum(r["unread"] for r in live
                                if r["owner_id"] != me["id"]),
-                active="chats", me=me)
+                active="chats", me=me,
+                **(chat_pane(request, me) if not archived else {"pane_on": False}))
 
 
 @app.get("/chat/{conv_id}")

@@ -1,0 +1,36 @@
+{#- The conversation beside the list on the Chats page. Wide screens only:
+    the stylesheet hides it on a phone, where a chat is a page of its own.
+    Opening a chat puts ?chat=<id> in the address (app.js does it on a
+    click), so the open thread survives a reload and a sent message. -#}
+{% import "partials/icons.html" as icon %}
+{% import "partials/avatar.html" as av %}
+<aside class="ch-pane" aria-label="Conversation">
+  {% if pane_open %}
+    <div class="ch-pane-head">
+      <a class="ch-pane-who" href="/listing/{{ pane_open.listing_id }}" title="Open the entry this is about">
+        {{ av.avatar(pane_with.name, pane_with.photo, "sm") }}
+        <span class="ch-pane-who-text">
+          <b class="truncate">{{ pane_with.name }}</b>
+          <span class="truncate">{{ pane_open.title }}</span>
+        </span>
+      </a>
+      <a class="icon-btn icon-btn--small" href="/listing/{{ pane_open.listing_id }}"
+         aria-label="Open the entry this is about">{{ icon.external(16) }}</a>
+    </div>
+    <div class="ch-pane-thread" data-dock-thread data-live-chat="{{ pane_open.id }}">
+      {% with messages=pane_messages %}{% include "partials/messages.html" %}{% endwith %}
+    </div>
+    <form class="composer composer--pane" method="post" action="/chat/{{ pane_open.id }}?beside=1">
+      <input type="hidden" name="back" value="{{ pane_back }}">
+      <label class="sr" for="pane-body">Message {{ pane_with.name }}</label>
+      <input id="pane-body" name="body" type="text" required maxlength="500" title="Up to 500 characters" placeholder="Message {{ pane_with.name.split(' ')[0] }}" autocomplete="off">
+      <button class="send" type="submit" aria-label="Send message">{{ icon.send() }}</button>
+    </form>
+  {% else %}
+    <div class="ch-pane-empty">
+      {{ icon.chat(30) }}
+      <b>Pick a chat</b>
+      <p>It opens here, next to your list.</p>
+    </div>
+  {% endif %}
+</aside>

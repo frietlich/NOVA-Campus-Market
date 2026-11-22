@@ -1090,6 +1090,8 @@ img { display: block; max-width: 100%; }
 /* ------------------------------------------------------------- the by day */
 
 .day-block { display: flex; flex-direction: column; }
+/* Around Tickets' days; on a phone it is as if it were not there. */
+.days { display: contents; }
 
 .day-head {
   position: sticky;
@@ -2855,7 +2857,9 @@ html.lightbox-open, html.lightbox-open body { overflow: hidden; }
   .tab[aria-current="page"]:hover { background: var(--accent-soft); }
   .tab[data-kind][aria-current="page"]:hover { background: var(--k-soft); }
 
-  .tab .pip { position: static; margin: 0 0 0 auto; width: 7px; height: 7px; border: none; }
+  /* The dot sits after the word, at the end of the row. Before, it came
+     first in the row and its auto margin pushed the word to the far edge. */
+  .tab .pip { position: static; order: 1; margin: 0 0 0 auto; width: 7px; height: 7px; border: none; }
 
   .rail-rule { display: block; height: 1px; background: var(--hair); margin: 8px 4px; }
   .tab--rail { display: flex; }
@@ -2888,17 +2892,86 @@ html.lightbox-open, html.lightbox-open body { overflow: hidden; }
        column swallowed the leftover width and a single card ended up
        stretched across the page, which is the thing this whole layout is
        trying to avoid. A card is never wider than it is on a phone. */
-    grid-template-columns: repeat(auto-fill, minmax(330px, 424px));
+    /* auto-fill counts its columns with the upper bound, so a 424px
+       maximum fitted only one column into the 806px a MacBook leaves
+       between the rail and the chats. Columns now share the row instead,
+       and the list's own maximum keeps three of them from ever growing
+       past a phone card's width. */
+    grid-template-columns: repeat(auto-fill, minmax(min(330px, 100%), 1fr));
+    max-width: calc(3 * 424px + 2 * 10px);
     gap: 10px;
     align-items: start;
   }
   .head h1 { font-size: 30px; }
   .search { max-width: 560px; }
 
+  /* Tickets: one or two tickets a day made a long thin strip with half the
+     screen empty. On a wide screen the days stand side by side and the week
+     reads like a calendar, left to right, then the next row. */
+  .app[data-kind="ticket"] .days {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(330px, 100%), 1fr));
+    max-width: calc(3 * 424px + 2 * 10px);
+    gap: 22px 16px;
+    align-items: start;
+  }
+  .app[data-kind="ticket"] .days .list { grid-template-columns: minmax(0, 1fr); }
+
+  /* Housing and Market: on a wide screen a card is a tile, the photo on
+     top and the words under it, the way people browse rooms and things on
+     every website. Three to a row on a MacBook. The phone keeps its rows. */
+  .app[data-kind="housing"] .list,
+  .app[data-kind="item"] .list {
+    grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
+    gap: 16px;
+  }
+  .app[data-kind="housing"] .list .card,
+  .app[data-kind="item"] .list .card {
+    flex-direction: column; gap: 0;
+    padding: 0;
+    overflow: hidden;
+    height: 100%;
+  }
+  .app[data-kind="housing"] .list .thumb,
+  .app[data-kind="item"] .list .thumb {
+    width: 100%; height: auto;
+    aspect-ratio: 4 / 3;
+    border-radius: 0;
+  }
+  .app[data-kind="housing"] .list .card-body,
+  .app[data-kind="item"] .list .card-body {
+    justify-content: flex-start;
+    padding: 12px 14px 14px;
+  }
+  .app[data-kind="housing"] .list .card-title,
+  .app[data-kind="item"] .list .card-title { -webkit-line-clamp: 1; }
+  /* Housing is grouped by the month a place is free, and most months
+     hold one or two rooms. Each month takes only the width of its tiles,
+     so short months share a row instead of leaving it empty. */
+  .app[data-kind="housing"] .days {
+    display: flex; flex-wrap: wrap; align-items: flex-start;
+    gap: 26px 20px;
+  }
+  /* A month is as wide as its rooms, at most three to a row: --n is the
+     number of rooms in it, set on the block by the template. */
+  .app[data-kind="housing"] .days .day-block {
+    flex: 0 0 auto; max-width: 100%;
+    width: calc(min(var(--n, 1), 3) * 236px + (min(var(--n, 1), 3) - 1) * 16px);
+  }
+  .app[data-kind="housing"] .days .list { display: flex; flex-direction: row; flex-wrap: wrap; gap: 16px; }
+  .app[data-kind="housing"] .days .list .card { width: 236px; height: auto; }
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05), 0 10px 24px rgba(0, 0, 0, 0.08);
+  }
+  .card:active { transform: scale(0.99); }
+
   /* The two tab screens that are lists of single lines, not grids of
      cards. A row with a name and one line of text gains nothing from a
      thousand pixels, so they keep a column's width like the forms do. */
-  .app--tabs:not([data-kind]) .screen { max-width: 720px; }
+  /* Aligned to the left edge like every other tab, not floating in the
+     middle of the page with a gap after the rail. */
+  .app--tabs:not([data-kind]) .screen { max-width: 760px; }
 
   /* ---- an entry */
 
@@ -3113,4 +3186,94 @@ html.lightbox-open, html.lightbox-open body { overflow: hidden; }
 @media (min-width: 900px) {
   .shell:not(.shell--out) .app.chat-page { max-width: 900px; }
   .shell:not(.shell--out) .app:not([data-kind]) > .screen { margin-inline: auto; }
+  /* Chats and Profile are tabs, so they start at the rail like Housing
+     and Tickets do. The forms stay centred. */
+  .shell:not(.shell--out) .app.app--tabs:not([data-kind]) > .screen { margin-inline: 0 auto; }
+}
+
+/* ---- the Chats page, split in two on a wide screen
+
+   The list on the left, the open conversation on the right, the way every
+   messaging app on a laptop works. Clicking a chat opens it in the pane
+   instead of leaving the page. Below 1100 pixels, and on every phone, the
+   pane is not there and a chat opens as a page of its own, as before. */
+.ch-pane { display: none; }
+
+@media (min-width: 1100px) {
+  .app.chats-split {
+    display: grid;
+    grid-template-columns: minmax(340px, 440px) minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+  /* min-width 0 lets the list column hold to its track: otherwise one long
+     last message, which never wraps, makes it wider than its own column. */
+  .shell:not(.shell--out) .app.app--tabs.chats-split:not([data-kind]) > .screen { max-width: none; margin: 0; min-width: 0; }
+
+  .ch-pane {
+    display: flex; flex-direction: column;
+    position: sticky; top: 22px;
+    height: calc(100dvh - 44px); min-height: 420px;
+    background: var(--card);
+    border: 1px solid var(--hair);
+    border-radius: var(--r-card);
+    overflow: hidden;
+  }
+  .ch-pane-head {
+    flex: none;
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--hair);
+  }
+  .ch-pane-who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; color: inherit; }
+  .ch-pane-who-text { min-width: 0; display: flex; flex-direction: column; }
+  .ch-pane-who-text b { font-size: 15px; }
+  .ch-pane-who-text span { font-size: 12px; color: var(--muted); }
+  .ch-pane-thread {
+    flex: 1; min-height: 0; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 16px;
+  }
+  .ch-pane .composer--pane {
+    flex: none;
+    position: static;
+    padding: 10px;
+    background: transparent;
+    border: none; border-top: 1px solid var(--hair);
+    border-radius: 0;
+  }
+  .ch-pane-empty {
+    margin: auto;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 24px;
+    text-align: center; color: var(--muted);
+  }
+  .ch-pane-empty b { color: var(--ink); font-size: 16px; }
+  .ch-pane-empty p { margin: 0; font-size: 13px; }
+
+  /* The chat that is open on the right, marked in the list on the left. */
+  .ch-card.is-open, .ch-row.is-open {
+    background: var(--accent-soft);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+}
+
+/* ---- choosing what to put up, at the top of a new entry */
+.kind-pick {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
+  margin-top: 6px;
+}
+.kind-opt {
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 10px 4px;
+  border: 1px solid var(--hair); border-radius: var(--r-tile);
+  background: var(--card); color: var(--muted);
+  font-size: 12px; font-weight: 600;
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+.kind-opt:hover { color: var(--k); }
+.kind-opt:active { transform: scale(0.97); }
+.kind-opt--on {
+  background: var(--k-soft); color: var(--k);
+  border-color: var(--k);
 }

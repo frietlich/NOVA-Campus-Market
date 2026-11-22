@@ -17,9 +17,24 @@
       <span class="side"></span>
     </div>
 
+    {#- What you are putting up. A new entry can still change its mind, so
+        all four are offered and the one you are on is lit; the sidebar's
+        New entry lands here from any screen. An entry being edited keeps
+        its kind for good, so it only says which one it is. -#}
+    {% if edit_id %}
     <span class="pill" style="align-self: flex-start; margin-top: 6px; display: inline-flex; align-items: center; gap: 7px; font-size: 13px; padding: 7px 12px">
       {{ icon.of_kind(tab.kind, 15, 1.8) }} {{ tab.label }}
     </span>
+    {% else %}
+    <div class="kind-pick" role="group" aria-label="What are you putting up?">
+      {% for t in TABS %}
+        <a class="kind-opt{{ ' kind-opt--on' if t.kind == tab.kind }}" data-kind="{{ t.kind }}"
+           href="/new?kind={{ t.kind }}"{% if t.kind == tab.kind %} aria-current="page"{% endif %}>
+          {{ icon.of_kind(t.kind, 18, 1.8) }}<span>{{ t.label }}</span>
+        </a>
+      {% endfor %}
+    </div>
+    {% endif %}
 
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
 

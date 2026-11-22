@@ -245,6 +245,9 @@
     {% if listings %}
       {% if days is not none %}
 
+        {#- The wrapper is invisible on a phone (display: contents). On a
+            wide screen Tickets lays its days out side by side. -#}
+        <div class="days">
         {% for day in days %}
           <div class="day-block">
             <span class="section day-head">{{ day.date | day_label }}</span>
@@ -264,20 +267,23 @@
             {% endif %}
           </div>
         {% endfor %}
+        </div>
 
       {% elif blocks is not none %}
 
         {# Groups is read course by course. There is nothing sensible to
            filter a course list by, so the course is the heading instead and
            two entries for the same one stand together. #}
+        <div class="days">
         {% for b in blocks %}
-          <div class="day-block">
+          <div class="day-block" style="--n: {{ b.rows | length }}">
             <span class="section day-head">{{ b.head }}</span>
             <div class="list">
               {% for l in b.rows %}{{ c.card(l) }}{% endfor %}
             </div>
           </div>
         {% endfor %}
+        </div>
 
       {% else %}
         {#- The heading belongs in the same block as the list it heads, the
