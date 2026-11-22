@@ -94,6 +94,9 @@ _FIELDS = {
         "price": _string(),
         "bills_included": _string(["yes", "no", ""]),
         "bills_estimate": _string(),
+        # Both, because an advert says one or the other: "deposit 1.380 EUR"
+        # or "two months deposit". The form wants the sum.
+        "deposit": _string(),
         "deposit_months": _string(["0", "1", "2", "3", ""]),
         "available_from": _string(),
         "months_min": _string(),
@@ -237,10 +240,20 @@ def _clean_housing(answer):
     bills = _euros(answer.get("bills_estimate"), 2000)
     if bills:
         fields["bills_estimate"] = bills
-    if answer.get("deposit_months") in ("1", "2", "3"):
-        fields["deposit_months"] = answer["deposit_months"]
-    elif answer.get("deposit_months") == "0":
-        fields["deposit_months"] = ""
+    # The entry form holds the deposit as one sum, the way a landlord says
+    # it, and the deposit_months column it used to have is gone. So take the
+    # sum when the advert states one, and work it out from the rent when the
+    # advert counts in months instead. Without this the deposit was read off
+    # the screenshot correctly and then thrown away, and the field it belongs
+    # in is a required one.
+    deposit = _euros(answer.get("deposit"), 20000)
+    months = answer.get("deposit_months")
+    if deposit:
+        fields["deposit"] = deposit
+    elif months in ("1", "2", "3") and rent:
+        fields["deposit"] = round(rent * int(months), 2)
+    elif months == "0":
+        fields["deposit"] = ""
     if _day(answer.get("available_from")):
         fields["available_from"] = answer["available_from"]
     for name, high in (("months_min", 36), ("flatmates", 20)):
