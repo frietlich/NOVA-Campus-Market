@@ -1483,3 +1483,20 @@
   });
 
 })();
+
+// Where a new chat should open. On a wide screen the chats have a column of
+// their own beside the entry, and opening the chat there keeps the entry on
+// screen, which is the whole point of the wide layout. The form carries an
+// empty box; filling it in is how the server is told the column is there.
+// A phone never fills it in and keeps going to the chat page.
+(function chatBeside() {
+  const boxes = document.querySelectorAll("[data-beside]");
+  if (!boxes.length) return;
+  const mark = () => {
+    const dock = document.querySelector(".dock");
+    const open = Boolean(dock && dock.offsetParent !== null);
+    boxes.forEach((box) => { box.value = open ? "1" : ""; });
+  };
+  mark();
+  window.addEventListener("resize", mark);
+})();
