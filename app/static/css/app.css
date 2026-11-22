@@ -3068,10 +3068,20 @@ html.lightbox-open, html.lightbox-open body { overflow: hidden; }
 .dock-close { border-radius: 10px; background: var(--fill); color: var(--muted); }
 .dock-close:hover { color: var(--ink); }
 .dock-close:focus-visible, .dock-reopen:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.dock-reopen { display: none; }
+/* Keep the open and close controls in the same top-right location.
+   The chat column stays reserved, so neither control covers an advert. */
+.dock-collapsed { display: none; }
+.dock-reopen {
+  height: 32px; display: inline-flex; align-items: center; gap: 7px;
+  padding: 0 10px; border: 1px solid var(--hair); border-radius: 10px;
+  background: var(--card); color: var(--accent); font: inherit;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.dock-reopen:hover { background: var(--accent-soft); }
 @media (min-width: 1280px) {
-  .shell--chat-hidden { grid-template-columns: var(--rail) minmax(0, 1fr); }
   .shell--chat-hidden .dock { display: none; }
-  /* The reopen control belongs to navigation, never on top of an advert. */
-  .shell--chat-hidden .dock-reopen { display: flex; width: 100%; color: var(--accent); background: var(--accent-soft); text-align: left; cursor: pointer; }
+  .shell--chat-hidden .dock-collapsed {
+    display: flex; justify-content: flex-end; grid-column: 3; grid-row: 1;
+    position: sticky; top: 22px; padding: 13px 15px;
+  }
 }

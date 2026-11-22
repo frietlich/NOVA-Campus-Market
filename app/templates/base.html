@@ -40,7 +40,15 @@
 <div class="shell{{ ' shell--dock' if dock }}{{ ' shell--out' if not me }}">
   {% if me %}{% include "partials/tabbar.html" %}{% endif %}
   <div class="shell-main">{% block body %}{% endblock %}</div>
-  {% if dock %}{% include "partials/dock.html" %}{% endif %}
+  {% if dock %}
+    {% include "partials/dock.html" %}
+    {% import "partials/icons.html" as chat_icon %}
+    <aside class="dock-collapsed" aria-label="Show chat panel">
+      <button type="button" class="dock-reopen" data-open-dock aria-controls="chat-panel" aria-expanded="false">
+        {{ chat_icon.chat(18) }} Show chats
+      </button>
+    </aside>
+  {% endif %}
 </div>
 {#- A short confirmation after the moments that matter. The page that sends you
     here adds ?done=... to the address; the script removes it again. -#}
