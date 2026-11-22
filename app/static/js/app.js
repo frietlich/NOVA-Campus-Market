@@ -731,10 +731,18 @@
   const form = box.closest("form");
   const start = status.textContent.replace(/\s+/g, " ").trim();
 
+  // Two notes, so a message has to pick one. What the link did belongs
+  // under the link, what a screenshot did belongs under the screenshot
+  // button. They shared one line at the foot until now, which is why
+  // pressing Fill in on an empty field wiped the note that explains what
+  // a screenshot is. The link note only exists on a ticket.
+  const linkNote = document.getElementById("link-status");
+  let note = status;
+
   const say = (text, how) => {
-    status.textContent = text;
-    status.classList.toggle("is-ok", how === "ok");
-    status.classList.toggle("is-bad", how === "bad");
+    note.textContent = text;
+    note.classList.toggle("is-ok", how === "ok");
+    note.classList.toggle("is-bad", how === "bad");
   };
 
   const REASONS = {
@@ -840,6 +848,7 @@
 
   if (shot) {
     shot.addEventListener("change", async () => {
+      note = status;
       const files = [...shot.files];
       if (!files.length) return;
       if (files.length > most) { say(REASONS.many, "bad"); shot.value = ""; return; }
@@ -863,6 +872,7 @@
 
   if (!input) return;
   const run = async () => {
+    note = linkNote || status;
     const url = input.value.trim();
     if (!url) { say("Paste the link to the event first.", "bad"); input.focus(); return; }
     go.disabled = true;
@@ -882,7 +892,13 @@
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); run(); }
   });
-  input.addEventListener("input", () => { if (!input.value) say(start); });
+  // Emptying the field puts the note back. Where there is a link note the
+  // check that watches the field has already done it, with its own words.
+  input.addEventListener("input", () => {
+    if (input.value || linkNote) return;
+    note = status;
+    say(start);
+  });
 })();
 
 // Push notifications. The browser is only asked after a tap, never on its
