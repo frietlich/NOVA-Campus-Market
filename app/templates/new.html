@@ -59,32 +59,36 @@
     {# Already up on a housing site? Paste the link: the entry gets a button
        to the advert, and the sites that allow it fill the form in. For the
        ones that do not (Idealista, Imovirtual) the screenshots right below
-       do it instead. #}
+       do it instead.
+
+       Built like the link box on a ticket, a label, one row, a note. It is
+       the same thing on a different tab, so it should not look like a
+       different thing. The chain in front of the box is the one addition:
+       it says at a glance that a web address goes in here. #}
+    <label class="label" for="external_url">Link to the advert</label>
     <div class="autofill">
-      <div class="autofill-head">
-        <b>Already on a housing site?</b>
-        <span>Paste the link. From Uniplaces, Spotahome, HousingAnywhere, OLX, Badi or
-          Erasmusu we fill in the form for you. Idealista and Imovirtual do not allow
-          that, but their link still goes on your entry as a button{% if SCREENSHOTS_ON() %},
-          and screenshots of the advert, just below, fill it in instead{% endif %}.</span>
-      </div>
       <div class="linkfield" data-platforms='{{ HOUSING.PLATFORMS | tojson }}'
            data-blocking='{{ HOUSING.BLOCKS_APPS | list | tojson }}'
            data-names="{{ HOUSING.PLATFORM_NAMES | join(', ') }}">
-        <div class="prefixed">
-          <span class="linkfield-icon">{{ icon.link(18) }}</span>
-          <input id="external_url" name="external_url" type="text" inputmode="url"
-                 autocomplete="off" autocapitalize="off" spellcheck="false"
-                 maxlength="500" placeholder="Paste the link, e.g. idealista.pt/…"
-                 aria-label="Link to the same place on a housing site">
+        <div class="autofill-row">
+          <div class="prefixed">
+            <span class="linkfield-icon">{{ icon.link(18) }}</span>
+            <input id="external_url" name="external_url" type="text" inputmode="url"
+                   autocomplete="off" autocapitalize="off" spellcheck="false"
+                   maxlength="500" placeholder="idealista.pt/… or uniplaces.com/…"
+                   aria-label="Link to the same place on a housing site">
+          </div>
+          <button class="btn btn--quiet autofill-go" type="button" id="autofill-go" disabled>Fill in</button>
         </div>
-        <p class="linkfield-status" id="link-status" aria-live="polite">
-          Works with {{ HOUSING.PLATFORM_NAMES | join(', ') }}. Optional.
+        {#- Short, like the ticket one. That Idealista cannot be read is said
+            when somebody actually pastes an Idealista link, which is the
+            moment it means anything. -#}
+        <p class="note linkfield-status" id="link-status" aria-live="polite">
+          Optional. Works with {{ HOUSING.PLATFORM_NAMES | join(', ') }}.
+          You check everything before publishing.
         </p>
       </div>
-      <button class="btn btn--small" type="button" id="autofill-go" disabled>Fill in from this link</button>
-
-      <p class="autofill-result" id="autofill-result" role="status" hidden></p>
+      <p class="note autofill-status" id="autofill-result" role="status" hidden></p>
     </div>
     {% endif %}
 

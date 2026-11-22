@@ -1208,33 +1208,139 @@
   const strip = document.querySelector("[data-gallery]");
   if (!strip) return;
   const hero = strip.closest(".hero");
-  const at = hero.querySelector("[data-gallery-at]");
   const dots = Array.from(hero.querySelectorAll(".gallery-dots span"));
   const prev = hero.querySelector(".gallery-nav--prev");
   const next = hero.querySelector(".gallery-nav--next");
   const total = strip.children.length;
 
+  // Where the strip is, and where it is on its way to. Two presses in a row
+  // have to count twice, and reading the scroll position would still give
+  // the old photo while the first one is gliding over.
+  let want = 0, settle = null;
   function current() { return Math.round(strip.scrollLeft / strip.clientWidth); }
   function go(i) {
-    i = Math.max(0, Math.min(total - 1, i));
-    strip.scrollTo({ left: i * strip.clientWidth });
+    want = Math.max(0, Math.min(total - 1, i));
+    strip.scrollTo({ left: want * strip.clientWidth });
   }
   function show() {
     const i = current();
-    if (at) at.textContent = i + 1;
     dots.forEach((d, n) => d.classList.toggle("on", n === i));
     if (prev) prev.hidden = i === 0;
     if (next) next.hidden = i === total - 1;
   }
 
-  strip.addEventListener("scroll", () => window.requestAnimationFrame(show), { passive: true });
-  if (prev) prev.addEventListener("click", () => go(current() - 1));
-  if (next) next.addEventListener("click", () => go(current() + 1));
+  strip.addEventListener("scroll", () => {
+    window.requestAnimationFrame(show);
+    // Once it has come to rest, wherever it rested is what we wanted.
+    clearTimeout(settle);
+    settle = setTimeout(() => { want = current(); }, 120);
+  }, { passive: true });
+  if (prev) prev.addEventListener("click", () => go(want - 1));
+  if (next) next.addEventListener("click", () => go(want + 1));
   strip.addEventListener("keydown", (e) => {
-    if (e.key === "ArrowRight") { e.preventDefault(); go(current() + 1); }
-    if (e.key === "ArrowLeft") { e.preventDefault(); go(current() - 1); }
+    if (e.key === "ArrowRight") { e.preventDefault(); go(want + 1); }
+    if (e.key === "ArrowLeft") { e.preventDefault(); go(want - 1); }
   });
   show();
+
+  // ---- the photo, full screen
+  //
+  // A cropped thumbnail is no way to judge a room, so tapping a photo puts
+  // it on the whole screen, whole, and you move through the others there
+  // the same way. Closing it puts you back on the photo you ended on, not
+  // the one you started from, because that is the one you were looking at.
+  const ARROW = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
+    + '<path d="M14.5 5.5 8 12l6.5 6.5" stroke="currentColor" stroke-width="2"'
+    + ' stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const CROSS = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
+    + '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11" stroke="currentColor" stroke-width="2"'
+    + ' stroke-linecap="round"/></svg>';
+
+  const shots = Array.from(strip.querySelectorAll(".gallery-shot"));
+  const sources = shots.map((b) => b.querySelector("img").src);
+  let big = null, bigStrip = null, bigDots = [], bigPrev = null, bigNext = null, cameFrom = null;
+
+  let bigWant = 0, bigSettle = null;
+  function bigAt() { return Math.round(bigStrip.scrollLeft / bigStrip.clientWidth); }
+  function bigGo(i, smooth = true) {
+    bigWant = Math.max(0, Math.min(total - 1, i));
+    bigStrip.scrollTo({ left: bigWant * bigStrip.clientWidth, behavior: smooth ? "smooth" : "instant" });
+  }
+  function bigShow() {
+    const i = bigAt();
+    bigDots.forEach((d, n) => d.classList.toggle("on", n === i));
+    if (bigPrev) bigPrev.hidden = i === 0;
+    if (bigNext) bigNext.hidden = i === total - 1;
+  }
+
+  function build() {
+    big = document.createElement("div");
+    big.className = "lightbox";
+    big.setAttribute("role", "dialog");
+    big.setAttribute("aria-modal", "true");
+    big.setAttribute("aria-label", "Photos");
+    const many = total > 1;
+    big.innerHTML =
+      '<button class="lightbox-shut" type="button" aria-label="Close">' + CROSS + "</button>"
+      + '<div class="lightbox-strip">'
+      + sources.map((src, n) =>
+          '<div class="lightbox-slide"><img src="' + src + '" alt="Photo ' + (n + 1)
+          + " of " + total + '" draggable="false"></div>').join("")
+      + "</div>"
+      + (many ? '<div class="lightbox-dots" aria-hidden="true">'
+          + sources.map(() => "<span></span>").join("") + "</div>" : "")
+      + (many ? '<button class="lightbox-nav lightbox-nav--prev" type="button" aria-label="Previous photo">'
+          + ARROW + "</button>"
+          + '<button class="lightbox-nav lightbox-nav--next" type="button" aria-label="Next photo">'
+          + ARROW + "</button>" : "");
+    document.body.append(big);
+
+    bigStrip = big.querySelector(".lightbox-strip");
+    bigDots = Array.from(big.querySelectorAll(".lightbox-dots span"));
+    bigPrev = big.querySelector(".lightbox-nav--prev");
+    bigNext = big.querySelector(".lightbox-nav--next");
+
+    bigStrip.addEventListener("scroll", () => {
+      window.requestAnimationFrame(bigShow);
+      clearTimeout(bigSettle);
+      bigSettle = setTimeout(() => { bigWant = bigAt(); }, 120);
+    }, { passive: true });
+    if (bigPrev) bigPrev.addEventListener("click", () => bigGo(bigWant - 1));
+    if (bigNext) bigNext.addEventListener("click", () => bigGo(bigWant + 1));
+    big.querySelector(".lightbox-shut").addEventListener("click", shut);
+    // A tap beside the photo closes it, the way every photo viewer does.
+    big.addEventListener("click", (e) => { if (e.target === big || e.target === bigStrip) shut(); });
+  }
+
+  function keys(e) {
+    if (e.key === "Escape") { e.preventDefault(); shut(); }
+    if (e.key === "ArrowRight") { e.preventDefault(); bigGo(bigWant + 1); }
+    if (e.key === "ArrowLeft") { e.preventDefault(); bigGo(bigWant - 1); }
+  }
+
+  function open(i, from) {
+    if (!big) build();
+    cameFrom = from || null;
+    big.classList.add("is-open");
+    document.documentElement.classList.add("lightbox-open");
+    bigGo(i, false);
+    bigWant = i;
+    bigShow();
+    document.addEventListener("keydown", keys);
+    big.querySelector(".lightbox-shut").focus();
+  }
+
+  function shut() {
+    const i = bigWant;
+    big.classList.remove("is-open");
+    document.documentElement.classList.remove("lightbox-open");
+    document.removeEventListener("keydown", keys);
+    // Back to the photo you were on, on the page behind.
+    go(i);
+    (cameFrom || shots[i] || shots[0]).focus({ preventScroll: true });
+  }
+
+  shots.forEach((b, n) => b.addEventListener("click", () => open(n, b)));
 })();
 
 // Autofill on the housing form: from the link, or from the pasted advert.
@@ -1259,7 +1365,8 @@
 
   function say(message, kind) {
     result.hidden = false;
-    result.className = "autofill-result" + (kind ? " autofill-result--" + kind : "");
+    result.className = "note autofill-status autofill-result"
+      + (kind ? " autofill-result--" + kind : "");
     result.textContent = message;
   }
 
@@ -1301,7 +1408,7 @@
   async function ask(body, button) {
     const label = button.textContent;
     button.disabled = true;
-    button.textContent = "Reading the advert…";
+    button.textContent = "Reading…";
     try {
       const res = await fetch("/new/autofill", { method: "POST", body });
       return await res.json();
@@ -1315,6 +1422,7 @@
   }
 
   function report(data) {
+    sayingBlocked = false;
     const where = data.site ? " from " + data.site : "";
     if (data.ok) {
       const done = fill(data.fields || {});
@@ -1337,7 +1445,7 @@
   // Idealista and Imovirtual refuse apps, so their links never go to the
   // server: the button says so and the paste box opens instead.
   const blocking = JSON.parse(linkBox.dataset.blocking || "[]");
-  const goLabel = go.textContent;
+  let sayingBlocked = false;
   function blockedSite() {
     try {
       const v = link.value.trim();
@@ -1349,7 +1457,17 @@
     const ok = linkBox.dataset.state === "ok";
     const blocked = ok && blockedSite();
     go.disabled = !ok || Boolean(blocked);
-    go.textContent = blocked ? "No autofill from this site, the link still goes on your entry" : goLabel;
+    // The button keeps its one word. Why it is greyed out belongs in the
+    // line under the field, where everything else is explained, not in a
+    // button that would grow to a sentence and break the row.
+    if (blocked) {
+      say("That site does not let apps read its adverts. Fill the form in"
+          + " yourself, the link still goes on your entry.", "warn");
+      sayingBlocked = true;
+    } else if (sayingBlocked) {
+      result.hidden = true;
+      sayingBlocked = false;
+    }
   }
   link.addEventListener("input", syncButton);
   syncButton();

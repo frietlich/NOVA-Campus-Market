@@ -171,8 +171,13 @@
         <div class="gallery" data-gallery tabindex="0"
              aria-label="Photos{% if photos | length > 1 %}, swipe for more{% endif %}">
           {% for p in photos %}
-            <img src="/static/uploads/{{ p.filename }}" alt="Photo {{ loop.index }} of {{ photos | length }}"
-                 {% if not loop.first %}loading="lazy"{% endif %} draggable="false">
+            {#- Tapping one opens it full screen. A button, not an image with a
+                click on it, so the keyboard and a screen reader get there too. -#}
+            <button class="gallery-shot" type="button" data-shot="{{ loop.index0 }}"
+                    aria-label="Open photo {{ loop.index }} of {{ photos | length }} full screen">
+              <img src="/static/uploads/{{ p.filename }}" alt="Photo {{ loop.index }} of {{ photos | length }}"
+                   {% if not loop.first %}loading="lazy"{% endif %} draggable="false">
+            </button>
           {% endfor %}
         </div>
       {% else %}
@@ -181,7 +186,6 @@
       <a class="back" href="{{ back }}" aria-label="Back">{{ icon.back() }}</a>
       {% if listing.owner_id != me.id %}{{ save_button(listing, saved, 'hero') }}{% endif %}
       {% if photos | length > 1 %}
-        <span class="count"><span data-gallery-at>1</span> / {{ photos | length }}</span>
         <div class="gallery-dots" aria-hidden="true">
           {% for p in photos %}<span{% if loop.first %} class="on"{% endif %}></span>{% endfor %}
         </div>
@@ -191,7 +195,11 @@
     </div>
   {% endif %}
 
-  <div class="detail-body">
+  {#- The bar at the foot floats over the page, so the page has to end above
+      it. On your own entry the bar carries two buttons stacked and is that
+      much taller, which is also the one case where the page runs long,
+      because the queue of everyone who asked is on it. -#}
+  <div class="detail-body{% if listing.owner_id == me.id %} detail-body--mine{% endif %}">
 
     <h1>{{ listing.title }}</h1>
     {% if listing.type == 'housing' %}
@@ -288,28 +296,36 @@
         <a class="where" href="https://maps.google.com/?q={{ listing.address | urlencode }}"
            target="_blank" rel="noopener">
           <span class="where-pin">{{ icon.pin(19) }}</span>
+          {#- The area under the address only when the address does not already
+              say it. A full Portuguese address ends in the town, and reading
+              "Oeiras" twice under each other says nothing the line above has
+              not said. -#}
+          {% set area = HOUSING.AREA_LABELS.get(listing.place)
+                        if listing.place not in (None, '', 'other') else None %}
           <span class="where-text">
             <b>{{ listing.address }}</b>
-            <span>{{ 'Where it is' if listing.place in (None, '', 'other')
-                      else HOUSING.AREA_LABELS.get(listing.place, 'Where it is') }}</span>
+            {% if area and area | lower not in listing.address | lower %}
+              <span>{{ area }}</span>
+            {% endif %}
           </span>
           <span class="where-go">Open in maps</span>
         </a>
       {% endif %}
 
-      {# The same place on a housing site. The button says which site and
-         shows its address before you tap, and it opens in a new tab so
-         Campus Market stays where you left it. #}
+      {# The same place on a housing site. Built exactly like the address
+         above it, because it is the same kind of thing: a line that says
+         where to go and hands you over to something outside the app. It
+         opens in a new tab, so Campus Market stays where you left it. #}
       {% set other = HOUSING.platform_of(listing.external_url) %}
       {% if other %}
-        <a class="elsewhere" href="{{ other.url }}" target="_blank"
+        <a class="where where--site" href="{{ other.url }}" target="_blank"
            rel="noopener noreferrer nofollow">
-          <span class="elsewhere-mark" aria-hidden="true">{{ other.name[0] }}</span>
-          <span class="elsewhere-text">
+          <span class="where-pin">{{ icon.globe(19) }}</span>
+          <span class="where-text">
             <b>See it on {{ other.name }}</b>
             <span>More photos and details · {{ other.domain }}</span>
           </span>
-          <span class="elsewhere-go">{{ icon.external(18) }}<span class="sr">opens in a new tab</span></span>
+          <span class="where-go where-go--icon">{{ icon.external(18) }}<span class="sr">opens in a new tab</span></span>
         </a>
       {% endif %}
 

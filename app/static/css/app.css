@@ -741,16 +741,6 @@ img { display: block; max-width: 100%; }
   z-index: 5;
 }
 
-.count {
-  position: absolute; right: 16px; bottom: 32px;
-  padding: 5px 11px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.5);
-  color: #FFFFFF;
-  font-size: 12px; font-weight: 600;
-  z-index: 5;
-}
-
 /* A ticket has no photo, so the top of the page is a coloured block with a
    paper stub on it. The bite marks and the dotted line are what make the eye
    read it as a ticket. */
@@ -857,10 +847,13 @@ img { display: block; max-width: 100%; }
 .detail-body {
   position: relative;
   margin-top: -20px;
-  padding: 22px 16px 24px;
+  /* The foot clears the floating action bar. Without it the last line of a
+     long page sits under the buttons with no way to scroll it out. */
+  padding: 22px 16px calc(var(--foot) + 80px);
   background: var(--card);
   border-radius: var(--r-sheet) var(--r-sheet) 0 0;
 }
+.detail-body--mine { padding-bottom: calc(var(--foot) + 142px); }
 
 .detail-body h1 {
   margin: 0;
@@ -2521,6 +2514,7 @@ img { display: block; max-width: 100%; }
 .linkfield-icon { display: flex; color: var(--muted); margin-right: 8px !important; }
 .linkfield-status {
   margin: 6px 2px 0;
+  text-align: left;
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
   font-size: 12px; line-height: 1.5; color: var(--muted);
 }
@@ -2531,30 +2525,11 @@ img { display: block; max-width: 100%; }
 .linkfield[data-state="bad"] .prefixed { border-color: #D64531; }
 .linkfield[data-state="bad"] .linkfield-status { color: #C0392B; }
 
-/* The button on the entry that opens the same place on the other site. */
-.elsewhere {
-  display: flex; align-items: center; gap: 12px;
-  margin-top: 12px;
-  padding: 12px 14px;
-  border-radius: var(--r-card);
-  background: var(--accent-soft);
-  color: inherit;
-  transition: transform 0.12s ease;
-}
-.elsewhere:active { transform: scale(0.985); }
-.elsewhere-mark {
-  width: 38px; height: 38px; flex: none;
-  border-radius: 11px;
-  background: var(--accent); color: #FFFFFF;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 18px; font-weight: 800;
-}
-.elsewhere-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.elsewhere-text b { font-size: 15px; font-weight: 700; }
-.elsewhere-text span { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.elsewhere-go { flex: none; display: flex; color: var(--accent); }
-
-.card-also { color: var(--k, var(--accent)); font-weight: 600; }
+/* The link to the same place on a housing site. It is the address block
+   with a different sign in front, so the two read as one pair instead of
+   one line and one poster. */
+.where--site { margin-top: 12px; }
+.where-go--icon { display: flex; align-items: center; }
 
 /* The queue: where you stand, or, for the owner, who asked in what order. */
 .queue {
@@ -2629,11 +2604,18 @@ img { display: block; max-width: 100%; }
   outline: none;
 }
 .gallery::-webkit-scrollbar { display: none; }
-.gallery img {
+/* Each photo sits in a button, so it can be opened full screen from the
+   keyboard as well as by tapping. The button itself is invisible. */
+.gallery-shot {
   flex: 0 0 100%;
   width: 100%; height: 100%;
-  object-fit: cover;
+  padding: 0; border: none; background: none;
   scroll-snap-align: center;
+  cursor: zoom-in;
+}
+.gallery-shot img {
+  width: 100%; height: 100%;
+  object-fit: cover;
   user-select: none;
 }
 
@@ -2674,21 +2656,101 @@ img { display: block; max-width: 100%; }
   .gallery-nav[hidden] { display: none; }
 }
 
+/* ------------------------------------------------- the photo, full screen */
+
+/* The page behind must not scroll while a photo is open, or closing it
+   puts you somewhere else than where you tapped. */
+html.lightbox-open, html.lightbox-open body { overflow: hidden; }
+
+.lightbox {
+  position: fixed; inset: 0;
+  z-index: 60;
+  background: #08080B;
+  opacity: 0; visibility: hidden;
+  transition: opacity 0.18s ease, visibility 0.18s;
+}
+.lightbox.is-open { opacity: 1; visibility: visible; }
+
+.lightbox-strip {
+  position: absolute; inset: 0;
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  overscroll-behavior: contain;
+}
+.lightbox-strip::-webkit-scrollbar { display: none; }
+
+.lightbox-slide {
+  flex: 0 0 100%;
+  scroll-snap-align: center;
+  display: flex; align-items: center; justify-content: center;
+  padding: calc(var(--top) + 52px) 0 calc(var(--foot) + 46px);
+}
+/* Whole, not cropped. On the page above the photo fills a fixed strip, here
+   the point is to see all of it. */
+.lightbox-slide img {
+  max-width: 100%; max-height: 100%;
+  width: auto; height: auto;
+  object-fit: contain;
+  user-select: none;
+}
+
+.lightbox-shut {
+  position: absolute; top: calc(var(--top) + 4px); right: 16px;
+  z-index: 2;
+  width: 38px; height: 38px;
+  border: none; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #FFFFFF;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+
+.lightbox-dots {
+  position: absolute; left: 50%; bottom: calc(var(--foot) + 16px);
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex; gap: 6px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+}
+.lightbox-dots span {
+  width: 6px; height: 6px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.45);
+}
+.lightbox-dots span.on { background: #FFFFFF; }
+
+/* Arrows only where there is a mouse, the same rule the gallery follows. */
+.lightbox-nav {
+  position: absolute; top: 50%; z-index: 2;
+  width: 40px; height: 40px; margin-top: -20px;
+  border: none; border-radius: 999px;
+  display: none; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, 0.16);
+  color: #FFFFFF;
+  cursor: pointer;
+}
+.lightbox-nav--prev { left: 16px; }
+.lightbox-nav--next { right: 16px; }
+.lightbox-nav--next svg { transform: rotate(180deg); }
+@media (hover: hover) {
+  .lightbox-nav { display: flex; }
+  .lightbox-nav[hidden] { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) { .lightbox { transition: none; } }
+
 /* ------------------------------------------------------------ autofill */
 
-.autofill {
-  margin-top: 16px;
-  padding: 14px;
-  border-radius: var(--r-card);
-  background: var(--accent-soft);
-  display: flex; flex-direction: column; gap: 10px;
-}
-.autofill-head { display: flex; flex-direction: column; gap: 2px; }
-.autofill-head b { font-size: 15px; font-weight: 700; }
-.autofill-head span { font-size: 13px; line-height: 1.45; color: var(--muted); }
-.autofill .linkfield-status { margin-top: 6px; }
+/* No card of its own. On a ticket this is a label, a row and a note, and
+   a box around the housing one only made the same job look like a bigger
+   one. The chain in front of the field stays, it says what goes in. */
+.autofill { display: flex; flex-direction: column; }
+.autofill-row .prefixed { flex: 1; min-width: 0; }
+.autofill-row .autofill-go { flex: none; }
 
-.btn--small { height: 44px; font-size: 15px; }
 .btn:disabled { opacity: 0.45; cursor: default; }
 .btn:disabled:active { transform: none; filter: none; }
 
@@ -2700,15 +2762,10 @@ img { display: block; max-width: 100%; }
 .autofill-paste .btn { margin-top: 8px; }
 .autofill-paste .textarea { background: var(--card); }
 
-.autofill-result {
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: var(--r-tile);
-  font-size: 13px; font-weight: 600; line-height: 1.45;
-  background: var(--card);
-}
-.autofill-result--ok { color: var(--accent); }
-.autofill-result--warn { color: #A4511B; }
+/* What the fill found, said the way a ticket says it: a line under the
+   field, not a panel. */
+.autofill-result--ok { color: var(--accent); font-weight: 600; }
+.autofill-result--warn { color: #A4511B; font-weight: 600; }
 @media (prefers-color-scheme: dark) { .autofill-result--warn { color: #FFB27A; } }
 
 /* A field the autofill just wrote into lights up for a moment. */

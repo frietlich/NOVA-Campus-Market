@@ -71,7 +71,6 @@
         {%- elif l.category == 'studio' or l.category == 'whole_flat' %} · on your own{% endif -%}
         {%- if l.months_min %} · {{ l.months_min }} months min{% endif -%}
       </span>
-      {% set other = HOUSING.platform_of(l.external_url) %}
       {#- The area, where the name of whoever put it up used to be. Which
           student it is decides nothing when you are looking for a room,
           and where it is decides almost everything. It stands here even on
@@ -79,10 +78,7 @@
       {#- Carries the same class as the line above it, not the smaller one
           the owner's name used to have, so the two read as one block. -#}
       {% if l.place and l.place != 'other' %}
-        <span class="card-info truncate">{{ HOUSING.AREA_LABELS.get(l.place, l.place) }}
-          {%- if other %} · <span class="card-also">Also on {{ other.name }}</span>{% endif %}</span>
-      {% elif other %}
-        <span class="card-info truncate"><span class="card-also">Also on {{ other.name }}</span></span>
+        <span class="card-info truncate">{{ HOUSING.AREA_LABELS.get(l.place, l.place) }}</span>
       {% endif %}
     {% elif l.type == 'group' %}
       {# No course line here. The course is the heading above the block. #}
