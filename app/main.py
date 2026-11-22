@@ -274,10 +274,24 @@ templates.env.globals["SORT_OPTIONS"] = SORT_OPTIONS
 templates.env.globals["SORT_SHORT"] = SORT_SHORT
 templates.env.globals["PRICE_BANDS"] = PRICE_BANDS
 templates.env.globals["HOUSING"] = housing
+templates.env.globals["TICKETS"] = ticket_import
 templates.env.globals["SCREENSHOTS_ON"] = screenshots.is_set_up
 templates.env.globals["SCREENSHOTS_MAX"] = screenshots.MAX_IMAGES
 templates.env.globals["PUSH_ON"] = push.is_set_up
 templates.env.globals["PUSH_KEY"] = push.public_key
+
+
+def ordinal(n):
+    """1st, 2nd, 3rd, 4th, and 11th, 12th, 13th the English way."""
+    n = int(n)
+    if 10 <= n % 100 <= 20:
+        end = "th"
+    else:
+        end = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{end}"
+
+
+templates.env.filters["ordinal"] = ordinal
 templates.env.globals["PRICE_SHORT"] = {key: name for key, name, _, _ in PRICE_BANDS}
 
 
@@ -1393,6 +1407,7 @@ def listing_detail(request: Request, listing_id: int, back: str = ""):
                 and db.is_watching_event(me["id"], event_key(row)))
     on_course = (row["type"] == "group" and bool(row["course_id"])
                  and db.is_watching_course(me["id"], row["course_id"]))
+    queue = db.interest_in(listing_id)
     return page(request, "detail.html", listing=row, photos=db.photos_of(listing_id),
                 tab=BY_KIND[row["type"]], me=me,
                 back=ours(back) or request.session.get("last_place")
@@ -1400,7 +1415,8 @@ def listing_detail(request: Request, listing_id: int, back: str = ""):
                 tabs=tear_tabs(row) if row["type"] == "group" else [],
                 saved=db.is_saved(me["id"], listing_id),
                 saves=db.save_count(listing_id), watching_event=watching,
-                watching_course=on_course)
+                watching_course=on_course,
+                queue=queue, my_place=db.place_in_queue(queue, me["id"]))
 
 
 @app.post("/listing/{listing_id}/close")
@@ -1447,7 +1463,10 @@ def listing_chat(request: Request, listing_id: int):
     if row is None or row["owner_id"] == me["id"]:
         return go(f"/listing/{listing_id}")
     conv_id = db.open_conversation(listing_id, me["id"])
-    return go(f"/chat/{conv_id}")
+    # The way back belongs to the entry you wrote from, not to the chats
+    # tab. Writing about a room and landing in a list of chats loses the
+    # room you were looking at.
+    return go(f"/chat/{conv_id}?back=/listing/{listing_id}")
 
 
 # --------------------------------------------------------------- putting up
@@ -1560,6 +1579,46 @@ def new_from_screenshots(request: Request, kind: str = Form(""),
     return JSONResponse(screenshots.read(kind, pictures))
 
 
+@app.post("/new/autofill")
+def new_autofill(request: Request, url: str = Form(""), text: str = Form("")):
+    """Fill the housing form from an advert, by its link or by its pasted text.
+
+    Answers in JSON: the fields we could read, and how. With a link the
+    server fetches the page itself; sites that block robots (Idealista does)
+    get an honest "blocked", and the page then offers the paste instead.
+    Only links to the sites in housing.PLATFORMS are ever fetched.
+    """
+    if me_or_none(request) is None:
+        return JSONResponse({"ok": False, "reason": "login"}, status_code=401)
+
+    if text.strip():
+        fields = housing.parse_listing_text(text[:60000])
+        # The first real line of a copied advert is almost always its headline.
+        first = next((l.strip() for l in text.splitlines() if len(l.strip()) > 8), "")
+        if first and len(first) <= 120 and "€" not in first:
+            fields["title"] = housing._clean_title(first)
+        return JSONResponse({"ok": bool(fields), "how": "text", "fields": fields})
+
+    link = housing.clean_listing_url(url)
+    if not link:
+        return JSONResponse({"ok": False, "reason": "site"})
+    site = housing.platform_of(link)["name"]
+    if housing.blocks_apps(link):
+        # No point asking: these sites refuse every app. Straight to the paste box.
+        return JSONResponse({"ok": False, "reason": "blocked", "site": site})
+    if not housing.may_fetch(me_or_none(request)["id"]):
+        return JSONResponse({"ok": False, "reason": "limit", "site": site})
+    try:
+        status, page = housing.fetch_listing(link)
+    except Exception:
+        return JSONResponse({"ok": False, "reason": "unreachable", "site": site})
+    if housing.looks_blocked(status, page):
+        return JSONResponse({"ok": False, "reason": "blocked", "site": site})
+    fields = housing.parse_listing_page(page)
+    return JSONResponse({"ok": bool(fields), "how": "link", "site": site,
+                         "fields": fields, "reason": "" if fields else "empty"})
+
+
 @app.post("/new")
 async def new_listing(request: Request,
                       background: BackgroundTasks,
@@ -1585,6 +1644,7 @@ async def new_listing(request: Request,
                       minutes_campus: str = Form(""),
                       flatmates: str = Form(""),
                       features: List[str] = Form(default=[]),
+                      external_url: str = Form(""),
                       description: str = Form(""),
                       photos: List[UploadFile] = File(default=[]),
                       edit_id: str = Form(""),
@@ -1705,6 +1765,23 @@ async def new_listing(request: Request,
         if not flatmates.strip().isdigit() or int(flatmates) > FLATMATES_MAX:
             return oops(f"Say how many flatmates there are, 0 to {FLATMATES_MAX}.")
 
+    # The link to the same thing somewhere else. A room has housing sites, a
+    # ticket has ticket sites, and both are checked against their own list,
+    # so nothing we have not vetted ever becomes a button on an entry.
+    sites = {"housing": (housing.clean_listing_url, housing.PLATFORM_NAMES, "housing"),
+             "ticket": (ticket_import.clean_url, ticket_import.PLATFORM_NAMES, "ticket")}
+    link = None
+    if kind in sites:
+        clean, names, what = sites[kind]
+        link = clean(external_url)
+        if external_url.strip() and not link:
+            # Through oops, like every other refusal here, so the form comes
+            # back with everything the student typed still in it. Writing the
+            # page by hand here left out the typed values and turned a bad
+            # link into a crash.
+            return oops(f"That link is not from a {what} site we know. "
+                        "Use one from " + ", ".join(names) + ".")
+
     if kind == "group" and not hand_in.strip():
         return oops("A group entry needs the date the group has to be together.")
 
@@ -1811,6 +1888,7 @@ async def new_listing(request: Request,
         flatmates=(int(flatmates) if kind == "housing"
                    and flatmates.strip().isdigit() else None),
         features=housing.clean_features(features) if kind == "housing" else None,
+        external_url=link,
     )
 
     if changing is not None:
@@ -2110,7 +2188,7 @@ def chats(request: Request, side: str = "", kind: str = "", bundle: str = "",
 
 
 @app.get("/chat/{conv_id}")
-def chat(request: Request, conv_id: int):
+def chat(request: Request, conv_id: int, back: str = ""):
     me = me_or_none(request)
     if me is None:
         return go("/start")
@@ -2125,12 +2203,12 @@ def chat(request: Request, conv_id: int):
             else conv["archived_starter"])
     return page(request, "chat.html", conv=conv, other=db.get_user(other_id),
                 messages=db.messages_of(conv_id), archived=bool(away),
-                active="chats", me=me)
+                active="chats", me=me, back=ours(back) or "/chats")
 
 
 @app.post("/chat/{conv_id}")
 def chat_send(request: Request, background: BackgroundTasks, conv_id: int,
-              body: str = Form("")):
+              body: str = Form(""), back: str = Form("")):
     me = me_or_none(request)
     if me is None:
         return go("/start")
@@ -2139,7 +2217,8 @@ def chat_send(request: Request, background: BackgroundTasks, conv_id: int,
         return page(request, "missing.html", active="chats")
     if db.send_message(conv_id, me["id"], body):
         background.add_task(push.new_message, conv, me["id"], body.strip())
-    return go(f"/chat/{conv_id}")
+    keep = ours(back)
+    return go(f"/chat/{conv_id}?back={quote(keep, safe='/')}" if keep else f"/chat/{conv_id}")
 
 
 @app.post("/chat/{conv_id}/archive")
@@ -2534,10 +2613,22 @@ async def security_checks(request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"
     response.headers["Content-Security-Policy"] = "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-    response.headers["Cache-Control"] = "no-store"
+    # Every page carries live state and must never come out of the browser's
+    # store. The stylesheet and the scripts are the opposite: they already
+    # have the file's own timestamp in their address, so a new one is a new
+    # address, and telling the browser to forget them means fetching the
+    # same unchanged file on every single page.
+    if not request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store"
     if not LOCAL_DEMO:
         response.headers["Strict-Transport-Security"] = "max-age=31536000"
     return response
 
 
-app.add_middleware(SessionMiddleware, secret_key=SECRET, max_age=60 * 60 * 8, https_only=not LOCAL_DEMO, same_site="lax")
+# Thirty days, not eight hours. A marketplace between students is not a
+# bank: being thrown out every morning costs more in people giving up than
+# a long session costs in risk, and the cookie is signed, Secure and
+# HttpOnly either way.
+app.add_middleware(SessionMiddleware, secret_key=SECRET,
+                   max_age=60 * 60 * 24 * 30,
+                   https_only=not LOCAL_DEMO, same_site="lax")

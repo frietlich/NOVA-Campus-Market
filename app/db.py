@@ -81,6 +81,7 @@ LATER_COLUMNS = {
         # months that the page multiplied by the rent, which meant nobody
         # could say the one thing landlords actually say, a flat sum.
         ("deposit", "REAL"),
+        ("external_url", "TEXT"),
     ],
     "conversations": [
         ("archived_owner", "TEXT"),
@@ -593,7 +594,8 @@ def create_listing(owner_id, kind, title, description="", price=None, info="",
                    course_id=None, hand_in=None, group_size=None,
                    available_from=None, months_min=None, bills_included=None,
                    bills_estimate=None, deposit=None,
-                   minutes_campus=None, flatmates=None, features=None):
+                   minutes_campus=None, flatmates=None, features=None,
+                   external_url=None):
     if kind not in TYPES:
         raise ValueError(f"unknown type {kind}")
     conn = connect()
@@ -602,13 +604,14 @@ def create_listing(owner_id, kind, title, description="", price=None, info="",
         " category, condition, event_date, event_time, place, address, quantity,"
         " course_id, hand_in, group_size, available_from, months_min,"
         " bills_included, bills_estimate, deposit, minutes_campus,"
-        " flatmates, features, status, views, created_at)"
+        " flatmates, features, external_url, status, views, created_at)"
         " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
-        " ?, ?, ?, ?, 'open', 0, ?)",
+        " ?, ?, ?, ?, ?, 'open', 0, ?)",
         (owner_id, kind, title, description, price, info, category, condition,
          event_date, event_time, place, address, quantity, course_id, hand_in,
          group_size, available_from, months_min, bills_included, bills_estimate,
-         deposit, minutes_campus, flatmates, features, now()),
+         deposit, minutes_campus, flatmates, features, external_url,
+         now()),
     )
     conn.commit()
     new_id = cur.lastrowid
@@ -623,7 +626,8 @@ EDITABLE = ("title", "description", "price", "info", "category", "condition",
             "event_date", "event_time", "place", "address", "quantity",
             "course_id", "hand_in", "group_size", "available_from",
             "months_min", "bills_included", "bills_estimate",
-            "deposit", "minutes_campus", "flatmates", "features")
+            "deposit", "minutes_campus", "flatmates", "features",
+            "external_url")
 
 
 def update_listing(listing_id, owner_id, **fields):
@@ -956,6 +960,38 @@ def photos_of(listing_id):
 
 
 # ------------------------------------------------------------- conversations
+
+def interest_in(listing_id):
+    """Everyone who has written about this listing, first one first.
+
+    Opening a chat without sending anything does not count: you are in the
+    queue from your first message on. The order is the time of that first
+    message, so it never changes afterwards. Only the owner sees the names,
+    everyone else only learns how many came before them.
+    """
+    conn = connect()
+    rows = conn.execute(
+        "SELECT c.id AS conversation_id, c.starter_id, u.name, u.photo,"
+        "       MIN(m.created_at) AS first_at"
+        "  FROM conversations c"
+        "  JOIN messages m ON m.conversation_id = c.id AND m.sender_id = c.starter_id"
+        "  JOIN users u ON u.id = c.starter_id"
+        " WHERE c.listing_id = ?"
+        " GROUP BY c.id"
+        " ORDER BY first_at, c.id",
+        (listing_id,),
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def place_in_queue(queue, user_id):
+    """1 for the first student who wrote, 2 for the second, None if not in it."""
+    for n, row in enumerate(queue, start=1):
+        if row["starter_id"] == user_id:
+            return n
+    return None
+
 
 def open_conversation(listing_id, starter_id):
     """Find the conversation between this student and this listing, or start one.

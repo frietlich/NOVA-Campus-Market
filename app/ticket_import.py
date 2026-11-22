@@ -89,6 +89,24 @@ def platform_for_host(host):
     return None
 
 
+def platform_of(url):
+    """The site a stored link is on, as a dict, or None.
+
+    The twin of housing.platform_of, down to the keys, because the entry
+    page draws the two the same way and should not have to know which kind
+    of entry it is looking at.
+    """
+    from urllib.parse import urlsplit
+
+    if not url:
+        return None
+    host = (urlsplit(url).hostname or "").lower().rstrip(".")
+    for domain, name in PLATFORMS:
+        if host == domain or host.endswith("." + domain):
+            return {"name": name, "domain": domain, "url": url}
+    return None
+
+
 def clean_url(text):
     """A pasted link made safe, or None when we do not take it.
 

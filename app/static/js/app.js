@@ -1140,6 +1140,350 @@
   });
 })();
 
+// The housing link on the new entry form. While you type it says which site
+// it recognised, offers to open it so you can check it is the right place,
+// and stops the form from going off with a link we would refuse anyway.
+(function housingLink() {
+  const box = document.querySelector(".linkfield");
+  if (!box) return;
+  const field = box.querySelector("input");
+  // On a room the line sits inside the field's box; on a ticket it is the
+  // shared status line further down, under the screenshot button.
+  const status = box.querySelector(".linkfield-status")
+    || document.querySelector(".linkfield-status");
+  if (!status) return;
+  const platforms = JSON.parse(box.dataset.platforms || "[]");
+  const names = box.dataset.names || "";
+  const hint = status.innerHTML;
+
+  function recognise(text) {
+    text = text.trim();
+    if (!text || /\s/.test(text)) return null;
+    let url;
+    try { url = new URL(text.includes("://") ? text : "https://" + text); }
+    catch (e) { return null; }
+    if (!/^https?:$/.test(url.protocol) || url.username || url.password) return null;
+    if (url.port && url.port !== "443" && url.port !== "80") return null;
+    const host = url.hostname.toLowerCase().replace(/\.$/, "");
+    for (const [domain, name] of platforms) {
+      if (host === domain || host.endsWith("." + domain)) {
+        url.protocol = "https:"; url.port = ""; url.hash = "";
+        return { name, href: url.toString() };
+      }
+    }
+    return null;
+  }
+
+  function update() {
+    const text = field.value.trim();
+    status.textContent = "";
+    if (!text) {
+      box.dataset.state = "";
+      status.innerHTML = hint;
+      field.setCustomValidity("");
+      return;
+    }
+    const found = recognise(text);
+    if (found) {
+      box.dataset.state = "ok";
+      field.setCustomValidity("");
+      const b = document.createElement("b");
+      b.textContent = "✓ " + found.name + " link.";
+      const open = document.createElement("a");
+      open.href = found.href; open.target = "_blank"; open.rel = "noopener noreferrer";
+      open.textContent = "Open it to check ↗";
+      status.append(b, " Students get a button to it. ", open);
+    } else {
+      box.dataset.state = "bad";
+      const msg = "That is not a link from a housing site we know. Use " + names + ".";
+      field.setCustomValidity(msg);
+      status.textContent = msg;
+    }
+  }
+
+  field.addEventListener("input", update);
+  field.addEventListener("paste", () => setTimeout(update, 0));
+  update();
+})();
+
+// The photo gallery on an entry: the counter, the dots and the arrows follow
+// whichever photo is in view, however it got there.
+(function gallery() {
+  const strip = document.querySelector("[data-gallery]");
+  if (!strip) return;
+  const hero = strip.closest(".hero");
+  const dots = Array.from(hero.querySelectorAll(".gallery-dots span"));
+  const prev = hero.querySelector(".gallery-nav--prev");
+  const next = hero.querySelector(".gallery-nav--next");
+  const total = strip.children.length;
+
+  // Where the strip is, and where it is on its way to. Two presses in a row
+  // have to count twice, and reading the scroll position would still give
+  // the old photo while the first one is gliding over.
+  let want = 0, settle = null;
+  function current() { return Math.round(strip.scrollLeft / strip.clientWidth); }
+  function go(i) {
+    want = Math.max(0, Math.min(total - 1, i));
+    strip.scrollTo({ left: want * strip.clientWidth });
+  }
+  function show() {
+    const i = current();
+    dots.forEach((d, n) => d.classList.toggle("on", n === i));
+    if (prev) prev.hidden = i === 0;
+    if (next) next.hidden = i === total - 1;
+  }
+
+  strip.addEventListener("scroll", () => {
+    window.requestAnimationFrame(show);
+    // Once it has come to rest, wherever it rested is what we wanted.
+    clearTimeout(settle);
+    settle = setTimeout(() => { want = current(); }, 120);
+  }, { passive: true });
+  if (prev) prev.addEventListener("click", () => go(want - 1));
+  if (next) next.addEventListener("click", () => go(want + 1));
+  strip.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight") { e.preventDefault(); go(want + 1); }
+    if (e.key === "ArrowLeft") { e.preventDefault(); go(want - 1); }
+  });
+  show();
+
+  // ---- the photo, full screen
+  //
+  // A cropped thumbnail is no way to judge a room, so tapping a photo puts
+  // it on the whole screen, whole, and you move through the others there
+  // the same way. Closing it puts you back on the photo you ended on, not
+  // the one you started from, because that is the one you were looking at.
+  const ARROW = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
+    + '<path d="M14.5 5.5 8 12l6.5 6.5" stroke="currentColor" stroke-width="2"'
+    + ' stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const CROSS = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
+    + '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11" stroke="currentColor" stroke-width="2"'
+    + ' stroke-linecap="round"/></svg>';
+
+  const shots = Array.from(strip.querySelectorAll(".gallery-shot"));
+  const sources = shots.map((b) => b.querySelector("img").src);
+  let big = null, bigStrip = null, bigDots = [], bigPrev = null, bigNext = null, cameFrom = null;
+
+  let bigWant = 0, bigSettle = null;
+  function bigAt() { return Math.round(bigStrip.scrollLeft / bigStrip.clientWidth); }
+  function bigGo(i, smooth = true) {
+    bigWant = Math.max(0, Math.min(total - 1, i));
+    bigStrip.scrollTo({ left: bigWant * bigStrip.clientWidth, behavior: smooth ? "smooth" : "instant" });
+  }
+  function bigShow() {
+    const i = bigAt();
+    bigDots.forEach((d, n) => d.classList.toggle("on", n === i));
+    if (bigPrev) bigPrev.hidden = i === 0;
+    if (bigNext) bigNext.hidden = i === total - 1;
+  }
+
+  function build() {
+    big = document.createElement("div");
+    big.className = "lightbox";
+    big.setAttribute("role", "dialog");
+    big.setAttribute("aria-modal", "true");
+    big.setAttribute("aria-label", "Photos");
+    const many = total > 1;
+    big.innerHTML =
+      '<button class="lightbox-shut" type="button" aria-label="Close">' + CROSS + "</button>"
+      + '<div class="lightbox-strip">'
+      + sources.map((src, n) =>
+          '<div class="lightbox-slide"><img src="' + src + '" alt="Photo ' + (n + 1)
+          + " of " + total + '" draggable="false"></div>').join("")
+      + "</div>"
+      + (many ? '<div class="lightbox-dots" aria-hidden="true">'
+          + sources.map(() => "<span></span>").join("") + "</div>" : "")
+      + (many ? '<button class="lightbox-nav lightbox-nav--prev" type="button" aria-label="Previous photo">'
+          + ARROW + "</button>"
+          + '<button class="lightbox-nav lightbox-nav--next" type="button" aria-label="Next photo">'
+          + ARROW + "</button>" : "");
+    document.body.append(big);
+
+    bigStrip = big.querySelector(".lightbox-strip");
+    bigDots = Array.from(big.querySelectorAll(".lightbox-dots span"));
+    bigPrev = big.querySelector(".lightbox-nav--prev");
+    bigNext = big.querySelector(".lightbox-nav--next");
+
+    bigStrip.addEventListener("scroll", () => {
+      window.requestAnimationFrame(bigShow);
+      clearTimeout(bigSettle);
+      bigSettle = setTimeout(() => { bigWant = bigAt(); }, 120);
+    }, { passive: true });
+    if (bigPrev) bigPrev.addEventListener("click", () => bigGo(bigWant - 1));
+    if (bigNext) bigNext.addEventListener("click", () => bigGo(bigWant + 1));
+    big.querySelector(".lightbox-shut").addEventListener("click", shut);
+    // A tap beside the photo closes it, the way every photo viewer does.
+    big.addEventListener("click", (e) => { if (e.target === big || e.target === bigStrip) shut(); });
+  }
+
+  function keys(e) {
+    if (e.key === "Escape") { e.preventDefault(); shut(); }
+    if (e.key === "ArrowRight") { e.preventDefault(); bigGo(bigWant + 1); }
+    if (e.key === "ArrowLeft") { e.preventDefault(); bigGo(bigWant - 1); }
+  }
+
+  function open(i, from) {
+    if (!big) build();
+    cameFrom = from || null;
+    big.classList.add("is-open");
+    document.documentElement.classList.add("lightbox-open");
+    bigGo(i, false);
+    bigWant = i;
+    bigShow();
+    document.addEventListener("keydown", keys);
+    big.querySelector(".lightbox-shut").focus();
+  }
+
+  function shut() {
+    const i = bigWant;
+    big.classList.remove("is-open");
+    document.documentElement.classList.remove("lightbox-open");
+    document.removeEventListener("keydown", keys);
+    // Back to the photo you were on, on the page behind.
+    go(i);
+    (cameFrom || shots[i] || shots[0]).focus({ preventScroll: true });
+  }
+
+  shots.forEach((b, n) => b.addEventListener("click", () => open(n, b)));
+})();
+
+// Autofill on the housing form: from the link, or from the pasted advert.
+// Whatever is found goes into the fields and lights up briefly, so the
+// student sees what changed and checks it before publishing.
+(function autofill() {
+  const box = document.querySelector(".autofill");
+  if (!box) return;
+  const link = document.getElementById("external_url");
+  const go = document.getElementById("autofill-go");
+
+  const result = document.getElementById("autofill-result");
+  const linkBox = box.querySelector(".linkfield");
+
+  const NAMES = {
+    title: "title", category: "kind of place", place: "area", price: "rent",
+    bills_included: "bills", available_from: "move-in date",
+    months_min: "minimum stay", address: "address", description: "description",
+    features: "what the flat has",
+  };
+  const IDS = { bills_included: "bills" };
+
+  function say(message, kind) {
+    result.hidden = false;
+    result.className = "note autofill-status autofill-result"
+      + (kind ? " autofill-result--" + kind : "");
+    result.textContent = message;
+  }
+
+  function mark(el) {
+    if (!el) return;
+    el.classList.remove("filled");
+    void el.offsetWidth;            // restart the animation
+    el.classList.add("filled");
+  }
+
+  function fill(fields) {
+    const done = [];
+    for (const [key, value] of Object.entries(fields)) {
+      if (key === "features") {
+        const boxes = Array.from(document.querySelectorAll('input[name="features"]'));
+        let any = false;
+        boxes.forEach((b) => {
+          if (value.includes(b.value) && !b.checked) {
+            b.checked = true; b.dispatchEvent(new Event("change", { bubbles: true }));
+            mark(b.closest(".opt")); any = true;
+          }
+        });
+        if (any) done.push(NAMES.features);
+        continue;
+      }
+      const el = document.getElementById(IDS[key] || key);
+      if (!el) continue;
+      if (key === "description" && el.value.trim()) continue;  // never overwrite their words
+      if (el.tagName === "SELECT" && !Array.from(el.options).some((o) => o.value === String(value))) continue;
+      el.value = value;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+      mark(el.closest(".prefixed") || el);
+      if (NAMES[key]) done.push(NAMES[key]);
+    }
+    return done;
+  }
+
+  async function ask(body, button) {
+    const label = button.textContent;
+    button.disabled = true;
+    button.textContent = "Reading…";
+    try {
+      const res = await fetch("/new/autofill", { method: "POST", body });
+      return await res.json();
+    } catch (e) {
+      return { ok: false, reason: "unreachable" };
+    } finally {
+      button.textContent = label;
+      button.disabled = false;
+      syncButton();
+    }
+  }
+
+  function report(data) {
+    sayingBlocked = false;
+    const where = data.site ? " from " + data.site : "";
+    if (data.ok) {
+      const done = fill(data.fields || {});
+      if (done.length) {
+        say("Filled in" + where + ": " + done.join(", ") + ". Check it below and add what is missing.", "ok");
+        return;
+      }
+    }
+    if (data.reason === "blocked" || data.reason === "unreachable") {
+      say((data.site || "That site") + " does not let apps read its adverts. Fill in the form yourself, the link still goes on your entry.", "warn");
+    } else if (data.reason === "limit") {
+      say("You have filled in from links a lot in the last hour. Try again later, or fill in the form yourself.", "warn");
+    } else if (data.reason === "site") {
+      say("That link is not from a housing site we know.", "warn");
+    } else {
+      say("We could not find details in there. Fill in the form yourself, the link still goes on the entry.", "warn");
+    }
+  }
+
+  // Idealista and Imovirtual refuse apps, so their links never go to the
+  // server: the button says so and the paste box opens instead.
+  const blocking = JSON.parse(linkBox.dataset.blocking || "[]");
+  let sayingBlocked = false;
+  function blockedSite() {
+    try {
+      const v = link.value.trim();
+      const host = new URL(v.includes("://") ? v : "https://" + v).hostname.toLowerCase();
+      return blocking.find((d) => host === d || host.endsWith("." + d)) || null;
+    } catch (e) { return null; }
+  }
+  function syncButton() {
+    const ok = linkBox.dataset.state === "ok";
+    const blocked = ok && blockedSite();
+    go.disabled = !ok || Boolean(blocked);
+    // The button keeps its one word. Why it is greyed out belongs in the
+    // line under the field, where everything else is explained, not in a
+    // button that would grow to a sentence and break the row.
+    if (blocked) {
+      say("That site does not let apps read its adverts. Fill the form in"
+          + " yourself, the link still goes on your entry.", "warn");
+      sayingBlocked = true;
+    } else if (sayingBlocked) {
+      result.hidden = true;
+      sayingBlocked = false;
+    }
+  }
+  link.addEventListener("input", syncButton);
+  syncButton();
+
+  go.addEventListener("click", async () => {
+    const body = new FormData();
+    body.append("url", link.value);
+    report(await ask(body, go));
+  });
+
+})();
+
 // ------------------------------------------------------------------ the tour
 //
 // Two parts. First a short illustrated welcome, three cards you swipe through,

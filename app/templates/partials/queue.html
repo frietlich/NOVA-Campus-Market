@@ -1,0 +1,46 @@
+{#- Where you stand on somebody else's entry.
+
+    Only the asking side sees this. On your own entry it is not drawn at
+    all: your chats are already a list of everyone who wrote, ordered by
+    who wrote last, which is the order that helps you answer. Reading the
+    same people a second time in a different order helped nobody.
+
+    One dot per student who has asked. Yours is the big one, and before
+    you write it is dashed, the spot you would get. -#}
+
+{% macro dots(spots, target, ghost, shown=9) %}
+  <div class="queue-dots" aria-hidden="true">
+    {% for n in range(1, [spots, shown] | min + 1) %}
+      <span class="qd {{ ('qd--me ' ~ ghost) if n == target else '' }}"></span>
+    {% endfor %}
+    {%- if spots > shown %}
+      {#- Past nine the row would wrap, so the rest become a number. Your own
+          dot is drawn after it, which means it must not be counted in it as
+          well, or nine written plus you would read as nine, one more, and
+          you. -#}
+      {% set rest = spots - shown - (1 if target > shown else 0) %}
+      {% if rest %}<span class="qd-more">+{{ rest }}</span>{% endif %}
+      {% if target > shown %}<span class="qd qd--me {{ ghost }}"></span>{% endif %}
+    {% endif %}
+  </div>
+{% endmacro %}
+
+{% macro queue(asked, my_place) %}
+  {% set spots = asked if my_place else asked + 1 %}
+  <div class="queue queue--buyer">
+    {{ dots(spots, my_place or spots, '' if my_place else 'qd--ghost') }}
+    <div class="queue-head">
+      {% if my_place %}
+        <b>You were the {{ my_place | ordinal }} to ask</b>
+        <span>{% if my_place == 1 %}Nobody wrote before you.
+              {%- else %}{{ my_place - 1 }} {{ 'student' if my_place == 2 else 'students' }} wrote before you.{% endif %}</span>
+      {% elif asked %}
+        <b>{{ asked }} {{ 'student has' if asked == 1 else 'students have' }} asked already</b>
+        <span>Write now and you are the {{ (asked + 1) | ordinal }} to reach out.</span>
+      {% else %}
+        <b>Nobody has asked yet</b>
+        <span>Be the first to reach out.</span>
+      {% endif %}
+    </div>
+  </div>
+{% endmacro %}

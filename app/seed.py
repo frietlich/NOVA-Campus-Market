@@ -6,6 +6,7 @@ get back to a clean state. Every person and every entry in here is invented.
 """
 
 import os
+import shutil
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
@@ -78,19 +79,19 @@ HOUSING = [
      "furnished,own_room,wifi,washing_machine", "Rua Cândido dos Reis 9",
      "Single room for the winter term only. Good if you are here for one "
      "semester and do not want to sign for a year."),
-    ("Lena K.",    "Shared room, 8 min to campus", "shared_flat", "parede",
-     390, 1, None, 1, "2027-01-15", 5, 8, 2,
-     "furnished,wifi,washing_machine,balcony", "Rua da Igreja 7",
-     "You would share the room with one other person, which is why it is "
-     "this cheap. Two flatmates besides, both Nova. The bus stops in front "
-     "of the door and bills are in the rent."),
+    ("Lena K.",    "Room in Parede, near the train", "shared_flat", "parede",
+     450, 0, None, 1, "2027-03-28", None, 12, 2,
+     "own_room,wifi,washing_machine,dishwasher", "Parede",
+     "Single room in a big flat in Parede, a few minutes from the train. "
+     "Non smokers only. The full advert with all the photos is on "
+     "Imovirtual, the button below opens it."),
     ("Mariana S.", "Room in a 3-bed flat", "shared_flat", "carcavelos",
-     480, 0, 55, 1, "2027-02-01", 5, 15, 2,
-     "furnished,own_bathroom,own_room,desk,wifi,washing_machine",
-     "Rua Bartolomeu Dias 14",
-     "Bright room in a flat I share with two other Nova students. Comes "
-     "furnished, with a desk and a double bed. Looking for someone tidy who "
-     "stays until at least June."),
+     600, 1, None, 1, "2027-02-01", 1, 10, 2,
+     "furnished,own_room,desk,wifi,washing_machine,pets",
+     "Rua Flora, Carcavelos",
+     "Double room in a three bedroom house, ten minutes on foot to Nova and "
+     "to the beach. Water, power, gas and internet are in the rent. More "
+     "photos on Uniplaces, the button below opens the advert."),
     ("Tiago R.",   "Studio sublet, Feb to June", "studio", "carcavelos",
      720, 1, None, 1, "2027-02-01", 4, 10, 0,
      "furnished,own_bathroom,own_room,desk,wifi,washing_machine,air_conditioning",
@@ -108,12 +109,12 @@ HOUSING = [
      "Rua Frederico Arouca 44",
      "One flatmate, also Nova, very quiet. The flat is above the old town, "
      "five minutes from the beach and a train ride from campus."),
-    ("Sofia M.",   "Lease takeover, flat for four", "whole_flat", "carcavelos",
-     1540, 0, 120, 2, "2027-03-01", 12, 12, 0,
-     "furnished,own_bathroom,desk,wifi,washing_machine,dishwasher,parking",
-     "Rua do Mercado 3",
-     "We are all finishing in February, so the whole flat is free from "
-     "March. Four bedrooms, two bathrooms, furnished. Take it as a group."),
+    ("Sofia M.",   "Whole T3, looking for flatmates", "whole_flat", "carcavelos",
+     1500, 0, None, None, "2027-01-01", None, 15, 0,
+     "balcony", "Rua das Amoras 271",
+     "I found this renovated T3 on Idealista and want to rent it with two "
+     "other Nova students, so about 500 each. Third floor with a lift, a "
+     "balcony, viewings from 1 December. Full advert behind the button."),
     ("Mariana S.", "Room, pets welcome", "shared_flat", "parede",
      455, 0, 50, 1, "2027-03-01", 6, 12, 2,
      "furnished,own_room,wifi,washing_machine,balcony,pets", "Rua do Moinho 12",
@@ -417,6 +418,47 @@ def main():
                              deposit=rent * dep, minutes_campus=mins,
                              flatmates=mates, features=has,
                              days_ago=2 + n, views=34 - n * 3)
+    # Three places are real adverts on housing sites (checked 18 Nov 2026),
+    # so the button on the entry opens the actual advert. The details of the
+    # entry match the advert. Adverts do come down when a place is let: check
+    # the three links before a demo and swap in a live advert if one is gone.
+    ELSEWHERE = {
+        "Room in a 3-bed flat":
+            "https://www.uniplaces.com/accommodation/lisbon/635692",
+        "Whole T3, looking for flatmates":
+            "https://www.idealista.pt/en/imovel/35486802/",
+        "Room in Parede, near the train":
+            "https://www.imovirtual.com/pt/anuncio/quarto-localizado-em-carcavelos-lisbon-ID1hsY5",
+    }
+    for title, url in ELSEWHERE.items():
+        conn.execute("UPDATE listings SET external_url = ? WHERE id = ?",
+                     (url, listing[title]))
+
+    # Real photos for the rooms that are not linked to an advert. They are
+    # free photos from Unsplash (see static/demo/CREDITS.md), kept in git in
+    # static/demo and copied into the uploads folder, which git ignores. The
+    # three linked rooms keep their drawing: a stock photo there would show a
+    # different flat from the real advert behind the button.
+    # Some places have several photos, to show the gallery on the entry.
+    PHOTOS = {
+        "Cheap room, Lisboa centre": ["room-lisboa.jpg"],
+        "Studio with parking": ["studio-oeiras.jpg"],
+        "Single room, short term": ["room-short-term.jpg"],
+        "Studio sublet, Feb to June": ["studio-sublet.jpg", "studio-sublet-2.jpg"],
+        "Room with balcony, long stay": ["room-balcony.jpg"],
+        "Room in Cascais, sea view": ["room-cascais.jpg"],
+        "Room, pets welcome": ["room-pets.jpg", "room-pets-2.jpg", "room-pets-3.jpg"],
+    }
+    here = os.path.dirname(os.path.abspath(__file__))
+    uploads = os.path.join(here, "static", "uploads")
+    os.makedirs(uploads, exist_ok=True)
+    for title, names in PHOTOS.items():
+        for position, name in enumerate(names):
+            shutil.copyfile(os.path.join(here, "static", "demo", name),
+                            os.path.join(uploads, "demo-" + name))
+            conn.execute("INSERT INTO photos (listing_id, filename, position)"
+                         " VALUES (?, ?, ?)", (listing[title], "demo-" + name, position))
+
     for n, (owner, cat, date, at, place, title, price, many, text) in enumerate(TICKETS):
         listing[title] = add(owner, "ticket", title, price, "", text,
                              category=cat, event_date=date, event_time=at,

@@ -227,7 +227,7 @@ def test_invalid_housing_bills_are_rejected(world, estimate):
     response = clients[0].post("/new", data={
         "kind":"housing", "title":"Test room", "price":"400", "bills_estimate":estimate,
         "description":"A furnished room", "available_from":"2027-02-01", "place":"carcavelos",
-        "address":"Test Street 1", "deposit":"400", "months_min":"1", "minutes_campus":"10", "flatmates":"2",
+        "address":"Test Street 1, 2775-123 Carcavelos", "deposit":"400", "months_min":"1", "minutes_campus":"10", "flatmates":"2",
     }, headers=ORIGIN)
     assert response.status_code == 200
     assert len(db.listings_of_user(users[0])) == before
@@ -237,7 +237,8 @@ def test_housing_fields_survive_valid_publication(world):
     response = clients[0].post("/new", data={
         "kind":"housing", "title":"New room", "price":"400", "bills_estimate":"35",
         "category":"shared_flat", "flatmates":"2", "available_from":"2027-02-01",
-        "description":"A furnished room", "place":"carcavelos", "address":"Test Street 1",
+        "description":"A furnished room", "place":"carcavelos",
+        "address":"Rua de Teste 1, 2775-000 Carcavelos",
         "deposit":"400", "months_min":"1", "minutes_campus":"10",
     }, headers=ORIGIN, follow_redirects=False)
     assert response.status_code == 303
@@ -280,12 +281,30 @@ def test_terminal_codes_only_in_explicit_demo(world, monkeypatch, capsys):
 
 
 def test_trusted_proxy_https_origin_and_untrusted_spoof(world):
+    """Behind the proxy, https is believed from the proxy and nobody else.
+
+    The whole question here is which address the request came from, because
+    the proxy layer rewrites http to https only for an address it trusts,
+    and the origin check then compares that scheme against the Origin
+    header. The test client of this Starlette has no way to say what that
+    address is, so we write it into the scope ourselves, one layer above
+    the proxy. That is the same single value a newer test client would set
+    for us; both assertions below are untouched.
+    """
     from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
     proxied = ProxyHeadersMiddleware(app, trusted_hosts=["127.0.0.1"])
+
+    def client_at(host):
+        async def arriving_from(scope, receive, send):
+            if scope["type"] == "http":
+                scope = dict(scope, client=(host, 50000))
+            await proxied(scope, receive, send)
+        return TestClient(arriving_from)
+
     headers = {"origin": "https://testserver", "x-forwarded-proto": "https"}
-    trusted = TestClient(proxied, client=("127.0.0.1", 50000))
+    trusted = client_at("127.0.0.1")
     assert trusted.post("/logout", headers=headers, follow_redirects=False).status_code == 303
-    untrusted = TestClient(proxied, client=("203.0.113.10", 50000))
+    untrusted = client_at("203.0.113.10")
     assert untrusted.post("/logout", headers=headers, follow_redirects=False).status_code == 403
 
 
@@ -381,3 +400,49 @@ def test_push_does_not_follow_redirects(monkeypatch):
 def test_supported_browser_push_providers(endpoint):
     from app import push
     assert push.valid_endpoint(endpoint)
+
+
+def test_ticket_keeps_a_known_link_and_refuses_the_rest(world):
+    """A ticket stores its event link the same way a room stores its advert.
+
+    Only a site on the ticket list gets through, and a housing link is not
+    one, or the button on a ticket could send somebody to a flat.
+    """
+    users, clients = world
+    good = {"kind": "ticket", "title": "Student night", "price": "12",
+            "quantity": "1", "event_date": "2027-02-01", "event_time": "23:00",
+            "place": "Urban Beach", "address": "Cais da Viscondessa, 1200-109 Lisboa",
+            "description": "One ticket left", "category": "party",
+            "external_url": "lu.ma/student-night"}
+    assert clients[0].post("/new", data=good, headers=ORIGIN,
+                           follow_redirects=False).status_code == 303
+    kept = db.listings_of_user(users[0])[0]
+    assert kept["external_url"] == "https://lu.ma/student-night"
+
+    for bad in ("https://idealista.pt/imovel/1/", "https://evil.com/lu.ma"):
+        before = len(db.listings_of_user(users[0]))
+        response = clients[0].post(
+            "/new", data=dict(good, title="Another", external_url=bad), headers=ORIGIN)
+        assert response.status_code == 200
+        assert "not from a ticket site we know" in response.text
+        assert len(db.listings_of_user(users[0])) == before
+
+
+def test_an_entry_can_lose_its_link_again(world):
+    """external_url is editable, so a dead advert can be taken off."""
+    users, clients = world
+    fields = {"kind": "housing", "title": "A room", "price": "400",
+              "bills_estimate": "35", "category": "shared_flat", "flatmates": "2",
+              "available_from": "2027-02-01", "description": "A furnished room",
+              "place": "carcavelos", "address": "Rua de Teste 1, 2775-000 Carcavelos",
+              "deposit": "400", "months_min": "1", "minutes_campus": "10",
+              "external_url": "badi.com/room/9"}
+    assert clients[0].post("/new", data=fields, headers=ORIGIN,
+                           follow_redirects=False).status_code == 303
+    listing = db.listings_of_user(users[0])[0]
+    assert listing["external_url"] == "https://badi.com/room/9"
+
+    clients[0].post("/new", data=dict(fields, edit_id=str(listing["id"]),
+                                      external_url=""), headers=ORIGIN,
+                    follow_redirects=False)
+    assert db.get_listing(listing["id"])["external_url"] is None
