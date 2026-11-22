@@ -244,3 +244,32 @@ def test_forgot_delivery_failure_stays_generic(world, monkeypatch):
                            headers=ORIGIN, follow_redirects=False)
     assert response.status_code == 303
     assert "If" in client.get(response.headers["location"]).text
+
+
+def test_live_chat_overview_updates_are_private_and_do_not_mark_read(world):
+    users, clients = world
+    listing = db.create_listing(users[0], "item", "Private overview", price=1)
+    chat = db.open_conversation(listing, users[1])
+    before = clients[0].get("/chats/updates", params={"page_url": "/market?q=desk"}).json()
+    db.send_message(chat, users[1], "PRIVATE_OVERVIEW_MARKER <script>bad()</script>")
+    response = clients[0].get("/chats/updates", params={"page_url": "/market?q=desk"})
+    assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
+    data = response.json()
+    assert data["version"] != before["version"] and data["unread"] == 1
+    assert "PRIVATE_OVERVIEW_MARKER" in data["dock_html"]
+    assert "<script>bad()</script>" not in data["dock_html"]
+    assert "/market?q=desk&amp;chat=" in data["dock_html"]
+    assert not db.messages_of(chat)[0]["read_at"]
+    assert "PRIVATE_OVERVIEW_MARKER" not in clients[2].get("/chats/updates").text
+    assert TestClient(main.app).get("/chats/updates").status_code == 403
+    clients[0].post(f"/chat/{chat}/read", data={"through": db.messages_of(chat)[0]["id"]}, headers=ORIGIN)
+    assert clients[0].get("/chats/updates").json()["unread"] == 0
+
+
+def test_live_chat_overview_uses_local_links_only(world):
+    users, clients = world
+    listing = db.create_listing(users[0], "item", "Chair", price=1)
+    db.open_conversation(listing, users[1])
+    data = clients[0].get("/chats/updates", params={"page_url": "//attacker.invalid"}).json()
+    assert "attacker.invalid" not in data["dock_html"]
+    assert "/housing?chat=" in data["dock_html"]

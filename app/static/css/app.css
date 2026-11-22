@@ -690,9 +690,9 @@ img { display: block; max-width: 100%; }
 
 .code input {
   width: 100%; max-width: 47px; height: 58px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--muted);
   border-radius: var(--r-tile);
-  background: var(--card);
+  background: var(--fill-2);
   font: inherit; font-size: 22px; font-weight: 600; text-align: center;
   color: var(--ink);
   outline: none;
@@ -3084,4 +3084,33 @@ html.lightbox-open, html.lightbox-open body { overflow: hidden; }
     display: flex; justify-content: flex-end; grid-column: 3; grid-row: 1;
     position: sticky; top: 22px; padding: 13px 15px;
   }
+}
+
+/* Desktop forms keep a readable width and a consistent surface on every route. */
+@media (min-width: 900px) {
+  .shell:not(.shell--out) .app:has(> .form) {
+    max-width: 720px; margin-inline: auto; padding: 24px;
+    background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-card);
+  }
+  .shell:not(.shell--out) .app > .form { padding: 0; min-width: 0; }
+  .shell--out .app:has(> .form) { max-width: 560px; }
+  .shell--out .app > .form { padding: 24px 28px; }
+  .form .sheet-head { margin-bottom: 12px; }
+  .form .savebar {
+    width: 100%; max-width: none; padding: 12px;
+    background: var(--card); border: 1px solid var(--hair); border-radius: 16px;
+  }
+  .chat-page .thread {
+    height: min(62dvh, 660px); min-height: 280px; overflow-y: auto;
+    padding: 16px; border: 1px solid var(--hair); border-radius: var(--r-card);
+    background: var(--card);
+  }
+  .chat-page .composer { position: static; }
+}
+[data-live-chat-list] { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+[data-chat-overview] { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+
+@media (min-width: 900px) {
+  .shell:not(.shell--out) .app.chat-page { max-width: 900px; }
+  .shell:not(.shell--out) .app:not([data-kind]) > .screen { margin-inline: auto; }
 }

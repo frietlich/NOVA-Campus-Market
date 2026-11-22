@@ -26,9 +26,12 @@
 
 // A chat opens at the newest message, not at the oldest.
 (function thread() {
-  const thread = document.getElementById("thread");
-  if (!thread) return;
-  window.scrollTo(0, document.body.scrollHeight);
+  document.querySelectorAll('#thread, [data-dock-thread]').forEach((thread) => {
+    thread.scrollTop = thread.scrollHeight;
+    if (thread.id === 'thread' && matchMedia('(max-width: 899px)').matches) {
+      window.scrollTo(0, document.body.scrollHeight);
+    }
+  });
 })();
 
 // The new entry sheet shows what you picked, so you see it before you publish.
@@ -153,7 +156,6 @@
   const SHELF = "folds";
 
   const blocks = Array.from(document.querySelectorAll(".ch-block[data-key]"));
-  if (!blocks.length) return;
   const boxOf = (block) => block.querySelector("input[type=checkbox]");
 
   const nearby = (where) => {
@@ -169,7 +171,7 @@
 
   const store = () => {
     const now = {};
-    blocks.forEach((block) => {
+    document.querySelectorAll('.ch-block[data-key]').forEach((block) => {
       const box = boxOf(block);
       if (box) now[block.dataset.key] = box.checked;
     });
@@ -201,9 +203,8 @@
     }
   }
 
-  blocks.forEach((block) => {
-    const box = boxOf(block);
-    if (box) box.addEventListener("change", store);
+  document.addEventListener('change', (event) => {
+    if (event.target.closest('.ch-block[data-key]')) store();
   });
   window.addEventListener("pagehide", store);
 })();
@@ -1544,4 +1545,59 @@
     }
     setTimeout(refresh, 3000);
   });
+})();
+
+// Refresh chat lists and unread dots without touching a form or typed message.
+(function liveChatOverview() {
+  const nav = document.querySelector('nav a.tab[href="/chats"]');
+  if (!nav) return;
+  let dockVersion = null;
+  let overviewVersion = null;
+  let stopped = false;
+  async function refresh() {
+    if (stopped) return;
+    try {
+      if (!document.hidden) {
+        const here = new URL(location.href);
+        here.searchParams.delete('chat');
+        const response = await fetch('/chats/updates?' + new URLSearchParams({page_url: here.pathname + here.search}), {cache:'no-store'});
+        if (response.status === 403) { stopped = true; return; }
+        if (response.ok) {
+          const data = await response.json();
+          let dot = nav.querySelector('.pip');
+          if (data.unread && !dot) {
+            dot = document.createElement('span'); dot.className = 'pip'; dot.setAttribute('aria-hidden','true'); nav.appendChild(dot);
+          } else if (!data.unread && dot) { dot.remove(); }
+          nav.title = data.unread ? data.unread + ' unread messages' : 'Chats';
+          const list = document.querySelector('[data-live-chat-list]');
+          if (list && list.getClientRects().length && data.version !== dockVersion && !list.contains(document.activeElement)) {
+            const scroller = list.querySelector('.dock-list');
+            const top = scroller ? scroller.scrollTop : 0;
+            list.innerHTML = data.dock_html;
+            if (list.querySelector('.dock-list')) list.querySelector('.dock-list').scrollTop = top;
+            dockVersion = data.version;
+          }
+          const overview = document.querySelector('[data-chat-overview]');
+          const editingOverview = () => overview && overview.contains(document.activeElement)
+            && !document.activeElement.matches('input[type="checkbox"]');
+          if (overview && data.version !== overviewVersion && !editingOverview()) {
+            const page = await fetch(location.pathname + location.search, {cache:'no-store',headers:{'Purpose':'prefetch'}});
+            if (page.ok && new URL(page.url).pathname === '/chats') {
+              const next = new DOMParser().parseFromString(await page.text(), 'text/html').querySelector('[data-chat-overview]');
+              if (next && !editingOverview()) {
+                const focusedId = overview.contains(document.activeElement) ? document.activeElement.id : '';
+                const folds = new Map([...overview.querySelectorAll('input[type="checkbox"][id]')].map(e=>[e.id,e.checked]));
+                next.querySelectorAll('input[type="checkbox"][id]').forEach(e=>{if(folds.has(e.id))e.checked=folds.get(e.id);});
+                overview.replaceChildren(...next.childNodes);
+                if (focusedId) document.getElementById(focusedId)?.focus({preventScroll:true});
+                overviewVersion = data.version;
+              }
+            }
+          }
+        }
+      }
+    } catch (_) { /* Retry after a temporary connection failure. */ }
+    setTimeout(refresh, 4000);
+  }
+  setTimeout(refresh, 1000);
 })();

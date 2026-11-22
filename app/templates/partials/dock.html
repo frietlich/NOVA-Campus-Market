@@ -49,30 +49,7 @@
       </div>
     </div>
 
-    {% if dock_chats %}
-      <div class="dock-list">
-        {% for c in dock_chats %}
-          <a class="dock-row{{ ' dock-row--new' if c.unread }}" href="{{ here }}{{ '&' if '?' in here else '?' }}chat={{ c.id }}">
-            {{ av.avatar(c.other_name, c.other_photo, "sm") }}
-            <span class="dock-row-body">
-              <span class="dock-row-top">
-                <b class="truncate">{{ c.other_name }}</b>
-                <span class="dock-row-when">{{ c.last_at | when }}</span>
-              </span>
-              <span class="truncate dock-row-about">{{ c.title }}</span>
-              <span class="truncate dock-row-last">{{ c.last_body or 'No messages yet' }}</span>
-            </span>
-            {% if c.unread %}<span class="pip" aria-hidden="true"></span>{% endif %}
-          </a>
-        {% endfor %}
-      </div>
-    {% else %}
-      <div class="dock-empty">
-        {{ icon.chat(24) }}
-        <b>No chats yet</b>
-        <p>Message somebody about an entry and it shows up here.</p>
-      </div>
-    {% endif %}
+    <div data-live-chat-list>{% include "partials/chat_list.html" %}</div>
   {% endif %}
 
 </aside>

@@ -2169,6 +2169,21 @@ def matches(row, words):
     return all(word in hay for word in words)
 
 
+@app.get("/chats/updates")
+def chat_updates(request: Request, page_url: str = ""):
+    """Read-only updates for this student's overview and notification dots."""
+    me = me_or_none(request)
+    if me is None:
+        return JSONResponse({"error": "Sign in required"}, status_code=403)
+    import hashlib
+    conversations = db.conversations_of(me["id"])
+    version = hashlib.sha256(json.dumps([dict(c) for c in conversations],
+                                        sort_keys=True, default=str).encode()).hexdigest()
+    html = templates.env.get_template("partials/chat_list.html").render(
+        dock_chats=conversations[:DOCK_CHATS], here=ours(page_url) or "/housing")
+    return JSONResponse({"version": version, "unread": db.unread_total(me["id"]), "dock_html": html})
+
+
 @app.get("/chats")
 def chats(request: Request, side: str = "", kind: str = "", bundle: str = "",
           q: str = "", archived: int = 0):

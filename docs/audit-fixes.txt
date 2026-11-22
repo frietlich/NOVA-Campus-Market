@@ -43,7 +43,7 @@ Frido should review the diff and let CI finish before merging. Nobody has
 merged this branch automatically. Hosted HTTPS/proxy behavior, production
 storage and real outgoing email still require a deployment smoke test.
 
-Final local result: 204 tests passed, 62 subtests passed. Two pre-existing
+Final local result: 206 tests passed, 62 subtests passed. Two pre-existing
 FastAPI startup deprecation warnings remain. JavaScript syntax check passed.
 
 Follow-up audit fixes
@@ -58,3 +58,12 @@ Follow-up audit fixes
 - Follow-up checks cover 500/501-character messages, blank drafts, hidden-panel
   reads, newer unseen messages, forbidden read receipts, generic recovery,
   delivery failure, and successful reset with old-session revocation.
+
+Desktop completion pass
+- New/edit listing, profile edit, password, courses and notification forms now
+  use a consistent desktop card, bounded width and aligned save controls.
+- Dedicated chat has a bounded, independently scrolling conversation on desktop.
+- Chat overview, side-panel previews and unread dots update automatically.
+  Search fields, unsent messages, scroll positions and expanded groups are kept.
+- The six verification inputs are now visible in dark mode as well as light.
+- See docs/desktop-checks.txt for the route and browser-check coverage.
