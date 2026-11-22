@@ -9,8 +9,27 @@
 
     <div class="head">
       <h1>{{ tab.label }}</h1>
+      {#- You, then the bell, then the plus. Yourself on the left because
+          that is where you reach for your own things, the plus on the
+          right because it is the one that makes something new, and the
+          bell between them. Groups has no bell and the gap simply
+          closes. -#}
       <div class="head-actions">
         <a href="/profile" aria-label="Your profile">{{ av.avatar(me.name, me.photo) }}</a>
+        {% if PUSH_ON() and tab.kind in ('ticket', 'housing', 'item') %}
+          {# The bell: save the search on screen, with every filter that is
+             set, and tell me when something new fits it. Tapped again on the
+             same search, it forgets it. #}
+          <form method="post" action="/notify/watch" data-push-ask>
+            <input type="hidden" name="kind" value="{{ tab.kind }}">
+            <input type="hidden" name="on" value="{{ '0' if watching else '1' }}">
+            <input type="hidden" name="back" value="{{ here }}">
+            <button class="plus bell {{ 'bell--on' if watching }}" type="submit"
+                    aria-pressed="{{ 'true' if watching else 'false' }}"
+                    title="{% if watching %}You get notifications for this search. Tap to stop.{% else %}Notify me about new {{ tab.label | lower }} for this search{% endif %}"
+                    aria-label="{% if watching %}Stop notifications for this search{% else %}Notify me about new {{ tab.label }} for this search{% endif %}">{{ icon.bell(20, 1.8) }}</button>
+          </form>
+        {% endif %}
         <a class="plus" href="/new?kind={{ tab.kind }}" aria-label="New {{ tab.label }} entry">{{ icon.plus() }}</a>
       </div>
     </div>

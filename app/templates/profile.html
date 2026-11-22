@@ -30,56 +30,66 @@
       </div>
     </div>
 
-    <span class="section">MY COURSES</span>
+    {#- What is still up on top, what is done with folded away underneath.
+        Somebody who has had thirty things up over a term wants the two that
+        are still live, not a list where they are buried in the middle of
+        the ones nobody can answer any more. The fold is the same checkbox
+        the chats use, so it needs no script, and it starts shut. -#}
+    {% set up = mine | selectattr("status", "equalto", "open") | list %}
+    {% set shut = mine | rejectattr("status", "equalto", "open") | list %}
 
-    <div class="rows">
-      {% for c in my_courses %}
-        <div class="row">
-          <div class="row-body">
-            <span class="row-name truncate">{{ c.name }}</span>
-            <span class="row-meta">{{ c.code }}</span>
-          </div>
+    <span class="section">My entries</span>
+
+    {% macro mine_row(l, mark) %}
+      <a class="row" href="/listing/{{ l.id }}">
+        <div class="mini" data-kind="{{ l.type }}">
+          {% if l.photo %}<img src="/static/uploads/{{ l.photo }}" alt="">{% else %}{{ icon.of_kind(l.type, 19, 1.7) }}{% endif %}
         </div>
-        <div class="divider" style="margin-left: 14px"></div>
-      {% endfor %}
-      <a class="row" href="/courses?back=/profile">
         <div class="row-body">
-          <span class="row-name" style="color: var(--accent)">
-            {% if my_courses %}Change my courses{% else %}Pick my courses{% endif %}
-          </span>
-          {% if not my_courses %}
-            <span class="row-meta">Groups shows every course until you do</span>
-          {% endif %}
+          <span class="row-name truncate">{{ l.title }}</span>
+          <span class="row-meta">{{ l.views }} views{% if l.price is not none %} · {{ l.price | money }}{% endif %}</span>
         </div>
+        {% if mark %}<span class="badge">Open</span>{% endif %}
       </a>
-    </div>
+    {% endmacro %}
 
-    <span class="section">MY ENTRIES</span>
-
-    {% if mine %}
+    {% if up %}
       <div class="rows">
-        {% for l in mine %}
+        {% for l in up %}
           {% if not loop.first %}<div class="divider divider--tight"></div>{% endif %}
-          <a class="row" href="/listing/{{ l.id }}">
-            <div class="mini" data-kind="{{ l.type }}">
-              {% if l.photo %}<img src="/static/uploads/{{ l.photo }}" alt="">{% else %}{{ icon.of_kind(l.type, 19, 1.7) }}{% endif %}
-            </div>
-            <div class="row-body">
-              <span class="row-name truncate">{{ l.title }}</span>
-              <span class="row-meta">{{ l.views }} views{% if l.price is not none %} · {{ l.price | money }}{% endif %}</span>
-            </div>
-            <span class="badge {{ '' if l.status == 'open' else 'badge--off' }}">{{ 'Open' if l.status == 'open' else 'Closed' }}</span>
-          </a>
+          {{ mine_row(l, true) }}
         {% endfor %}
       </div>
-    {% else %}
-      <div class="empty">
+    {% elif not shut %}
+      <div class="nothing">
+        {{ icon.plus(26, 1.7) }}
         <b>Nothing up yet</b>
         <p>Whatever you put up shows here, open or closed.</p>
       </div>
     {% endif %}
 
-    <span class="section">SAVED</span>
+    {#- No badge on the rows in here. The line you opened says closed, and
+        saying it again on every row underneath says nothing. -#}
+    {% if shut %}
+      <div class="fold">
+        <input class="sr" type="checkbox" id="shut-entries">
+        <div class="rows">
+          <label class="row fold-head" for="shut-entries">
+            <span class="fold-name">Closed entries</span>
+            <span class="fold-count">{{ shut | length }}</span>
+            <span class="ch-chev">{{ icon.chev() }}</span>
+          </label>
+          <div class="fold-rows">
+            {% for l in shut %}
+              <div class="divider divider--tight"></div>
+              {{ mine_row(l, false) }}
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    <span class="section">Saved</span>
 
     {% if saved %}
       <div class="rows">
@@ -95,21 +105,76 @@
                 {{ l.owner_name }} · {% if l.price is not none %}{{ l.price | money }}{% else %}Free{% endif %}
               </span>
             </div>
-            {% if l.status != 'open' %}<span class="badge badge--off">Gone</span>{% endif %}
+            {#- The same words the chats and the entry row use, so closed
+                is one thing with one name everywhere in the app. -#}
+            {% if l.status != 'open' %}<span class="badge badge--off">Entry closed</span>{% endif %}
           </a>
         {% endfor %}
       </div>
     {% else %}
-      <div class="empty">
-        {{ icon.heart(30, 1.5) }}
+      <div class="nothing">
+        {{ icon.heart(26, 1.6) }}
         <b>Nothing saved</b>
         <p>Tap the heart on anything you want to come back to and it waits here.</p>
       </div>
     {% endif %}
 
-    <form method="post" action="/logout" style="margin-top: 26px">
-      <button class="link link--danger" type="submit"
-              style="width: 100%; justify-content: center">Sign out</button>
+    {% if PUSH_ON() %}
+    <span class="section">Notifications</span>
+    <div class="rows">
+      <a class="row" href="/profile/notifications">
+        {#- The bell on the left, the same one the tabs carry, so the row
+            and the button that fills it are plainly the same thing. -#}
+        <span class="row-sign">{{ icon.bell(21, 1.7) }}</span>
+        <div class="row-body">
+          <span class="row-name" style="color: var(--accent)">Notifications</span>
+          <span class="row-meta">Chat messages, saved searches and events you saved</span>
+        </div>
+      </a>
+    </div>
+    {% endif %}
+
+    <span class="section">My courses</span>
+
+    <div class="rows">
+      {% for c in my_courses %}
+        <div class="row">
+          <div class="row-body">
+            <span class="row-name truncate">{{ c.name }}</span>
+            <span class="row-meta">{{ c.code }}</span>
+          </div>
+        </div>
+        <div class="divider" style="margin-left: 14px"></div>
+      {% endfor %}
+      {#- The way to the course list, whether you have picked any yet or
+          not. The arrow says it leads somewhere, which the blue alone did
+          not, and it suits both words. -#}
+      <a class="row" href="/courses?back=/profile">
+        <div class="row-body">
+          <span class="row-name" style="color: var(--accent)">
+            {% if my_courses %}Change my courses{% else %}Pick my courses{% endif %}
+          </span>
+        </div>
+        <span class="row-go">{{ icon.chev(17) }}</span>
+      </a>
+    </div>
+
+    <span class="section">Look</span>
+
+    {#- Three buttons rather than a toggle, because following the phone is
+        a real answer and a two way switch has nowhere to put it. The
+        chosen one posts straight away, so there is nothing to save. -#}
+    <form class="looks" method="post" action="/profile/theme">
+      {% for key, label, pic in [('', 'System', 'phone'), ('light', 'Light', 'sun'), ('dark', 'Dark', 'moon')] %}
+        <button class="look {{ 'look--on' if (me.theme or '') == key }}"
+                type="submit" name="theme" value="{{ key }}">
+          {{ icon[pic](19) }}<span>{{ label }}</span>
+        </button>
+      {% endfor %}
+    </form>
+
+    <form method="post" action="/logout" style="display: flex; justify-content: center">
+      <button class="signout" type="submit">{{ icon.leave() }} Sign out</button>
     </form>
 
   </div>

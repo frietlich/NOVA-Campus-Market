@@ -64,7 +64,7 @@ def verify_password(stored, password):
     stops at the first wrong character and the time it takes would tell an
     attacker how much of the guess was right.
     """
-    if not stored or not password:
+    if not stored or not password or len(password) > 128:
         return False
     try:
         kind, rounds, salt_hex, digest_hex = stored.split("$")

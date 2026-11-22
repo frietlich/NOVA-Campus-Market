@@ -7,8 +7,10 @@ If you need something the app cannot do yet, add a function here first.
 import os
 import re
 import secrets
+import hashlib
+import hmac
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from . import categories
 
@@ -51,7 +53,7 @@ NAME_MAX = 40
 # A code is good for this long, and for this many wrong guesses. After that a
 # new one has to be sent. Without the limit a script could simply try all one
 # million codes and take over any account.
-CODE_MINUTES = 15
+CODE_MINUTES = 10
 CODE_TRIES = 5
 
 # Columns added after the first version. setup() puts them into an older
@@ -59,7 +61,10 @@ CODE_TRIES = 5
 LATER_COLUMNS = {
     "users": [
         ("code_sent", "TEXT"),
+        ("code_purpose", "TEXT"),
         ("code_tries", "INTEGER NOT NULL DEFAULT 0"),
+        # light, dark, or empty for whatever the phone is set to
+        ("theme", "TEXT NOT NULL DEFAULT ''"),
     ],
     "listings": [
         ("condition", "TEXT"),
@@ -69,7 +74,6 @@ LATER_COLUMNS = {
         ("months_min", "INTEGER"),
         ("bills_included", "INTEGER"),
         ("bills_estimate", "REAL"),
-        ("deposit_months", "INTEGER"),
         ("minutes_campus", "INTEGER"),
         ("flatmates", "INTEGER"),
         ("features", "TEXT"),
@@ -105,6 +109,9 @@ def setup():
         schema = f.read()
     conn = connect()
     conn.executescript(schema)
+    conn.execute("""CREATE TABLE IF NOT EXISTS security_limits (
+        key TEXT PRIMARY KEY, start INTEGER NOT NULL, count INTEGER NOT NULL
+    )""")
     for table, columns in LATER_COLUMNS.items():
         have = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
         for name, kind in columns:
@@ -121,11 +128,38 @@ def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+# The hour the day turns over for everything that runs out on a date.
+DAY_TURNS = 6
+
+
+def active_day():
+    """The date the app counts as today, with the day turning over at six.
+
+    Midnight is the wrong moment to end a day in an app about going out. A
+    party on the 23rd is still worth opening at two in the morning, when
+    somebody outside is looking for a spare ticket and whoever put it up is
+    asleep and could not close it by hand anyway. The same holds for a
+    group whose last day to join is today: nobody hands anything in at one
+    in the morning, but they might still be looking for a fourth.
+
+    So between midnight and six this still says yesterday, and an entry for
+    the 23rd closes on the 24th at six, not sixty seconds after midnight.
+    Every date that runs out goes through here, the sweep that closes them,
+    the lists that hide them, the button that puts one back up and the date
+    box that will not take a day gone by, so none of them can disagree with
+    another by a few hours.
+    """
+    when = datetime.now().astimezone()
+    if when.hour < DAY_TURNS:
+        when -= timedelta(days=1)
+    return when.date().isoformat()
+
+
 # --------------------------------------------------------------------- users
 
 def is_nova_email(email):
     """True only for a Nova address. This is the whole door policy."""
-    return bool(email) and bool(EMAIL_SHAPE.fullmatch(email.strip().lower()))
+    return isinstance(email, str) and bool(EMAIL_SHAPE.fullmatch(email.strip().lower()))
 
 
 def get_user(user_id):
@@ -166,8 +200,17 @@ def create_user(email, name, programme="", password=None, cems=False):
 
 
 def update_profile(user_id, name, programme, cems=False, photo=None):
-    """Save what the edit page sends. photo of None leaves the picture alone."""
+    """Save what the edit page sends. photo of None leaves the picture alone.
+
+    Changing programme also lets go of the courses that belonged to the old
+    one. A course is a course of a programme, so carrying them over would
+    leave somebody enrolled in things their new programme does not teach,
+    and the Groups tab would quietly filter by them.
+    """
     conn = connect()
+    before = conn.execute("SELECT programme FROM users WHERE id = ?",
+                          (user_id,)).fetchone()
+    moved = before is not None and before["programme"] != programme
     if photo is None:
         conn.execute(
             "UPDATE users SET name = ?, programme = ?, cems = ? WHERE id = ?",
@@ -179,8 +222,25 @@ def update_profile(user_id, name, programme, cems=False, photo=None):
             " WHERE id = ?",
             (name.strip(), programme, 1 if cems else 0, photo, user_id),
         )
+    if moved:
+        conn.execute(
+            "DELETE FROM enrolments WHERE user_id = ? AND course_id NOT IN"
+            " (SELECT course_id FROM course_offerings WHERE programme = ?)",
+            (user_id, programme),
+        )
     conn.commit()
     conn.close()
+
+
+def set_theme(user_id, theme):
+    """Light, dark, or empty to follow the phone. Anything else is ignored."""
+    if theme not in ("", "light", "dark"):
+        return False
+    conn = connect()
+    conn.execute("UPDATE users SET theme = ? WHERE id = ?", (theme, user_id))
+    conn.commit()
+    conn.close()
+    return True
 
 
 def set_password(user_id, hashed):
@@ -191,67 +251,74 @@ def set_password(user_id, hashed):
     conn.close()
 
 
-def new_code(user_id):
-    """Make a fresh 6 digit code, store it, give it back so we can send it.
+def code_digest(user_id, code, purpose):
+    secret = os.environ.get("CAMPUS_SECRET", "")
+    if len(secret) < 32:
+        raise RuntimeError("Configure CAMPUS_SECRET before generating codes.")
+    return hmac.new(secret.encode(), f"{user_id}:{purpose}:{code}".encode(),
+                    hashlib.sha256).hexdigest()
 
-    secrets and not random, because random is predictable by design and a
-    code is exactly the kind of thing nobody must be able to predict.
-    """
+
+def new_code(user_id, purpose="join"):
+    if purpose not in ("join", "login", "reset"):
+        raise ValueError("Unknown verification purpose.")
     code = f"{secrets.randbelow(1_000_000):06d}"
     conn = connect()
-    conn.execute(
-        "UPDATE users SET code = ?, code_sent = ?, code_tries = 0 WHERE id = ?",
-        (code, now(), user_id),
-    )
-    conn.commit()
-    conn.close()
-    return code
+    try:
+        with conn:
+            conn.execute("BEGIN IMMEDIATE")
+            user = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+            if not user or not is_nova_email(user["email"]):
+                raise ValueError("A valid Nova account is required.")
+            if user["code_sent"]:
+                age = (datetime.now(timezone.utc) - datetime.fromisoformat(user["code_sent"])).total_seconds()
+                if age < 60:
+                    raise ValueError("Wait one minute before requesting a new code.")
+            conn.execute(
+                "UPDATE users SET code=?,code_sent=?,code_tries=0,code_purpose=? WHERE id=?",
+                (code_digest(user_id, code, purpose), now(), purpose, user_id))
+        return code
+    finally:
+        conn.close()
 
 
 def code_age(user_id):
-    """Seconds since the last code went out, or None when there is none."""
     user = get_user(user_id)
-    if user is None or not user["code"] or not user["code_sent"]:
+    if user is None or not user["code_sent"]:
         return None
-    sent = datetime.fromisoformat(user["code_sent"])
-    return (datetime.now(timezone.utc) - sent).total_seconds()
+    return (datetime.now(timezone.utc) - datetime.fromisoformat(user["code_sent"])).total_seconds()
 
 
-def check_code(user_id, code):
-    """Check a code. Gives back one word:
-
-    "ok"        right, and the user is now verified
-    "wrong"     not the code, try again
-    "expired"   older than CODE_MINUTES, a new one is needed
-    "locked"    too many wrong guesses, a new one is needed
-    "none"      there is no code to check against
-    """
-    user = get_user(user_id)
-    if user is None or not user["code"]:
-        return "none"
-    age = code_age(user_id)
-    if age is None or age > CODE_MINUTES * 60:
-        return "expired"
-    if user["code_tries"] >= CODE_TRIES:
-        return "locked"
-
+def cancel_code(user_id, code, purpose):
     conn = connect()
-    if not secrets.compare_digest(str(code).strip(), user["code"]):
-        conn.execute(
-            "UPDATE users SET code_tries = code_tries + 1 WHERE id = ?", (user_id,)
-        )
-        conn.commit()
-        conn.close()
-        return "locked" if user["code_tries"] + 1 >= CODE_TRIES else "wrong"
-
-    conn.execute(
-        "UPDATE users SET verified = 1, code = NULL, code_sent = NULL,"
-        " code_tries = 0 WHERE id = ?",
-        (user_id,),
-    )
-    conn.commit()
+    with conn:
+        conn.execute("UPDATE users SET code=NULL WHERE id=? AND code=?",
+                     (user_id, code_digest(user_id, code, purpose)))
     conn.close()
-    return "ok"
+
+
+def check_code(user_id, code, purpose="join"):
+    conn = connect()
+    try:
+        with conn:
+            conn.execute("BEGIN IMMEDIATE")
+            user = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+            if not user or not user["code"] or user["code_purpose"] != purpose:
+                return "none"
+            age = (datetime.now(timezone.utc) - datetime.fromisoformat(user["code_sent"])).total_seconds()
+            if age >= CODE_MINUTES * 60:
+                return "expired"
+            if user["code_tries"] >= CODE_TRIES:
+                return "locked"
+            if not hmac.compare_digest(code_digest(user_id, str(code).strip(), purpose), user["code"]):
+                conn.execute("UPDATE users SET code_tries=code_tries+1 WHERE id=?", (user_id,))
+                return "locked" if user["code_tries"] + 1 >= CODE_TRIES else "wrong"
+            conn.execute(
+                "UPDATE users SET verified=1,code=NULL,code_purpose=NULL,code_tries=0 WHERE id=?",
+                (user_id,))
+            return "ok"
+    finally:
+        conn.close()
 
 
 # ------------------------------------------------------------------ listings
@@ -416,7 +483,7 @@ def listings_of_type(kind, search="", only_for=None, category=None, sort=None,
     # event itself still counts, because people sell up to the door.
     if kind == "ticket":
         where += " AND (l.event_date IS NULL OR l.event_date >= ?)"
-        args.append(datetime.now().astimezone().date().isoformat())
+        args.append(active_day())
 
     if category:
         where += " AND l.category = ?"
@@ -646,7 +713,7 @@ def close_past_dates(force=False):
     for one query over an indexed column, and usually finds nothing.
     """
     global _swept_on
-    today = datetime.now().astimezone().date().isoformat()
+    today = active_day()
     if _swept_on == today and not force:
         return 0
     _swept_on = today
@@ -680,9 +747,7 @@ def reopen_listing(listing_id, owner_id):
         # date.
         "   AND (type <> 'ticket' OR event_date IS NULL OR event_date >= ?)"
         "   AND (type <> 'group'  OR hand_in    IS NULL OR hand_in    >= ?)",
-        (listing_id, owner_id,
-         datetime.now().astimezone().date().isoformat(),
-         datetime.now().astimezone().date().isoformat()),
+        (listing_id, owner_id, active_day(), active_day()),
     )
     changed = cur.rowcount > 0
     if changed:
@@ -765,11 +830,15 @@ def saved_listings(user_id):
     A saved ticket for a day that is over drops out on its own. Nobody wants
     to be reminded of a party that already happened.
     """
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = active_day()
     conn = connect()
     rows = conn.execute(
         _listing_sql("s.user_id = ? AND (l.type != 'ticket' OR l.event_date >= ?)",
-                     order="s.created_at DESC",
+                     # Closed ones sink to the foot of the list. They stay,
+                     # because that an entry is gone is the thing you came
+                     # back to find out, but the live ones lead.
+                     order="CASE WHEN l.status = 'open' THEN 0 ELSE 1 END,"
+                           " s.created_at DESC",
                      extra_join="JOIN saves s ON s.listing_id = l.id"),
         (user_id, today),
     ).fetchall()
@@ -1072,7 +1141,7 @@ def send_message(conv_id, sender_id, body):
     or nothing.
     """
     body = body.strip()
-    if not body:
+    if not body or len(body) > 500 or not can_see_conversation(get_conversation(conv_id), sender_id):
         return None
     conn = connect()
     cur = conn.execute(
@@ -1120,3 +1189,293 @@ def unread_total(user_id):
     ).fetchone()
     conn.close()
     return row["n"]
+
+
+def take_security_attempt(key, limit=10, window=600):
+    """Shared throttle. Stored in SQLite so restarting does not clear it."""
+    import time
+    current = int(time.time())
+    conn = connect()
+    try:
+        with conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT * FROM security_limits WHERE key=?", (key,)).fetchone()
+            if not row or current - row["start"] >= window:
+                conn.execute(
+                    "INSERT OR REPLACE INTO security_limits VALUES (?,?,1)", (key, current))
+                conn.execute("DELETE FROM security_limits WHERE start<?", (current-86400,))
+                return True
+            if row["count"] >= limit:
+                return False
+            conn.execute("UPDATE security_limits SET count=count+1 WHERE key=?", (key,))
+            return True
+    finally:
+        conn.close()
+
+
+# ------------------------------------------------------------- screenshots
+
+def take_ai_read(user_id, limit, pictures=1):
+    """Count screenshots read today. False when they would go over the limit.
+
+    Counted before the read, so a student who keeps retrying a failing
+    screenshot still stops at the limit.
+    """
+    if not isinstance(pictures, int) or pictures < 1:
+        return False
+    day = datetime.now(timezone.utc).date().isoformat()
+    conn = connect()
+    try:
+        with conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT count FROM ai_reads WHERE user_id = ? AND day = ?",
+                (user_id, day)).fetchone()
+            if (row["count"] if row else 0) + pictures > limit:
+                return False
+            conn.execute(
+                "INSERT INTO ai_reads (user_id, day, count) VALUES (?, ?, ?)"
+                " ON CONFLICT(user_id, day) DO UPDATE SET count = count + ?",
+                (user_id, day, pictures, pictures))
+            return True
+    finally:
+        conn.close()
+
+
+# ------------------------------------------------------------ notifications
+
+# "all" is the main switch above the four. Off silences everything at once
+# and keeps the four as they were, so switching it back on restores them.
+NOTIFY_AREAS = ("all", "messages", "ticket", "housing", "item", "group")
+
+
+def save_device(user_id, endpoint, p256dh, auth):
+    """Remember one device for push. The same device again just moves owner."""
+    conn = connect()
+    with conn:
+        conn.execute(
+            "INSERT INTO push_devices (endpoint, user_id, p256dh, auth, created_at)"
+            " VALUES (?, ?, ?, ?, ?) ON CONFLICT(endpoint) DO UPDATE SET"
+            " user_id = excluded.user_id, p256dh = excluded.p256dh,"
+            " auth = excluded.auth",
+            (endpoint, user_id, p256dh, auth, now()))
+    conn.close()
+
+
+def drop_device(endpoint, user_id=None):
+    """Forget a device, because it said goodbye or the push service did."""
+    conn = connect()
+    with conn:
+        if user_id is None:
+            conn.execute("DELETE FROM push_devices WHERE endpoint = ?", (endpoint,))
+        else:
+            conn.execute("DELETE FROM push_devices WHERE endpoint = ? AND user_id = ?",
+                         (endpoint, user_id))
+    conn.close()
+
+
+def devices_of(user_id):
+    conn = connect()
+    rows = conn.execute("SELECT * FROM push_devices WHERE user_id = ?",
+                        (user_id,)).fetchall()
+    conn.close()
+    return rows
+
+
+def prefs_of(user_id):
+    """{area: {"on": bool, ...}} for all four areas. All on until switched off.
+
+    For the three tabs this is the main switch. What actually rings is a
+    saved search or a watched event; switching the area off silences all of
+    them at once without throwing them away.
+    """
+    prefs = {area: {"on": True, "q": "", "cat": ""} for area in NOTIFY_AREAS}
+    conn = connect()
+    for row in conn.execute("SELECT * FROM notify_prefs WHERE user_id = ?", (user_id,)):
+        if row["area"] in prefs:
+            prefs[row["area"]] = {"on": bool(row["is_on"]), "q": row["q"], "cat": row["cat"]}
+    conn.close()
+    return prefs
+
+
+def set_pref(user_id, area, on, q=None, cat=None):
+    """Turn one area on or off. q and cat of None keep what was there."""
+    if area not in NOTIFY_AREAS:
+        raise ValueError(f"unknown area {area}")
+    old = prefs_of(user_id)[area]
+    q = old["q"] if q is None else q.strip()[:80]
+    cat = old["cat"] if cat is None else cat.strip()[:30]
+    conn = connect()
+    with conn:
+        conn.execute(
+            "INSERT INTO notify_prefs (user_id, area, is_on, q, cat) VALUES (?, ?, ?, ?, ?)"
+            " ON CONFLICT(user_id, area) DO UPDATE SET is_on = excluded.is_on,"
+            " q = excluded.q, cat = excluded.cat",
+            (user_id, area, 1 if on else 0, q, cat))
+    conn.close()
+
+
+def watch_search(user_id, kind, params, label):
+    """Save one search. params is the JSON string, label the readable one."""
+    conn = connect()
+    with conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO watched_searches (user_id, kind, params, label,"
+            " created_at) VALUES (?, ?, ?, ?, ?)",
+            (user_id, kind, params, label[:120], now()))
+    conn.close()
+
+
+def unwatch_search(user_id, kind=None, params=None, watch_id=None):
+    """Forget one saved search, by the search itself or by its row."""
+    conn = connect()
+    with conn:
+        if watch_id is not None:
+            conn.execute("DELETE FROM watched_searches WHERE id = ? AND user_id = ?",
+                         (watch_id, user_id))
+        else:
+            conn.execute("DELETE FROM watched_searches WHERE user_id = ? AND kind = ?"
+                         " AND params = ?", (user_id, kind, params))
+    conn.close()
+
+
+def is_watching_search(user_id, kind, params):
+    conn = connect()
+    row = conn.execute("SELECT 1 FROM watched_searches WHERE user_id = ? AND kind = ?"
+                       " AND params = ?", (user_id, kind, params)).fetchone()
+    conn.close()
+    return row is not None
+
+
+def searches_watched(user_id):
+    """Every search a student saved, Tickets first, then Housing, then Market."""
+    conn = connect()
+    rows = conn.execute(
+        "SELECT * FROM watched_searches WHERE user_id = ? ORDER BY"
+        " CASE kind WHEN 'ticket' THEN 0 WHEN 'housing' THEN 1 ELSE 2 END, created_at",
+        (user_id,)).fetchall()
+    conn.close()
+    return rows
+
+
+def search_watchers(kind):
+    """Every saved search on one tab, with whose it is."""
+    conn = connect()
+    rows = conn.execute("SELECT user_id, params FROM watched_searches WHERE kind = ?",
+                        (kind,)).fetchall()
+    conn.close()
+    return rows
+
+
+def watch_event(user_id, key, title, place):
+    """Start watching one event. key is (date, time, place boiled down)."""
+    event_date, event_time, place_key = key
+    conn = connect()
+    with conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO event_watches (user_id, event_date, event_time,"
+            " place_key, title, place, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (user_id, event_date, event_time, place_key, title[:60], (place or "")[:60], now()))
+    conn.close()
+
+
+def unwatch_event(user_id, key=None, watch_id=None):
+    """Stop watching, either by the event itself or by the row in the settings."""
+    conn = connect()
+    with conn:
+        if watch_id is not None:
+            conn.execute("DELETE FROM event_watches WHERE id = ? AND user_id = ?",
+                         (watch_id, user_id))
+        else:
+            conn.execute(
+                "DELETE FROM event_watches WHERE user_id = ? AND event_date = ?"
+                " AND event_time = ? AND place_key = ?", (user_id, *key))
+    conn.close()
+
+
+def is_watching_event(user_id, key):
+    conn = connect()
+    row = conn.execute(
+        "SELECT 1 FROM event_watches WHERE user_id = ? AND event_date = ?"
+        " AND event_time = ? AND place_key = ?", (user_id, *key)).fetchone()
+    conn.close()
+    return row is not None
+
+
+def events_watched(user_id):
+    """The events a student watches that have not happened yet, soonest first.
+
+    Past ones are thrown away on the way, nobody needs to hear about them.
+    """
+    today = active_day()
+    conn = connect()
+    with conn:
+        conn.execute("DELETE FROM event_watches WHERE user_id = ? AND event_date < ?",
+                     (user_id, today))
+        rows = conn.execute(
+            "SELECT * FROM event_watches WHERE user_id = ?"
+            " ORDER BY event_date, event_time, title", (user_id,)).fetchall()
+    conn.close()
+    return rows
+
+
+def event_watchers(key):
+    """Everyone watching this one event."""
+    conn = connect()
+    rows = conn.execute(
+        "SELECT user_id FROM event_watches WHERE event_date = ? AND event_time = ?"
+        " AND place_key = ?", key).fetchall()
+    conn.close()
+    return [row["user_id"] for row in rows]
+
+
+def watch_course(user_id, course_id):
+    """Start watching one course: tell me about every group for it."""
+    conn = connect()
+    with conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO course_watches (user_id, course_id, created_at)"
+            " VALUES (?, ?, ?)", (user_id, course_id, now()))
+    conn.close()
+
+
+def unwatch_course(user_id, course_id=None, watch_id=None):
+    """Stop watching, either by the course itself or by the row in the settings."""
+    conn = connect()
+    with conn:
+        if watch_id is not None:
+            conn.execute("DELETE FROM course_watches WHERE id = ? AND user_id = ?",
+                         (watch_id, user_id))
+        else:
+            conn.execute("DELETE FROM course_watches WHERE user_id = ? AND course_id = ?",
+                         (user_id, course_id))
+    conn.close()
+
+
+def is_watching_course(user_id, course_id):
+    conn = connect()
+    row = conn.execute(
+        "SELECT 1 FROM course_watches WHERE user_id = ? AND course_id = ?",
+        (user_id, course_id)).fetchone()
+    conn.close()
+    return row is not None
+
+
+def courses_watched(user_id):
+    """The courses a student watches, by name, with the code to show under it."""
+    conn = connect()
+    rows = conn.execute(
+        "SELECT w.id, w.course_id, c.name, c.code FROM course_watches w"
+        " JOIN courses c ON c.id = w.course_id"
+        " WHERE w.user_id = ? ORDER BY c.name", (user_id,)).fetchall()
+    conn.close()
+    return rows
+
+
+def course_watchers(course_id):
+    """Everyone watching this one course."""
+    conn = connect()
+    rows = conn.execute("SELECT user_id FROM course_watches WHERE course_id = ?",
+                        (course_id,)).fetchall()
+    conn.close()
+    return [row["user_id"] for row in rows]

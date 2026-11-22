@@ -4,29 +4,34 @@ Every page lives here. The database is only reached through db.py.
 Start it with   uvicorn app.main:app --reload   from the project folder.
 """
 
+import json
 import os
 import re
 import unicodedata
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import List
 from urllib.parse import quote, urlencode, urlparse
 
-from fastapi import FastAPI, Form, Query, Request, UploadFile, File
+from fastapi import BackgroundTasks, FastAPI, Form, Query, Request, UploadFile, File, HTTPException
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import categories, db, housing, mailer, passwords, programmes
+from . import (categories, db, housing, mailer, maps, passwords, programmes, push,
+               screenshots, ticket_import)
 
 # .env first, so CAMPUS_SECRET and the mail account can live in it.
 mailer.load_env()
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 UPLOADS = os.path.join(HERE, "static", "uploads")
-SECRET = os.environ.get("CAMPUS_SECRET") or "change-me-before-you-deploy"
+LOCAL_DEMO = os.environ.get("CAMPUS_SECURITY_DEMO") == "1"
+SECRET = os.environ.get("CAMPUS_SECRET", "")
+if len(SECRET) < 32:
+    raise RuntimeError("Set CAMPUS_SECRET to at least 32 random characters.")
 
 # The four tabs. Everything about a tab is in this one list.
 TABS = [
@@ -69,7 +74,7 @@ FRESH_DAYS = 7
 FRESH_MAX = 10
 
 app = FastAPI(title="Campus Market")
-app.add_middleware(SessionMiddleware, secret_key=SECRET, max_age=60 * 60 * 24 * 30)
+
 app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
 
 templates = Jinja2Templates(directory=os.path.join(HERE, "templates"))
@@ -161,7 +166,7 @@ def day_label(iso_date):
     if not iso_date:
         return "NO DATE"
     d = datetime.strptime(iso_date, "%Y-%m-%d").date()
-    today = datetime.now().astimezone().date()
+    today = date.fromisoformat(db.active_day())
     if d == today:
         return "Today"
     if (d - today).days == 1:
@@ -199,7 +204,7 @@ def days_left(iso_date):
     if not iso_date:
         return ""
     d = datetime.strptime(iso_date, "%Y-%m-%d").date()
-    gap = (d - datetime.now().astimezone().date()).days
+    gap = (d - date.fromisoformat(db.active_day())).days
     if gap < 0:
         return "overdue"
     if gap == 0:
@@ -269,6 +274,10 @@ templates.env.globals["SORT_OPTIONS"] = SORT_OPTIONS
 templates.env.globals["SORT_SHORT"] = SORT_SHORT
 templates.env.globals["PRICE_BANDS"] = PRICE_BANDS
 templates.env.globals["HOUSING"] = housing
+templates.env.globals["SCREENSHOTS_ON"] = screenshots.is_set_up
+templates.env.globals["SCREENSHOTS_MAX"] = screenshots.MAX_IMAGES
+templates.env.globals["PUSH_ON"] = push.is_set_up
+templates.env.globals["PUSH_KEY"] = push.public_key
 
 
 def ordinal(n):
@@ -341,9 +350,41 @@ ADDRESS_MAX = 120
 TICKET_MAX = 50
 
 
+# A Portuguese post code, 1200-109. Every address in the country has one
+# and it is what turns a street name into somewhere you can actually be
+# sent. The ticket addresses in the app all carried one from the start, the
+# housing ones never did, because the example under the box only showed a
+# street and people wrote what the example showed.
+POST_CODE = re.compile(r"\b\d{4}-\d{3}\b")
+
+
+def address_problem(text):
+    """What is wrong with an address, or None when it will do.
+
+    Deliberately loose about everything except the post code. People write
+    Rua, R., Avenida and Av., with and without a floor, and a form that
+    argues with all of that is a form nobody finishes. The post code is the
+    one part that is either there or not.
+    """
+    text = (text or "").strip()
+    if not text:
+        return "empty"
+    if len(text) > ADDRESS_MAX:
+        return f"An address can be at most {ADDRESS_MAX} characters."
+    if not POST_CODE.search(text):
+        return ("That needs the full address, with the post code, "
+                "like Cais da Viscondessa, 1200-109 Lisboa.")
+    return None
+
+
 def today_iso():
-    """Today where the school is, for a date box that cannot go backwards."""
-    return datetime.now().astimezone().date().isoformat()
+    """Today where the school is, for a date box that cannot go backwards.
+
+    The day turns over at six in the morning, not at midnight, see
+    db.active_day. So at two in the morning you can still put up a ticket
+    for the party you are standing outside of.
+    """
+    return db.active_day()
 
 # What a price may be. The shape is what stops a word, a minus sign or
 # 1e9 from ever reaching float(), which used to take the whole page down.
@@ -423,7 +464,7 @@ def by_course(rows):
             blocks.append(block)
         block["rows"].append(row)
 
-    today = datetime.now().astimezone().date().isoformat()
+    today = db.active_day()
     def gone(row):
         return bool(row["hand_in"]) and row["hand_in"] < today
 
@@ -472,14 +513,14 @@ def housing_search(cat, sort, rent, rmin, rmax, mins, minsx, stay, area,
 
     rent = rent if rent in housing.RENT_BY_KEY else ""
     low, high = housing.RENT_BY_KEY[rent][2], housing.RENT_BY_KEY[rent][3]
-    typed_low = housing.whole_number(rmin, 100000)
-    typed_high = housing.whole_number(rmax, 100000)
+    typed_low = housing.whole_number(rmin, PRICE_MAX)
+    typed_high = housing.whole_number(rmax, PRICE_MAX)
     if typed_low or typed_high:
         rent, low, high = "", typed_low, typed_high
 
     mins = mins if mins in housing.CAMPUS_BY_KEY else ""
     minutes = housing.CAMPUS_BY_KEY[mins][2]
-    typed_mins = housing.whole_number(minsx, 600)
+    typed_mins = housing.whole_number(minsx, MINUTES_MAX)
     if typed_mins:
         mins, minutes = "", typed_mins
 
@@ -535,6 +576,123 @@ def housing_search(cat, sort, rent, rmin, rmax, mins, minsx, stay, area,
             "low": low, "high": high, "minutes": minutes, "bills": bills,
             "features": feats, "months": housing.STAY_BY_KEY[stay][2],
             "on": on, "summary": ", ".join(parts)}
+
+
+# --------------------------------------------------------- saved searches
+
+# The filters of each tab that a saved search keeps. Sort order and the open
+# day are left out, they change how the list looks, not what is in it.
+SEARCH_KEYS = {
+    "ticket": ("q", "cat"),
+    "item": ("q", "cat", "price", "cond"),
+    "housing": ("q", "cat", "rent", "rmin", "rmax", "mins", "minsx", "stay",
+                "area", "movein", "mates", "has"),
+}
+
+
+def _saved_housing(p):
+    """A saved housing search through the same cleaning the panel uses."""
+    return housing_search(p.get("cat", ""), "", p.get("rent", ""), p.get("rmin", ""),
+                          p.get("rmax", ""), p.get("mins", ""), p.get("minsx", ""),
+                          p.get("stay", ""), p.get("area", ""), p.get("movein", ""),
+                          p.get("mates", ""), p.get("has", []))
+
+
+def search_of(kind, query):
+    """The search on a tab as one JSON string, the same whoever wrote the address.
+
+    query is the address's query part, as a string or as the request's own
+    query parameters. Empty filters are dropped and the keys sorted, so the
+    same search is always the same string.
+    """
+    from urllib.parse import parse_qs
+    if isinstance(query, str):
+        values = parse_qs(query, keep_blank_values=False)
+        get = lambda k: (values.get(k) or [""])[0]
+        get_all = lambda k: values.get(k) or []
+    else:
+        get, get_all = (lambda k: query.get(k) or ""), query.getlist
+    found = {}
+    for key in SEARCH_KEYS.get(kind, ()):
+        if key == "has":
+            picked = sorted({v.strip() for v in get_all("has") if v.strip()})
+            if picked:
+                found["has"] = picked
+        elif get(key).strip():
+            found[key] = get(key).strip()[:80]
+    if kind == "housing":
+        # Keep only what the panel itself would keep.
+        hs = _saved_housing(found)
+        if not hs["kind"]:
+            found.pop("cat", None)
+    else:
+        if found.get("cat") and not categories.is_valid(found["cat"], kind):
+            found.pop("cat")
+        if found.get("price") not in (None, *BY_BAND):
+            found.pop("price")
+        if found.get("cond") and found["cond"] not in categories.CONDITION_LABELS:
+            found.pop("cond")
+    return json.dumps(found, sort_keys=True, ensure_ascii=False)
+
+
+def search_label(kind, params):
+    """A saved search in words, for the list in the settings."""
+    p = json.loads(params)
+    parts = [f"\u201c{p['q']}\u201d"] if p.get("q") else []
+    if kind == "housing":
+        hs = _saved_housing(p)
+        if hs["kind"]:
+            parts.append(housing.KIND_LABELS[hs["kind"]])
+        if hs["area"]:
+            parts.append(housing.AREA_LABELS[hs["area"]])
+        if hs["low"] is not None and hs["high"] is not None:
+            parts.append(f"{money(hs['low'])} to {money(hs['high'])}")
+        elif hs["high"] is not None:
+            parts.append(f"up to {money(hs['high'])}")
+        elif hs["low"] is not None:
+            parts.append(f"from {money(hs['low'])}")
+        if hs["movein"]:
+            parts.append("free from " + pretty_date(hs["movein"]))
+        if hs["minutes"]:
+            parts.append(f"max {hs['minutes']} min to campus")
+        if hs["stay"]:
+            parts.append(housing.STAY_LABELS[hs["stay"]].lower())
+        if hs["mates"]:
+            parts.append(housing.MATES_LABELS[hs["mates"]].lower())
+        if hs["bills"]:
+            parts.append("bills included")
+        parts += [housing.FEATURE_LABELS[f].lower() for f in hs["features"]]
+    else:
+        if p.get("cat"):
+            parts.append(categories.label(p["cat"]))
+        if p.get("price"):
+            parts.append(BY_BAND[p["price"]][1].lower())
+        if p.get("cond"):
+            parts.append(categories.CONDITION_LABELS[p["cond"]].lower())
+    return " · ".join(parts) if parts else "Everything new"
+
+
+def search_rows(kind, params):
+    """The open entries a saved search finds, the way the tab finds them."""
+    p = json.loads(params)
+    if kind == "housing":
+        hs = _saved_housing(p)
+        return db.listings_of_type(
+            kind, p.get("q", ""), category=hs["kind"], min_price=hs["low"],
+            max_price=hs["high"], price_inclusive=True, free_from=hs["movein"] or None,
+            area=hs["area"], max_minutes=hs["minutes"], max_months=hs["months"],
+            bills_included=hs["bills"], features=hs["features"],
+            max_mates=hs["mates_max"], min_mates=hs["mates_min"])
+    band = BY_BAND[p.get("price", "")]
+    return db.listings_of_type(kind, p.get("q", ""), category=p.get("cat") or None,
+                               min_price=band[2], max_price=band[3],
+                               free_only=p.get("price") == "free",
+                               condition=p.get("cond") or None)
+
+
+def search_finds(kind, params, listing_id):
+    """True when this saved search would show this entry on the tab."""
+    return any(row["id"] == listing_id for row in search_rows(kind, params))
 
 
 def link_maker(path, params):
@@ -646,6 +804,11 @@ async def bad_address(request: Request, error: RequestValidationError):
 # A tab is what the profile goes back to, because the profile is opened from
 # a tab. A place is what an entry goes back to, which is a tab or the profile
 # or the chats, depending on where the entry was opened from.
+#
+# Somebody else's profile is deliberately not one. There is a single slot and
+# a profile sharing it with the tab underneath meant one of the two arrows
+# was always pointing at the wrong page. An entry opened from a profile is
+# told where to go back to in its own address instead, see student.html.
 TAB_PAGES = ("listings.html", "chats.html")
 PLACES = TAB_PAGES + ("profile.html",)
 
@@ -668,6 +831,8 @@ def page(request, template, **values):
     db.close_past_dates()
     me = me_or_none(request)
     values.setdefault("me", me)
+    # Signed out there is nobody to ask, so the page follows the phone.
+    values.setdefault("theme", (me["theme"] or "") if me else "")
     values.setdefault("unread", db.unread_total(me["id"]) if me else 0)
     values.setdefault("active", "")
     if template in PLACES:
@@ -698,7 +863,10 @@ def speculative(request):
 
 def me_or_none(request):
     user_id = request.session.get("user_id")
-    return db.get_user(user_id) if user_id else None
+    user = db.get_user(user_id) if user_id else None
+    if user and user["verified"] and db.is_nova_email(user["email"]):
+        return user
+    return None
 
 
 def waiting_or_none(request, key):
@@ -719,6 +887,21 @@ def waiting_or_none(request, key):
 
 def go(path):
     return RedirectResponse(path, status_code=303)
+
+
+def ours(path):
+    """A page of this app, or nothing.
+
+    Several screens are told in their own address where the arrow should
+    go back to. That address comes in off the URL, so it has to be read as
+    something anybody could have typed, and an arrow in our app has no
+    business leading off it. One leading slash and no second one, which is
+    how a browser reads //somewhere.else as another site.
+    """
+    path = (path or "").strip()
+    if not path.startswith("/") or path.startswith("//"):
+        return ""
+    return path
 
 
 # How long somebody waits before the same address gets another code. Stops a
@@ -753,8 +936,17 @@ def send_code(user, why):
     age = db.code_age(user["id"])
     if age is not None and age < RESEND_SECONDS:
         return ""
-    code = db.new_code(user["id"])
+    if not mailer.is_set_up() and not LOCAL_DEMO:
+        return "Email delivery is not configured. Please contact the app team."
+    try:
+        code = db.new_code(user["id"], why)
+    except ValueError as error:
+        return str(error)
+    if LOCAL_DEMO and not mailer.is_set_up():
+        print(f"LOCAL DEMO ONLY: {why} code for {user['email']}: {code}", flush=True)
+        return ""
     if not mailer.send_code(user["email"], code, why):
+        db.cancel_code(user["id"], code, why)
         return "We could not send the e-mail. Try again in a minute."
     return ""
 
@@ -840,11 +1032,16 @@ async def join(request: Request,
         return fail(wrong)
 
     if photo is not None and photo.filename and not is_picture(photo):
-        return fail("That file is not a picture. Use a jpg, png or heic.")
+        return fail("Upload a valid JPEG, PNG or WebP image.")
 
     existing = db.get_user_by_email(email)
     if existing is not None and existing["verified"]:
         return fail("That address already has an account. Log in instead.")
+
+    try:
+        saved = await save_image(photo)
+    except HTTPException as error:
+        return fail(str(error.detail))
 
     hashed = passwords.hash_password(password)
     if existing is None:
@@ -856,7 +1053,6 @@ async def join(request: Request,
         db.update_profile(user_id, name, chosen, cems, None)
         db.set_password(user_id, hashed)
 
-    saved = await save_image(photo)
     if saved:
         db.update_profile(user_id, name, chosen, cems, saved)
 
@@ -883,11 +1079,11 @@ def verify(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = F
         return go("/start")
     user_id = pending["id"]
     code = "".join([d1, d2, d3, d4, d5, d6]).strip()
-    result = db.check_code(user_id, code)
+    result = db.check_code(user_id, code, "join")
     if result != "ok":
         return page(request, "verify.html", pending=pending,
                     error=CODE_ERRORS[result])
-    request.session.pop("pending_id", None)
+    request.session.clear()
     request.session["user_id"] = user_id
     # Straight in. Whoever left the courses blank is not stopped for them
     # here. Groups says so itself the first time it is opened, and the
@@ -919,6 +1115,16 @@ def login_form(request: Request):
 
 @app.post("/login")
 def login(request: Request, email: str = Form(""), password: str = Form("")):
+    from hashlib import sha256
+    account = email.strip().lower()[:254]
+    key = sha256(f"login:{account}".encode()).hexdigest()
+    if not db.take_security_attempt(key, limit=20):
+        response = page(request, "login.html", email=email,
+                        error="Too many attempts. Please wait ten minutes.")
+        response.status_code = 429
+        return response
+    if not db.is_nova_email(email) or not 1 <= len(password) <= 128:
+        return page(request, "login.html", email=email, error="That e-mail and password do not go together.")
     user = db.get_user_by_email(email)
 
     # The same answer whether the address is unknown or the password is wrong,
@@ -929,7 +1135,7 @@ def login(request: Request, email: str = Form(""), password: str = Form("")):
 
     if not user["verified"]:
         request.session["pending_id"] = user["id"]
-        problem = send_code(user, "login")
+        problem = send_code(user, "join")
         return go(verify_url(problem))
 
     request.session.clear()
@@ -1006,7 +1212,7 @@ def reset(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = Fo
     wrong = passwords.problem(password)
     if wrong:
         return fail(wrong)
-    result = db.check_code(user_id, "".join([d1, d2, d3, d4, d5, d6]).strip())
+    result = db.check_code(user_id, "".join([d1, d2, d3, d4, d5, d6]).strip(), "reset")
     if result != "ok":
         return fail(CODE_ERRORS[result])
 
@@ -1021,11 +1227,19 @@ def reset(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = Fo
 @app.get("/dev")
 def dev_form(request: Request):
     """Development login. Delete this page once the real one works."""
-    return page(request, "dev.html", users=db.all_users())
+    if not LOCAL_DEMO:
+        return HTMLResponse("Not found", status_code=404)
+    return page(request, "dev.html", users=[user for user in db.all_users()
+                if user["verified"] and db.is_nova_email(user["email"])])
 
 
 @app.post("/dev")
 def dev_login(request: Request, user_id: int = Form(...)):
+    if not LOCAL_DEMO:
+        return HTMLResponse("Not found", status_code=404)
+    user = db.get_user(user_id)
+    if not user or not user["verified"] or not db.is_nova_email(user["email"]):
+        return HTMLResponse("Access refused", status_code=403)
     request.session.clear()
     request.session["user_id"] = user_id
     return go("/housing")
@@ -1114,7 +1328,10 @@ def tab_page(request, kind, q, scope="mine", cat="", day="", sort="",
                 active=kind, me=me, scope=scope, my_courses=mine,
                 days=days, blocks=blocks, cat=cat, open_day=day, fresh=fresh,
                 sort=sort, price=price, cond=cond, bands=PRICE_BANDS, hs=hs,
-                link=link_maker(tab["path"], params))
+                link=link_maker(tab["path"], params),
+                watching=(kind in SEARCH_KEYS and db.is_watching_search(
+                    me["id"], kind, search_of(kind, request.query_params))),
+                here=str(request.url.path) + (f"?{request.url.query}" if request.url.query else ""))
 
 
 @app.get("/housing")
@@ -1157,7 +1374,7 @@ def courses_form(request: Request, back: str = "/profile"):
 
     courses = db.courses_for_programme(me["programme"])
     return page(request, "courses.html", courses=courses, chosen=chosen,
-                back=back, me=me)
+                back=ours(back) or "/profile", me=me)
 
 
 @app.post("/courses")
@@ -1168,7 +1385,7 @@ async def courses_save(request: Request):
     form = await request.form()
     picked = [v for v in form.getlist("course_id") if str(v).isdigit()]
     db.set_enrolments(me["id"], set(map(int, picked)) & db.valid_course_ids(me["programme"]))
-    back = form.get("back") or "/profile"
+    back = ours(form.get("back")) or "/profile"
     return go(back if str(back).startswith("/") else "/profile")
 
 
@@ -1185,14 +1402,19 @@ def listing_detail(request: Request, listing_id: int, back: str = ""):
     if row["owner_id"] != me["id"]:
         db.count_view(listing_id, me["id"])
         row = db.get_listing(listing_id)
+    watching = (row["type"] == "ticket" and bool(row["event_date"])
+                and db.is_watching_event(me["id"], event_key(row)))
+    on_course = (row["type"] == "group" and bool(row["course_id"])
+                 and db.is_watching_course(me["id"], row["course_id"]))
     queue = db.interest_in(listing_id)
     return page(request, "detail.html", listing=row, photos=db.photos_of(listing_id),
                 tab=BY_KIND[row["type"]], me=me,
-                back=back or request.session.get("last_place")
+                back=ours(back) or request.session.get("last_place")
                      or BY_KIND[row["type"]]["path"],
                 tabs=tear_tabs(row) if row["type"] == "group" else [],
                 saved=db.is_saved(me["id"], listing_id),
-                saves=db.save_count(listing_id),
+                saves=db.save_count(listing_id), watching_event=watching,
+                watching_course=on_course,
                 queue=queue, my_place=db.place_in_queue(queue, me["id"]))
 
 
@@ -1282,7 +1504,7 @@ def edit_form(request: Request, listing_id: int, error: str = "", back: str = ""
     kind = listing["type"]
     return page(request, "new.html", tab=BY_KIND[kind], error=error, me=me,
                 active=kind, v=form_values(listing), edit_id=listing_id,
-                back=back or BY_KIND[kind]["path"],
+                back=ours(back) or BY_KIND[kind]["path"],
                 my_courses=db.courses_of(me["id"]) if kind == "group" else [])
 
 
@@ -1299,6 +1521,58 @@ def new_form(request: Request, kind: str = "housing", error: str = ""):
         return go("/courses?back=/new%3Fkind%3Dgroup")
     return page(request, "new.html", tab=BY_KIND[kind], error=error, me=me,
                 active=kind, my_courses=mine, v=form_values())
+
+
+@app.post("/new/ticket-autofill")
+def new_ticket_autofill(request: Request, url: str = Form("")):
+    """Fill the ticket form from the link to the event. Answers in JSON.
+
+    Only links to the sites in ticket_import.PLATFORMS are ever fetched. The
+    seller sees the filled form and checks it before anything is published.
+    """
+    me = me_or_none(request)
+    if me is None:
+        return JSONResponse({"ok": False, "reason": "login"}, status_code=401)
+    if not db.take_security_attempt(f"ticket-import:{me['id']}", limit=30):
+        return JSONResponse({"ok": False, "reason": "limit"}, status_code=429)
+    return JSONResponse(ticket_import.autofill(url))
+
+
+@app.post("/new/address-from-link")
+def new_address_from_link(request: Request, url: str = Form("")):
+    """A maps link turned into a street address. Answers in JSON.
+
+    The page reads a link that spells the address out by itself. This is
+    for the two kinds that do not: a link to a place, which carries its
+    name and a pair of coordinates, and the short one a phone makes when
+    you press Share, which carries nothing at all until it is followed.
+    Only the hosts in maps.HOSTS are ever fetched.
+    """
+    if me_or_none(request) is None:
+        return JSONResponse({"ok": False, "reason": "login"}, status_code=401)
+    return JSONResponse(maps.address_from_link(url))
+
+
+@app.post("/new/screenshot")
+def new_from_screenshots(request: Request, kind: str = Form(""),
+                         screenshots_: List[UploadFile] = File(default=[], alias="screenshots")):
+    """Fill the ticket or housing form from screenshots, read by Claude.
+
+    Same JSON as the link. The pictures are only read, never stored, and each
+    student has a daily limit because every picture costs money.
+    """
+    me = me_or_none(request)
+    if me is None:
+        return JSONResponse({"ok": False, "reason": "login"}, status_code=401)
+    if not screenshots.is_set_up():
+        return JSONResponse({"ok": False, "reason": "setup"})
+    files = [f for f in screenshots_ if f and f.filename]
+    if len(files) > screenshots.MAX_IMAGES:
+        return JSONResponse({"ok": False, "reason": "many"})
+    if not db.take_ai_read(me["id"], screenshots.READS_PER_DAY, max(1, len(files))):
+        return JSONResponse({"ok": False, "reason": "limit"})
+    pictures = [f.file.read(screenshots.MAX_UPLOAD + 1) for f in files]
+    return JSONResponse(screenshots.read(kind, pictures))
 
 
 @app.post("/new/autofill")
@@ -1343,6 +1617,7 @@ def new_autofill(request: Request, url: str = Form(""), text: str = Form("")):
 
 @app.post("/new")
 async def new_listing(request: Request,
+                      background: BackgroundTasks,
                       kind: str = Form("housing"),
                       title: str = Form(""),
                       price: str = Form(""),
@@ -1395,7 +1670,7 @@ async def new_listing(request: Request,
     # Changing an entry goes through the same form and the same checks. Only
     # the owner, and the kind cannot be swapped, because it comes from the
     # entry and not from the request.
-    changing = db.get_listing(int(edit_id)) if edit_id.strip().isdigit() else None
+    changing = db.get_listing(int(edit_id)) if edit_id.isascii() and edit_id.isdigit() and len(edit_id) <= 18 else None
     if changing is not None and changing["owner_id"] != me["id"]:
         changing = None
     if edit_id.strip() and changing is None:
@@ -1408,8 +1683,12 @@ async def new_listing(request: Request,
 
     def oops(message):
         return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
-                    my_courses=mine, v=typed, error=message, back=back,
+                    my_courses=mine, v=typed, error=message, back=ours(back),
                     edit_id=changing["id"] if changing else None)
+
+    for number in (quantity, course_id, group_size, months_min, minutes_campus, flatmates):
+        if number.strip() and (not number.isascii() or not number.isdigit() or len(number) > 9):
+            return oops("Enter whole numbers in the number fields.")
 
     if len(title.strip()) > TITLE_MAX:
         return oops(f"A title can be at most {TITLE_MAX} characters.")
@@ -1444,8 +1723,11 @@ async def new_listing(request: Request,
             return oops("Say from when the place is free.")
         if not place.strip():
             return oops("Pick the area the place is in.")
-        if not address.strip():
+        wrong = address_problem(address)
+        if wrong == "empty":
             return oops("A place needs its address.")
+        if wrong:
+            return oops(wrong)
 
         rent, wrong = clean_price(price)
         if wrong:
@@ -1499,7 +1781,7 @@ async def new_listing(request: Request,
         if free < 1 or free >= size:
             return oops(f"With a group of {size} you can offer at most "
                               f"{size - 1} spots, because one of them is yours.")
-        if hand_in.strip() < datetime.now().astimezone().date().isoformat():
+        if hand_in.strip() < today_iso():
             return oops("That date has passed. Pick the last day somebody "
                               "can still join.")
 
@@ -1517,12 +1799,13 @@ async def new_listing(request: Request,
         # party in one bundle, and the address is what opens in maps.
         if not place.strip():
             return oops("A ticket needs the name of the venue.")
-        if not address.strip():
+        wrong = address_problem(address)
+        if wrong == "empty":
             return oops("A ticket needs the address of the venue.")
+        if wrong:
+            return oops(wrong)
         if len(place.strip()) > PLACE_MAX:
             return oops(f"A venue name can be at most {PLACE_MAX} characters.")
-        if len(address.strip()) > ADDRESS_MAX:
-            return oops(f"An address can be at most {ADDRESS_MAX} characters.")
         # The day of the event still counts, a party is sold until the door,
         # but yesterday is nothing anybody can buy any more.
         if event_date.strip() < today_iso():
@@ -1533,6 +1816,27 @@ async def new_listing(request: Request,
         many = int(quantity) if quantity.strip().isdigit() else 0
         if many < 1 or many > TICKET_MAX:
             return oops(f"Say how many tickets you have, 1 to {TICKET_MAX}.")
+
+    for entered_date in (event_date, hand_in, available_from):
+        if entered_date.strip():
+            try:
+                datetime.strptime(entered_date.strip(), "%Y-%m-%d")
+            except ValueError:
+                return oops("Enter a valid date in YYYY-MM-DD format.")
+    # Validate photos before changing the database. Remove earlier files if a later photo fails.
+    image_names = []
+    uploads = [photo for photo in (photos or []) if photo and photo.filename] if kind != "ticket" else []
+    if len(uploads) > 10:
+        return oops("Upload at most ten photos.")
+    try:
+        for upload in uploads:
+            image_names.append(await save_image(upload))
+    except HTTPException as error:
+        for name in image_names:
+            os.remove(os.path.join(UPLOADS, name))
+        response = oops(str(error.detail))
+        response.status_code = 400
+        return response
 
     fields = dict(
         title=title.strip(),
@@ -1579,20 +1883,15 @@ async def new_listing(request: Request,
     else:
         listing_id = db.create_listing(owner_id=me["id"], kind=kind, **fields)
 
-    # Pictures added while changing an entry go after the ones already there.
     position = len(db.photos_of(listing_id)) if changing is not None else 0
-    for upload in (photos or []) if kind != "ticket" else []:
-        if not upload or not upload.filename:
-            continue
-        ext = os.path.splitext(upload.filename)[1].lower()
-        if ext not in (".jpg", ".jpeg", ".png", ".webp", ".heic"):
-            continue
-        name = f"{uuid.uuid4().hex}{ext}"
-        with open(os.path.join(UPLOADS, name), "wb") as out:
-            out.write(await upload.read())
+    for position, name in enumerate(image_names, start=position):
         db.add_photo(listing_id, name, position)
-        position += 1
 
+    # Everyone watching this tab hears about a new entry, after the page has
+    # answered. A change to an entry that is already up rings nobody.
+    if changing is None:
+        background.add_task(push.new_listing, db.get_listing(listing_id), event_key,
+                            search_finds)
     # The way out is carried through the form, because the page before this
     # one is now the form itself and an arrow pointing there is a trap.
     done = "saved" if changing is not None else "published"
@@ -1602,7 +1901,7 @@ async def new_listing(request: Request,
     return go(where)
 
 
-PICTURE_TYPES = (".jpg", ".jpeg", ".png", ".webp", ".heic")
+PICTURE_TYPES = (".jpg", ".jpeg", ".png", ".webp")
 
 
 def is_picture(upload):
@@ -1613,14 +1912,25 @@ def is_picture(upload):
 
 
 async def save_image(upload):
-    """Write one uploaded picture to the uploads folder. Gives back its name."""
-    if not is_picture(upload):
+    from io import BytesIO
+    from PIL import Image, ImageOps, UnidentifiedImageError
+    from fastapi import HTTPException
+    if not upload or not upload.filename:
         return None
-    ext = os.path.splitext(upload.filename)[1].lower()
-    name = f"{uuid.uuid4().hex}{ext}"
-    with open(os.path.join(UPLOADS, name), "wb") as out:
-        out.write(await upload.read())
-    return name
+    data = await upload.read(5_000_001)
+    if len(data) > 5_000_000:
+        raise HTTPException(400, "Images must be under 5 MB.")
+    try:
+        with Image.open(BytesIO(data), formats=["JPEG", "PNG", "WEBP"]) as picture:
+            if picture.width * picture.height > 20_000_000:
+                raise HTTPException(400, "Image dimensions are too large.")
+            picture = ImageOps.exif_transpose(picture).convert("RGB")
+            picture.thumbnail((1400, 1400))
+            name = uuid.uuid4().hex + ".jpg"
+            picture.save(os.path.join(UPLOADS, name), "JPEG", quality=85)
+            return name
+    except (OSError, UnidentifiedImageError, Image.DecompressionBombError):
+        raise HTTPException(400, "Upload a valid JPEG, PNG or WebP image.") from None
 
 
 # -------------------------------------------------------------------- chats
@@ -1883,14 +2193,16 @@ def chat(request: Request, conv_id: int):
 
 
 @app.post("/chat/{conv_id}")
-def chat_send(request: Request, conv_id: int, body: str = Form("")):
+def chat_send(request: Request, background: BackgroundTasks, conv_id: int,
+              body: str = Form("")):
     me = me_or_none(request)
     if me is None:
         return go("/start")
     conv = db.get_conversation(conv_id)
     if not db.can_see_conversation(conv, me["id"]):
         return page(request, "missing.html", active="chats")
-    db.send_message(conv_id, me["id"], body)
+    if db.send_message(conv_id, me["id"], body):
+        background.add_task(push.new_message, conv, me["id"], body.strip())
     return go(f"/chat/{conv_id}")
 
 
@@ -1975,7 +2287,18 @@ def student(request: Request, user_id: int):
     if them is None or not them["verified"]:
         return page(request, "missing.html", me=me)
     open_rows = [l for l in db.listings_of_user(user_id) if l["status"] == "open"]
+
+    # The arrow goes back through the browser, which lands you exactly
+    # where you left, scroll and all. With one exception, and it is the one
+    # that used to walk in a circle. Something they have up sends you back
+    # here when you are done with it, so the page before this one is that
+    # entry, and going back through the browser would open the entry again,
+    # whose arrow points here, and round and round. Coming from an entry,
+    # the arrow therefore leaves by its own address instead, for whatever
+    # was on screen before this profile.
+    came = urlparse(request.headers.get("referer") or "").path
     return page(request, "student.html", them=them, open_rows=open_rows, me=me,
+                hop=not came.startswith("/listing/"),
                 back=request.session.get("last_place") or "/chats")
 
 
@@ -2023,10 +2346,25 @@ async def profile_edit(request: Request,
     # quietly keeping the old one.
     if photo is not None and photo.filename and not is_picture(photo):
         return edit_page(request, me,
-                         "That file is not a picture. Use a jpg, png or heic.",
+                         "Upload a valid JPEG, PNG or WebP image.",
                          form_name=name, current=programme)
 
-    db.update_profile(me["id"], name, chosen, cems, await save_image(photo))
+    try:
+        saved = await save_image(photo)
+    except HTTPException as error:
+        return edit_page(request, me, str(error.detail), form_name=name, current=programme)
+    db.update_profile(me["id"], name, chosen, cems, saved)
+    return go("/profile")
+
+
+@app.post("/profile/theme")
+def profile_theme(request: Request, theme: str = Form("")):
+    """Light, dark, or follow the phone. Kept on the account, so the choice
+    travels with the student rather than with the browser."""
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    db.set_theme(me["id"], theme.strip())
     return go("/profile")
 
 
@@ -2064,6 +2402,169 @@ def password_change(request: Request, current: str = Form(""),
     return go("/profile")
 
 
+# --------------------------------------------------------- notifications
+
+@app.get("/sw.js")
+def service_worker():
+    """The service worker has to come from the top of the site, or it may
+    only look after the pages below /static."""
+    return FileResponse(os.path.join(HERE, "static", "js", "sw.js"),
+                        media_type="application/javascript",
+                        headers={"Cache-Control": "no-cache"})
+
+
+@app.post("/push/device")
+async def push_device(request: Request):
+    """The browser said yes to notifications. Remember this device."""
+    me = me_or_none(request)
+    if me is None:
+        return JSONResponse({"ok": False}, status_code=401)
+    try:
+        data = await request.json()
+        endpoint, keys = data["endpoint"], data["keys"]
+        p256dh, auth = keys["p256dh"], keys["auth"]
+    except (ValueError, KeyError, TypeError):
+        return JSONResponse({"ok": False}, status_code=400)
+    if not (push.valid_endpoint(endpoint)
+            and len(endpoint) < 1000 and isinstance(p256dh, str) and len(p256dh) < 200
+            and isinstance(auth, str) and len(auth) < 100):
+        return JSONResponse({"ok": False}, status_code=400)
+    db.save_device(me["id"], endpoint, p256dh, auth)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/push/device/forget")
+async def push_device_forget(request: Request):
+    me = me_or_none(request)
+    if me is None:
+        return JSONResponse({"ok": False}, status_code=401)
+    try:
+        endpoint = (await request.json())["endpoint"]
+    except (ValueError, KeyError, TypeError):
+        return JSONResponse({"ok": False}, status_code=400)
+    db.drop_device(str(endpoint), me["id"])
+    return JSONResponse({"ok": True})
+
+
+@app.post("/push/test")
+def push_test(request: Request):
+    """A notification to yourself, to see that it works on this phone."""
+    me = me_or_none(request)
+    if me is None:
+        return JSONResponse({"ok": False}, status_code=401)
+    reached = push.send(me["id"], "Campus Market",
+                        "Notifications work on this device.", "/profile/notifications",
+                        test=True)
+    return JSONResponse({"ok": reached > 0, "reached": reached})
+
+
+@app.get("/profile/notifications")
+def notifications_form(request: Request, done: str = ""):
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    return page(request, "notifications.html", me=me, prefs=db.prefs_of(me["id"]),
+                areas=push.AREAS, devices=len(db.devices_of(me["id"])), done=done,
+                events=db.events_watched(me["id"]), searches=db.searches_watched(me["id"]),
+                courses_watched=db.courses_watched(me["id"]),
+                tab_names={t["kind"]: t["label"] for t in TABS})
+
+
+@app.post("/profile/notifications")
+async def notifications_save(request: Request):
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    form = await request.form()
+    on = set(form.getlist("on"))
+    for area in db.NOTIFY_AREAS:
+        db.set_pref(me["id"], area, area in on)
+    return go("/profile/notifications?done=saved")
+
+
+@app.post("/notify/event")
+def notify_event(request: Request, listing_id: int = Form(0), on: str = Form("1")):
+    """The bell on a ticket: tell me about more tickets for this same event."""
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    row = db.get_listing(listing_id)
+    if row is None or row["type"] != "ticket" or not row["event_date"]:
+        return go("/tickets")
+    if on == "1":
+        db.watch_event(me["id"], event_key(row), row["title"], row["place"])
+    else:
+        db.unwatch_event(me["id"], event_key(row))
+    return go(f"/listing/{listing_id}?done=" + ("watching" if on == "1" else "unwatched"))
+
+
+@app.post("/notify/event/remove")
+def notify_event_remove(request: Request, watch_id: int = Form(0)):
+    """Stop watching one event, from the list in the settings."""
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    db.unwatch_event(me["id"], watch_id=watch_id)
+    return go("/profile/notifications?done=removed")
+
+
+@app.post("/notify/course")
+def notify_course(request: Request, listing_id: int = Form(0), on: str = Form("1")):
+    """The bell on a group: tell me about every group for this same course."""
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    row = db.get_listing(listing_id)
+    if row is None or row["type"] != "group" or not row["course_id"]:
+        return go("/groups")
+    if on == "1":
+        db.watch_course(me["id"], row["course_id"])
+    else:
+        db.unwatch_course(me["id"], course_id=row["course_id"])
+    return go(f"/listing/{listing_id}?done="
+              + ("watching-course" if on == "1" else "unwatched-course"))
+
+
+@app.post("/notify/course/remove")
+def notify_course_remove(request: Request, watch_id: int = Form(0)):
+    """Stop watching one course, from the list in the settings."""
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    db.unwatch_course(me["id"], watch_id=watch_id)
+    return go("/profile/notifications?done=removed-course")
+
+
+@app.post("/notify/watch")
+def notify_watch(request: Request, kind: str = Form(""), back: str = Form("")):
+    """The bell on a tab: save the search on screen, or forget it again."""
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    if kind not in SEARCH_KEYS:
+        return go("/profile/notifications")
+    # Only ever back to a page of our own.
+    back = back if back.startswith("/") and not back.startswith("//") else BY_KIND[kind]["path"]
+    params = search_of(kind, back.partition("?")[2])
+    if db.is_watching_search(me["id"], kind, params):
+        db.unwatch_search(me["id"], kind, params)
+        done = "search-off"
+    else:
+        db.watch_search(me["id"], kind, params, search_label(kind, params))
+        done = "search-on"
+    return go(back + ("&" if "?" in back else "?") + "done=" + done)
+
+
+@app.post("/notify/search/remove")
+def notify_search_remove(request: Request, watch_id: int = Form(0)):
+    """Forget one saved search, from the list in the settings."""
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    db.unwatch_search(me["id"], watch_id=watch_id)
+    return go("/profile/notifications?done=removed-search")
+
+
 @app.get("/profile")
 def profile(request: Request):
     me = me_or_none(request)
@@ -2075,3 +2576,32 @@ def profile(request: Request):
                 my_courses=db.courses_of(me["id"]),
                 saved=db.saved_listings(me["id"]),
                 chat_count=len(db.conversations_of(me["id"])), me=me)
+
+
+@app.middleware("http")
+async def security_checks(request, call_next):
+    from urllib.parse import urlsplit
+    if request.url.path.startswith("/static/uploads/") and me_or_none(request) is None:
+        return HTMLResponse("Sign in required", status_code=403)
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        if request.url.path in ("/join", "/forgot", "/verify", "/verify/resend", "/forgot/reset"):
+            from hashlib import sha256
+            address = request.client.host if request.client else "unknown"
+            key = sha256(f"{request.url.path}:{address}".encode()).hexdigest()
+            if not db.take_security_attempt(key, limit=2000):
+                return HTMLResponse("Too many attempts. Please wait ten minutes.", status_code=429)
+        origin = request.headers.get("origin") or request.headers.get("referer")
+        source = urlsplit(origin) if origin else None
+        if not source or source.scheme != request.url.scheme or source.netloc != request.url.netloc:
+            return HTMLResponse("Request origin refused", status_code=403)
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "same-origin"
+    response.headers["Content-Security-Policy"] = "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    response.headers["Cache-Control"] = "no-store"
+    if not LOCAL_DEMO:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
+    return response
+
+
+app.add_middleware(SessionMiddleware, secret_key=SECRET, max_age=60 * 60 * 8, https_only=not LOCAL_DEMO, same_site="lax")

@@ -714,6 +714,432 @@
   }, 3200);
 })();
 
+// The form from somewhere else: a ticket from the link to the event or from
+// screenshots, a place from screenshots of the advert. The server reads it
+// and sends back what it found, and those fields are filled in and marked,
+// so the student sees at a glance what came from where and checks it.
+(function autofill() {
+  const box = document.getElementById("autofill");
+  if (!box) return;
+  const kind = box.dataset.kind;
+  const most = Number(box.dataset.max) || 4;
+  const input = document.getElementById("autofill_url");
+  const go = document.getElementById("autofill-go");
+  const shot = document.getElementById("autofill_shot");
+  const shotLabel = document.getElementById("autofill-shot-label");
+  const status = document.getElementById("autofill-status");
+  const form = box.closest("form");
+  const start = status.textContent.replace(/\s+/g, " ").trim();
+
+  const say = (text, how) => {
+    status.textContent = text;
+    status.classList.toggle("is-ok", how === "ok");
+    status.classList.toggle("is-bad", how === "bad");
+  };
+
+  const REASONS = {
+    site: "That link is not from a ticket site we know. Try Luma, DICE, Xceed, BOL or Eventbrite.",
+    blocked: "{site} does not let apps read its pages. Take a screenshot instead, or type it in.",
+    unreachable: "{site} did not answer. Check the link, or type it in.",
+    empty: kind === "housing"
+      ? "We found no housing advert in that. Please type it in."
+      : "We found no event in that. Please type it in.",
+    login: "Log in again, then try once more.",
+    setup: "Screenshots are not switched on yet. Please type it in.",
+    picture: "That file is not a screenshot we can read. Use a PNG or JPEG.",
+    many: `At most ${most} screenshots at once.`,
+    limit: "That is all the screenshots for today. Please type it in.",
+    claude: "Claude could not read it just now. Try again in a minute, or type it in.",
+  };
+  const NAMES = { title: "title", category: kind === "housing" ? "kind of place" : "category",
+                  event_date: "date", event_time: "time",
+                  place: kind === "housing" ? "area" : "venue", address: "address",
+                  price: kind === "housing" ? "rent" : "price",
+                  bills_included: "bills", bills_estimate: "bills estimate",
+                  deposit_months: "deposit", available_from: "free from",
+                  months_min: "minimum stay", flatmates: "flatmates",
+                  features: "features", description: "description" };
+
+  // What the last fill put in. The next one first takes back whatever is
+  // still untouched, so nothing from the wrong event or flat is left behind.
+  let lastFilled = [];
+  const mark = (field, target) => {
+    target.classList.add("is-filled");
+    const clear = () => target.classList.remove("is-filled");
+    field.addEventListener("input", clear, { once: true });
+    field.addEventListener("change", clear, { once: true });
+  };
+  const takeBack = () => {
+    lastFilled.forEach(({ field, hint, target, before }) => {
+      if (!target.classList.contains("is-filled")) return;
+      if (field.type === "checkbox") {
+        field.checked = false;
+      } else {
+        if (hint && !hint.parentNode) field.insertBefore(hint, field.firstChild);
+        field.value = before;
+        if (hint) field.selectedIndex = 0;
+      }
+      target.classList.remove("is-filled");
+    });
+    lastFilled = [];
+  };
+
+  const fill = (fields) => {
+    takeBack();
+    const done = [];
+    Object.entries(fields).forEach(([name, value]) => {
+      if (Array.isArray(value)) {
+        // A row of tick boxes, like what a flat comes with.
+        let any = false;
+        value.forEach((one) => {
+          const box = form.querySelector(`input[type="checkbox"][name="${name}"][value="${one}"]`);
+          if (!box || box.checked) return;
+          box.checked = true;
+          const target = box.closest(".opt") || box;
+          mark(box, target);
+          lastFilled.push({ field: box, target });
+          any = true;
+        });
+        if (any) done.push(NAMES[name] || name);
+        return;
+      }
+      const field = form.querySelector(`[name="${name}"]`);
+      if (!field || value === null) return;
+      const before = field.value;
+      if (field.tagName === "SELECT") {
+        const option = field.querySelector(`option[value="${value}"]`);
+        if (!option) return;
+        const hint = field.querySelector("option[data-hint]");
+        if (hint) hint.remove();
+        field.value = value;
+        lastFilled.push({ field, hint, target: field, before: "" });
+      } else {
+        if (value === "") return;
+        field.value = String(value);
+        lastFilled.push({ field, hint: null, target: field, before });
+      }
+      mark(field, field);
+      done.push(NAMES[name] || name);
+    });
+    return done;
+  };
+
+  // One answer, from a link or from screenshots, goes into the form the same way.
+  const show = (data) => {
+    if (!data.ok) {
+      say((REASONS[data.reason] || REASONS.empty).replace("{site}", data.site || "That site"), "bad");
+      return;
+    }
+    const done = fill(data.fields || {});
+    let text = `Filled in from ${data.site}: ${done.join(", ")}.`;
+    if (kind === "ticket" && "price" in (data.fields || {})) {
+      text += " The price is what the ticket cost there, change it to yours.";
+    }
+    say(text + " Check it before publishing.", "ok");
+  };
+
+  if (shot) {
+    shot.addEventListener("change", async () => {
+      const files = [...shot.files];
+      if (!files.length) return;
+      if (files.length > most) { say(REASONS.many, "bad"); shot.value = ""; return; }
+      shotLabel.classList.add("is-busy");
+      say(files.length === 1 ? "Claude is reading your screenshot…"
+                             : `Claude is reading your ${files.length} screenshots…`);
+      try {
+        const body = new FormData();
+        body.append("kind", kind);
+        files.forEach((file) => body.append("screenshots", file));
+        const res = await fetch("/new/screenshot", { method: "POST", body });
+        show(await res.json());
+      } catch (e) {
+        say("Something went wrong. Please type it in.", "bad");
+      } finally {
+        shot.value = "";
+        shotLabel.classList.remove("is-busy");
+      }
+    });
+  }
+
+  if (!input) return;
+  const run = async () => {
+    const url = input.value.trim();
+    if (!url) { say("Paste the link to the event first.", "bad"); input.focus(); return; }
+    go.disabled = true;
+    say("Reading the event page…");
+    try {
+      const body = new URLSearchParams({ url });
+      const res = await fetch("/new/ticket-autofill", { method: "POST", body });
+      show(await res.json());
+    } catch (e) {
+      say("Something went wrong. Please type it in.", "bad");
+    } finally {
+      go.disabled = false;
+    }
+  };
+
+  go.addEventListener("click", run);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); run(); }
+  });
+  input.addEventListener("input", () => { if (!input.value) say(start); });
+})();
+
+// Push notifications. The browser is only asked after a tap, never on its
+// own, and the device is then handed to the server, which sends to it.
+(function notifications() {
+  const meta = document.querySelector('meta[name="push-key"]');
+  if (!meta) return;
+  const key = meta.content;
+  const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  const standalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  const iphone = /iPhone|iPad|iPod/.test(navigator.userAgent);
+
+  const bytes = (base64) => {
+    const padded = (base64 + "=".repeat((4 - (base64.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/");
+    return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
+  };
+
+  const tell = (subscription) => fetch("/push/device", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(subscription.toJSON()),
+  });
+
+  // Gives back "on", "denied" or "unsupported".
+  const enable = async () => {
+    if (!supported) return "unsupported";
+    const answer = await Notification.requestPermission();
+    if (answer !== "granted") return "denied";
+    const registration = await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.ready;
+    const subscription = (await registration.pushManager.getSubscription())
+      || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytes(key) });
+    await tell(subscription);
+    return "on";
+  };
+
+  // A device that said yes before is handed over again on every visit, so it
+  // stays with whoever is logged in and survives a new address from the browser.
+  if (supported && Notification.permission === "granted") {
+    navigator.serviceWorker.register("/sw.js")
+      .then((registration) => registration.pushManager.getSubscription())
+      .then((subscription) => subscription && tell(subscription))
+      .catch(() => {});
+  }
+
+  // The bell on a tab: turning it on first makes sure this device can hear it.
+  document.querySelectorAll("form[data-push-ask]").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      if (form.dataset.asked || form.elements.on.value !== "1") return;
+      event.preventDefault();
+      form.dataset.asked = "1";
+      try { await enable(); } catch (e) { /* the setting is still saved */ }
+      form.submit();
+    });
+  });
+
+  // The switches save the moment they move. The main switch greys out the
+  // four below it, which keep their own position for when it comes back on.
+  const all = document.getElementById("notify-all");
+  if (all) {
+    const form = all.closest("form");
+    const areas = document.getElementById("notify-areas");
+    form.querySelectorAll("input.switch").forEach((one) => {
+      one.addEventListener("change", async () => {
+        areas.classList.toggle("is-muted", !all.checked);
+        try {
+          await fetch(form.action, { method: "POST", body: new FormData(form) });
+        } catch (e) {
+          form.submit();
+        }
+      });
+    });
+  }
+
+  // The settings page.
+  const box = document.getElementById("push-device");
+  if (!box) return;
+  const status = document.getElementById("push-status");
+  const on = document.getElementById("push-on");
+  const test = document.getElementById("push-test");
+  const ios = document.getElementById("push-ios");
+
+  const showOn = () => {
+    status.textContent = "On for this device.";
+    on.hidden = true;
+    test.hidden = false;
+  };
+  if (iphone && !standalone) ios.hidden = false;
+  if (!supported) {
+    on.hidden = true;
+    if (!iphone) status.textContent = "This browser cannot do notifications.";
+  } else if (Notification.permission === "granted") {
+    navigator.serviceWorker.getRegistration("/")
+      .then((registration) => registration && registration.pushManager.getSubscription())
+      .then((subscription) => { if (subscription) showOn(); })
+      .catch(() => {});
+  } else if (Notification.permission === "denied") {
+    // No second chance. A browser that has been told no never asks again,
+    // so the button below could only ever do nothing. It goes, and the
+    // line says where the answer can be changed.
+    on.hidden = true;
+    status.textContent = "Blocked for this site in your browser settings.";
+  }
+
+  on.addEventListener("click", async () => {
+    on.disabled = true;
+    try {
+      const result = await enable();
+      if (result === "on") showOn();
+      else if (result === "denied") {
+        on.hidden = true;
+        status.textContent = "Blocked for this site in your browser settings.";
+      } else status.textContent = "This browser cannot do notifications.";
+    } catch (e) {
+      status.textContent = "That did not work. Try again in a moment.";
+    } finally {
+      on.disabled = false;
+    }
+  });
+
+  test.addEventListener("click", async () => {
+    test.disabled = true;
+    try {
+      const res = await fetch("/push/test", { method: "POST" });
+      const data = await res.json();
+      status.textContent = data.ok ? "Sent. It should show up in a few seconds."
+                                   : "Nothing reached this device. Turn it on again.";
+    } finally {
+      test.disabled = false;
+    }
+  });
+})();
+
+// A maps link dropped into the address box.
+//
+// People do not type a street, they copy the place out of maps, and the
+// address box takes the link rather than refusing a line that is plainly
+// not an address.
+//
+// A link only sometimes spells the address out. Google writes whatever was
+// searched for after /place/, so searching an address gives the address but
+// tapping a bar gives "K Urban Beach Club", and the short link a phone makes
+// when you press Share carries nothing at all. Those two go to the server,
+// which can follow a short link and look a coordinate up. Reading it here
+// first means a link that already says the address costs nobody a request.
+(function mapsLinks() {
+  const boxes = document.querySelectorAll("input#address");
+  if (!boxes.length) return;
+
+  const PIN = /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/;
+  const HAS_NUMBER = /\d/;
+  const WHY = {
+    not_maps: "That is a link, but not to Google or Apple maps.",
+    off_list: "That link leads off maps. Copy the address instead.",
+    unreachable: "Maps did not answer. Try again in a moment.",
+    no_point: "There is no place in that link. Open it in maps and copy "
+            + "the address line under the name.",
+    nothing_there: "Nothing with a street name at that spot. Type the "
+                 + "address instead.",
+    login: "Sign in again to use this.",
+  };
+
+  function mapsHost(url) {
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    return host === "maps.apple.com"
+        // Apple's own short domain, a top level domain of its own rather
+        // than anything under apple.com. This is what an iPhone shares.
+        || host === "maps.apple"
+        || host === "maps.google.com"
+        || host === "maps.app.goo.gl"
+        || host === "goo.gl"
+        || /(^|\.)google\.[a-z]{2,3}(\.[a-z]{2})?$/.test(host);
+  }
+
+  function addressIn(url) {
+    // What sits after /place/ is whatever was searched for, so it is only
+    // an address when it carries a number. A name is the very thing this
+    // is meant to keep out of the box.
+    const place = url.pathname.match(/\/maps\/place\/([^/]+)/);
+    if (place) {
+      const found = decodeURIComponent(place[1].replace(/\+/g, " ")).trim();
+      if (found && !found.startsWith("@") && !PIN.test(found) && HAS_NUMBER.test(found)) {
+        return found;
+      }
+    }
+    for (const key of ["address", "q", "daddr", "destination"]) {
+      const value = (url.searchParams.get(key) || "").trim();
+      if (value && !PIN.test(value) && HAS_NUMBER.test(value)) return value;
+    }
+    return null;
+  }
+
+  boxes.forEach((box) => {
+    const note = box.parentNode.querySelector("[data-address-note]");
+    const wasSaying = note ? note.textContent : "";
+    let back;
+    const say = (words, keep) => {
+      if (!note) return;
+      clearTimeout(back);
+      note.textContent = words || wasSaying;
+      if (words && !keep) back = setTimeout(() => { note.textContent = wasSaying; }, 7000);
+    };
+    const put = (address) => {
+      box.value = address.slice(0, box.maxLength > 0 ? box.maxLength : 120);
+      box.classList.add("is-filled");
+      box.addEventListener("input", () => box.classList.remove("is-filled"),
+                           { once: true });
+      say("");
+    };
+
+    let asking = false;
+    const read = async () => {
+      const text = box.value.trim();
+      // Not a link at all, so this is somebody typing. Anything the box
+      // complained about a moment ago is about a line that is gone.
+      if (!/^https?:\/\//i.test(text)) {
+        say("");
+        return;
+      }
+      let url;
+      try {
+        url = new URL(text);
+      } catch (err) {
+        return;
+      }
+      if (!mapsHost(url)) {
+        say(WHY.not_maps);
+        return;
+      }
+      const here = addressIn(url);
+      if (here) {
+        put(here);
+        return;
+      }
+      if (asking) return;
+      asking = true;
+      say("Looking that up…", true);
+      try {
+        const body = new FormData();
+        body.append("url", text);
+        const res = await fetch("/new/address-from-link", { method: "POST", body });
+        const data = await res.json();
+        if (data.ok) put(data.address);
+        else say(WHY[data.reason] || WHY.nothing_there);
+      } catch (err) {
+        say("That did not work. Try again in a moment.");
+      } finally {
+        asking = false;
+      }
+    };
+
+    // After the paste, so the box already holds the link.
+    box.addEventListener("paste", () => setTimeout(read, 0));
+    box.addEventListener("change", read);
+  });
+})();
+
 // The housing link on the new entry form. While you type it says which site
 // it recognised, offers to open it so you can check it is the right place,
 // and stops the form from going off with a link we would refuse anyway.

@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% import "partials/icons.html" as icon %}
+{% block title %} · Notifications{% endblock %}
+{% block body %}
+<div class="app notify">
+  <form class="form" method="post" action="/profile/notifications">
+
+    <div class="sheet-head">
+      <span class="side"><a class="link link--plain" href="/profile">Back</a></span>
+      <span class="mid">Notifications</span>
+      <span class="side"></span>
+    </div>
+
+    {% if done == 'saved' %}<div class="said" id="saved-note">Saved.</div>{% endif %}
+    {% if done == 'removed' %}<div class="said">Removed. That event is quiet now.</div>{% endif %}
+    {% if done == 'removed-search' %}<div class="said">Removed. That search is quiet now.</div>{% endif %}
+    {% if done == 'removed-course' %}<div class="said">Removed. That course is quiet now.</div>{% endif %}
+
+    {% if not PUSH_ON() %}
+      <div class="error">Notifications are not switched on for this app yet.</div>
+    {% else %}
+
+    {# This device. The browser asks once, and only after a tap, because a
+       question that pops up on its own gets a no. #}
+    <span class="section">This device</span>
+    <div class="push-device" id="push-device" data-key="{{ PUSH_KEY() }}">
+      <p class="push-status" id="push-status">
+        {% if devices %}On for {{ devices }} of your devices.{% else %}Not on for this device yet.{% endif %}
+      </p>
+      <button class="btn" type="button" id="push-on">Turn them on</button>
+      <button class="btn btn--quiet" type="button" id="push-test" hidden>Send me a test</button>
+      <p class="push-small" id="push-ios" hidden>
+        On an iPhone this works only from the home screen. Safari, Share,
+        Add to Home Screen.
+      </p>
+    </div>
+
+    {# One switch for everything, and one per area under it. Off up here
+       silences all of them and leaves the four as they are. #}
+    <span class="section">What you hear about</span>
+    <div class="rows">
+      <label class="row switch-row">
+        <div class="row-body">
+          <span class="row-name">All notifications</span>
+          <span class="row-meta">Off silences everything below.</span>
+        </div>
+        <input class="switch" type="checkbox" name="on" value="all" id="notify-all" {{ 'checked' if prefs['all'].on }}>
+      </label>
+    </div>
+    <div class="rows notify-areas {{ 'is-muted' if not prefs['all'].on }}" id="notify-areas" style="margin-top: 10px">
+      {% for key, name, about in areas if key != 'all' %}
+        {% set pref = prefs[key] %}
+        <label class="row switch-row">
+          <div class="row-body">
+            <span class="row-name">{{ name }}</span>
+            <span class="row-meta">{{ about }}</span>
+          </div>
+          <input class="switch" type="checkbox" name="on" value="{{ key }}" {{ 'checked' if pref.on }}>
+        </label>
+        {% if not loop.last %}<div class="divider" style="margin-left: 14px"></div>{% endif %}
+      {% endfor %}
+    </div>
+    <p class="note" style="text-align: left; margin: 8px 2px 0">
+      Switching one off keeps what you saved, it only goes quiet.
+    </p>
+
+    <noscript>
+      <div style="height: 16px"></div>
+      <button class="btn" type="submit">Save</button>
+    </noscript>
+
+    {# Every saved search, from the bell on a tab. #}
+    <span class="section">Saved searches</span>
+    {% if searches %}
+      <div class="rows">
+        {% for w in searches %}
+          <div class="event-row">
+            <div class="row-body">
+              <span class="row-name">{{ tab_names[w.kind] }}</span>
+              <span class="row-meta">{{ w.label }}</span>
+            </div>
+            <button class="event-remove" type="submit" form="unsearch-{{ w.id }}"
+                    aria-label="Stop watching {{ tab_names[w.kind] }}: {{ w.label }}">Remove</button>
+          </div>
+          {% if not loop.last %}<div class="divider" style="margin-left: 14px"></div>{% endif %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="nothing">
+        {{ icon.search(26, 1.7) }}
+        <b>No saved searches</b>
+        <p>Set the filters you want on a tab, then tap the bell.</p>
+      </div>
+    {% endif %}
+
+    {# Every event with a bell, soonest first. Past ones disappear on their own. #}
+    <span class="section">Saved events</span>
+    {% if events %}
+      <div class="rows">
+        {% for e in events %}
+          <div class="event-row">
+            <div class="row-body">
+              <span class="row-name">{{ e.title }}</span>
+              <span class="row-meta">{{ e.event_date | pretty_date }}{% if e.event_time %} · {{ e.event_time }}{% endif %}{% if e.place %} · {{ e.place }}{% endif %}</span>
+            </div>
+            <button class="event-remove" type="submit" form="unwatch-{{ e.id }}"
+                    aria-label="Stop watching {{ e.title }}">Remove</button>
+          </div>
+          {% if not loop.last %}<div class="divider" style="margin-left: 14px"></div>{% endif %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="nothing">
+        {{ icon.bell(26, 1.6) }}
+        <b>No saved events</b>
+        <p>Tap the bell on a ticket to hear about more for it.</p>
+      </div>
+    {% endif %}
+    {# Every course with a bell, from a group entry. #}
+    <span class="section">Saved courses</span>
+    {% if courses_watched %}
+      <div class="rows">
+        {% for c in courses_watched %}
+          <div class="event-row">
+            <div class="row-body">
+              <span class="row-name">{{ c.name }}</span>
+              <span class="row-meta">{{ c.code }}</span>
+            </div>
+            <button class="event-remove" type="submit" form="uncourse-{{ c.id }}"
+                    aria-label="Stop watching {{ c.name }}">Remove</button>
+          </div>
+          {% if not loop.last %}<div class="divider" style="margin-left: 14px"></div>{% endif %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="nothing">
+        {{ icon.people(26, 1.7) }}
+        <b>No saved courses</b>
+        <p>Tap the bell on a group to hear about more spots for its course.</p>
+      </div>
+    {% endif %}
+    {% endif %}
+    <div style="height: calc(var(--foot) + 20px)"></div>
+
+  </form>
+
+  {# One small form per event, outside the settings form, so Remove works on
+     its own and never saves the switches by accident. #}
+  {% for e in events %}
+    <form id="unwatch-{{ e.id }}" method="post" action="/notify/event/remove" hidden>
+      <input type="hidden" name="watch_id" value="{{ e.id }}">
+    </form>
+  {% endfor %}
+  {% for w in searches %}
+    <form id="unsearch-{{ w.id }}" method="post" action="/notify/search/remove" hidden>
+      <input type="hidden" name="watch_id" value="{{ w.id }}">
+    </form>
+  {% endfor %}
+  {% for c in courses_watched %}
+    <form id="uncourse-{{ c.id }}" method="post" action="/notify/course/remove" hidden>
+      <input type="hidden" name="watch_id" value="{{ c.id }}">
+    </form>
+  {% endfor %}
+</div>
+{% endblock %}
