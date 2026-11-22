@@ -1184,8 +1184,9 @@ def verify(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = F
     sign_in(request, user_id)
     # Straight in. Whoever left the courses blank is not stopped for them
     # here. Groups says so itself the first time it is opened, and the
-    # profile has the list whenever they want it.
-    return go("/housing")
+    # profile has the list whenever they want it. A new account starts
+    # with the tour, whatever this browser remembers from somebody else.
+    return go("/housing?tour=1")
 
 
 @app.post("/verify/resend")
