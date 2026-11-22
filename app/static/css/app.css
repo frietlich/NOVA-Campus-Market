@@ -2511,6 +2511,213 @@ img { display: block; max-width: 100%; }
 .notify .row-meta,
 .notify .note { font-size: 13px; }
 
+/* ===================================================== another site, queue */
+
+/* "optional" next to a label */
+.label .optional { font-weight: 500; color: var(--faint); margin-left: 4px; }
+
+/* The link field on the new entry form, and what it says while you type. */
+.linkfield .prefixed { padding-left: 12px; }
+.linkfield-icon { display: flex; color: var(--muted); margin-right: 8px !important; }
+.linkfield-status {
+  margin: 6px 2px 0;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 12px; line-height: 1.5; color: var(--muted);
+}
+.linkfield-status a { color: var(--accent); font-weight: 600; }
+.linkfield[data-state="ok"] .prefixed { border-color: var(--c-housing); }
+.linkfield[data-state="ok"] .linkfield-icon,
+.linkfield[data-state="ok"] .linkfield-status b { color: var(--c-housing); }
+.linkfield[data-state="bad"] .prefixed { border-color: #D64531; }
+.linkfield[data-state="bad"] .linkfield-status { color: #C0392B; }
+
+/* The button on the entry that opens the same place on the other site. */
+.elsewhere {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: var(--r-card);
+  background: var(--accent-soft);
+  color: inherit;
+  transition: transform 0.12s ease;
+}
+.elsewhere:active { transform: scale(0.985); }
+.elsewhere-mark {
+  width: 38px; height: 38px; flex: none;
+  border-radius: 11px;
+  background: var(--accent); color: #FFFFFF;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; font-weight: 800;
+}
+.elsewhere-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.elsewhere-text b { font-size: 15px; font-weight: 700; }
+.elsewhere-text span { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.elsewhere-go { flex: none; display: flex; color: var(--accent); }
+
+.card-also { color: var(--k, var(--accent)); font-weight: 600; }
+
+/* The queue: where you stand, or, for the owner, who asked in what order. */
+.queue {
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  display: flex; flex-direction: column; gap: 12px;
+}
+.queue-head { display: flex; flex-direction: column; gap: 3px; }
+.queue-head b { font-size: 15px; font-weight: 700; }
+.queue-head span { font-size: 13px; line-height: 1.45; color: var(--muted); }
+
+.queue-dots { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.qd {
+  width: 12px; height: 12px; border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+.qd--me {
+  width: 22px; height: 22px;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+.qd--ghost {
+  background: transparent;
+  border: 2px dashed var(--accent);
+  box-shadow: none;
+  animation: qd-pulse 1.6s ease-in-out infinite;
+}
+.qd-more { font-size: 12px; font-weight: 700; color: var(--muted); }
+@keyframes qd-pulse { 50% { transform: scale(0.86); } }
+@media (prefers-reduced-motion: reduce) { .qd--ghost { animation: none; } }
+
+.queue-rows {
+  display: flex; flex-direction: column;
+  border-top: 1px solid var(--line);
+}
+.queue-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  color: inherit;
+}
+.queue-row:last-child { border-bottom: none; padding-bottom: 0; }
+.queue-n {
+  width: 24px; height: 24px; flex: none;
+  border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 800;
+}
+.queue-row:first-child .queue-n { background: var(--accent); color: #FFFFFF; }
+.queue-who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.queue-who b { font-size: 14px; font-weight: 600; }
+.queue-who span { font-size: 12px; color: var(--muted); }
+.queue-go { flex: none; font-size: 13px; font-weight: 700; color: var(--accent); }
+
+@media (prefers-color-scheme: dark) {
+  .elsewhere-mark, .queue-row:first-child .queue-n { color: #0B0B0F; }
+}
+
+/* ---------------------------------------------------------- the gallery */
+
+.gallery {
+  position: absolute; inset: 0;
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  outline: none;
+}
+.gallery::-webkit-scrollbar { display: none; }
+.gallery img {
+  flex: 0 0 100%;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  scroll-snap-align: center;
+  user-select: none;
+}
+
+.gallery-dots {
+  position: absolute; left: 50%; bottom: 34px;
+  transform: translateX(-50%);
+  display: flex; gap: 6px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.32);
+  z-index: 5;
+}
+.gallery-dots span {
+  width: 6px; height: 6px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.55);
+  transition: width 0.2s ease, background 0.2s ease;
+}
+.gallery-dots span.on { width: 16px; background: #FFFFFF; }
+
+/* Arrows only where there is a mouse. On a phone you swipe. */
+.gallery-nav {
+  position: absolute; top: 50%;
+  width: 36px; height: 36px;
+  margin-top: -18px;
+  border: none; border-radius: 999px;
+  display: none; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, 0.85);
+  color: #0B0B0F;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  z-index: 5;
+}
+.gallery-nav--prev { left: 12px; }
+.gallery-nav--next { right: 12px; }
+.gallery-nav--next svg { transform: rotate(180deg); }
+@media (hover: hover) {
+  .gallery-nav { display: flex; }
+  .gallery-nav[hidden] { display: none; }
+}
+
+/* ------------------------------------------------------------ autofill */
+
+.autofill {
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: var(--r-card);
+  background: var(--accent-soft);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.autofill-head { display: flex; flex-direction: column; gap: 2px; }
+.autofill-head b { font-size: 15px; font-weight: 700; }
+.autofill-head span { font-size: 13px; line-height: 1.45; color: var(--muted); }
+.autofill .linkfield-status { margin-top: 6px; }
+
+.btn--small { height: 44px; font-size: 15px; }
+.btn:disabled { opacity: 0.45; cursor: default; }
+.btn:disabled:active { transform: none; filter: none; }
+
+.autofill-paste summary {
+  cursor: pointer;
+  font-size: 14px; font-weight: 600; color: var(--accent);
+  padding: 4px 2px;
+}
+.autofill-paste .btn { margin-top: 8px; }
+.autofill-paste .textarea { background: var(--card); }
+
+.autofill-result {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--r-tile);
+  font-size: 13px; font-weight: 600; line-height: 1.45;
+  background: var(--card);
+}
+.autofill-result--ok { color: var(--accent); }
+.autofill-result--warn { color: #A4511B; }
+@media (prefers-color-scheme: dark) { .autofill-result--warn { color: #FFB27A; } }
+
+/* A field the autofill just wrote into lights up for a moment. */
+.filled { animation: filled 1.6s ease; }
+@keyframes filled {
+  0%, 30% { box-shadow: 0 0 0 3px var(--accent-soft); border-color: var(--accent); }
+}
+@media (prefers-reduced-motion: reduce) { .filled { animation: none; } }
+
 /* Wider screens share the mobile views and move the tab bar to the left. */
 @media (min-width: 800px) {
   .app--tabs {
