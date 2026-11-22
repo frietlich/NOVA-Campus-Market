@@ -1528,6 +1528,13 @@
               if (nearEnd) thread.scrollTop = thread.scrollHeight;
               previous = fingerprint;
             }
+            // A read receipt acknowledges only the messages actually displayed.
+            if (data.has_unread && !document.hidden && thread.offsetParent !== null) {
+              await fetch('/chat/' + thread.dataset.liveChat + '/read', {
+                method: 'POST',
+                body: new URLSearchParams({through: String(data.messages[data.messages.length - 1].id)})
+              });
+            }
           }
         }
       } catch (_) { /* A temporary connection failure retries next time. */ }

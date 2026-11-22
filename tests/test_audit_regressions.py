@@ -137,6 +137,9 @@ def test_live_messages_keep_escaping_and_read_receipts(world):
     data = clients[0].get(f"/chat/{chat}/messages").json()
     assert "<script>bad()</script>" not in data["html"]
     assert "&lt;script&gt;" in data["html"]
+    assert not db.messages_of(chat)[0]["read_at"]
+    assert clients[0].post(f"/chat/{chat}/read", data={"through": data["messages"][-1]["id"]},
+                           headers=ORIGIN).status_code == 200
     assert db.messages_of(chat)[0]["read_at"]
 
 
@@ -158,3 +161,86 @@ def test_database_path_is_loaded_from_dotenv_before_db_import(tmp_path):
     result = subprocess.run([sys.executable, "-c", "from app import db; print(db.DB_PATH)"],
                             cwd=tmp_path, env=env, capture_output=True, text=True, check=True)
     assert result.stdout.strip() == expected
+
+
+@pytest.mark.parametrize("beside", [False, True])
+@pytest.mark.parametrize("body", ["x" * 501, "   "])
+def test_rejected_chat_message_keeps_text_and_explains_error(world, beside, body):
+    users, clients = world
+    listing = db.create_listing(users[0], "item", "Chair", price=1)
+    chat = db.open_conversation(listing, users[1])
+    suffix = "?beside=1" if beside else ""
+    response = clients[0].post(f"/chat/{chat}{suffix}",
+        data={"body": body, "back": f"/market?chat={chat}"}, headers=ORIGIN)
+    assert response.status_code == 200
+    assert "Your text has been kept" in response.text
+    assert f'value="{body}"' in response.text
+    assert not db.messages_of(chat)
+
+
+def test_chat_accepts_500_characters(world):
+    users, clients = world
+    listing = db.create_listing(users[0], "item", "Chair", price=1)
+    chat = db.open_conversation(listing, users[1])
+    response = clients[0].post(f"/chat/{chat}", data={"body": "x" * 500},
+                               headers=ORIGIN, follow_redirects=False)
+    assert response.status_code == 303
+    assert db.messages_of(chat)[0]["body"] == "x" * 500
+
+
+def test_hidden_dock_and_message_fetch_do_not_mark_read(world):
+    users, clients = world
+    listing = db.create_listing(users[0], "item", "Chair", price=1)
+    chat = db.open_conversation(listing, users[1])
+    db.send_message(chat, users[1], "Unread until visible")
+    assert clients[0].get(f"/market?chat={chat}").status_code == 200
+    assert db.unread_total(users[0]) == 1
+    data = clients[0].get(f"/chat/{chat}/messages").json()
+    assert data["has_unread"]
+    assert db.unread_total(users[0]) == 1
+    latest_seen = data["messages"][-1]["id"]
+    db.send_message(chat, users[1], "Arrived after the last render")
+    assert clients[0].post(f"/chat/{chat}/read", data={"through": latest_seen},
+                           headers=ORIGIN).status_code == 200
+    messages = db.messages_of(chat)
+    assert messages[0]["read_at"] and not messages[1]["read_at"]
+    assert clients[2].post(f"/chat/{chat}/read", data={"through": latest_seen},
+                           headers=ORIGIN).status_code == 403
+    assert clients[0].post(f"/chat/{chat}/read", data={"through": "9" * 50},
+                           headers=ORIGIN).status_code == 400
+    assert clients[0].post(f"/chat/{chat}/read", data={"through": latest_seen}).status_code == 403
+
+
+def test_forgot_does_not_disclose_account_in_response_or_session(world, monkeypatch):
+    import base64
+    import json
+    from itsdangerous import TimestampSigner
+    deliveries = []
+    monkeypatch.setattr(main.mailer, "is_set_up", lambda: True)
+    monkeypatch.setattr(main.mailer, "send_code", lambda email, *args: deliveries.append(email) or True)
+    known = db.get_user(world[0][0])["email"]
+    pages = []
+    for email in (known, "99999@novasbe.pt"):
+        client = TestClient(main.app)
+        response = client.post("/forgot", data={"email": email}, headers=ORIGIN, follow_redirects=False)
+        assert response.status_code == 303
+        assert response.headers["location"] == "/forgot/reset"
+        session = json.loads(base64.b64decode(TimestampSigner(main.SECRET).unsign(client.cookies.get("session"))))
+        assert session == {"reset_email": email}
+        pages.append(client.get("/forgot/reset").text.replace(email, "EMAIL"))
+        response = client.post("/forgot/reset/resend", headers=ORIGIN, follow_redirects=False)
+        assert response.status_code == 303 and response.headers["location"] == "/forgot/reset?sent=1"
+        response = client.post("/forgot/reset", data={"d1": "x", "password": "NewPassword2!", "password2": "NewPassword2!"}, headers=ORIGIN)
+        assert "That code is invalid or expired" in response.text
+    assert pages[0] == pages[1]
+    assert deliveries == [known]
+
+
+def test_forgot_delivery_failure_stays_generic(world, monkeypatch):
+    monkeypatch.setattr(main.mailer, "is_set_up", lambda: True)
+    monkeypatch.setattr(main.mailer, "send_code", lambda *args: False)
+    client = TestClient(main.app)
+    response = client.post("/forgot", data={"email": db.get_user(world[0][0])["email"]},
+                           headers=ORIGIN, follow_redirects=False)
+    assert response.status_code == 303
+    assert "If" in client.get(response.headers["location"]).text

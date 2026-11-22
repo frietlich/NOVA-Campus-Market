@@ -43,5 +43,18 @@ Frido should review the diff and let CI finish before merging. Nobody has
 merged this branch automatically. Hosted HTTPS/proxy behavior, production
 storage and real outgoing email still require a deployment smoke test.
 
-Final local result: 196 tests passed, 62 subtests passed. Two pre-existing
+Final local result: 204 tests passed, 62 subtests passed. Two pre-existing
 FastAPI startup deprecation warnings remain. JavaScript syntax check passed.
+
+Follow-up audit fixes
+- Chat forms limit normal input to 500 characters. Rejected requests show an
+  explanation and preserve the draft, including when submitted from the dock.
+- Rendering a hidden dock or fetching messages does not mark anything read.
+  The browser acknowledges only displayed message IDs through an authorised,
+  origin-checked POST. Messages arriving after that display stay unread.
+- Password recovery uses the same redirect, page, session shape, resend response
+  and invalid-code message for existing and unknown addresses. Delivery runs
+  after the generic response; one-minute delivery cooldowns remain enforced.
+- Follow-up checks cover 500/501-character messages, blank drafts, hidden-panel
+  reads, newer unseen messages, forbidden read receipts, generic recovery,
+  delivery failure, and successful reset with old-session revocation.

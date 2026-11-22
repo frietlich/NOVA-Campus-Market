@@ -36,7 +36,7 @@
           message does not throw you out of whatever you were reading. -#}
       <input type="hidden" name="back" value="{{ here_with_chat }}">
       <label class="sr" for="dock-body">Message {{ dock_with.name }}</label>
-      <input id="dock-body" name="body" type="text" placeholder="Message" autocomplete="off">
+      <input id="dock-body" name="body" type="text" required maxlength="500" title="Up to 500 characters" placeholder="Message" autocomplete="off">
       <button class="send" type="submit" aria-label="Send message">{{ icon.send() }}</button>
     </form>
 

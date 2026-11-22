@@ -11,10 +11,10 @@
     </div>
 
     <h1>Set a new password</h1>
-    <p class="lead">We sent a 6-digit code to <strong>{{ pending.email }}</strong></p>
+    <p class="lead">If <strong>{{ pending.email }}</strong> has an account, a 6-digit code will be sent. Allow a minute between requests.</p>
 
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
-    {% if sent %}<div class="said">We sent you a new code.</div>{% endif %}
+    {% if sent %}<div class="said">If the account exists and a new code can be sent, it is on its way.</div>{% endif %}
 
     <span class="cap">6-digit code</span>
     <div class="code" id="code">

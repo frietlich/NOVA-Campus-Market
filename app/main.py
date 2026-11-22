@@ -851,8 +851,7 @@ def dock_for(request, me, template):
         if db.can_see_conversation(conv, me["id"]):
             other_id = (conv["starter_id"] if conv["owner_id"] == me["id"]
                         else conv["owner_id"])
-            if not speculative(request):
-                db.mark_read(conv["id"], me["id"])
+            # Rendering a dock does not mean it is visible (especially on phones).
             values["dock_open"] = conv
             values["dock_with"] = db.get_user(other_id)
             values["dock_messages"] = db.messages_of(conv["id"])
@@ -1229,69 +1228,68 @@ def forgot_form(request: Request):
     return page(request, "forgot.html")
 
 
-@app.post("/forgot")
-def forgot(request: Request, email: str = Form("")):
-    email = email.strip().lower()
+def deliver_reset_code(email):
+    """Delivery runs after the generic response; account existence stays private."""
     user = db.get_user_by_email(email)
-    if user is None:
-        # Again the same answer either way, so this page tells nobody which
-        # addresses exist. The code simply never arrives.
-        return page(request, "forgot.html", email=email,
-                    error="If that address has an account, the code is on its way.")
-    problem = send_code(user, "reset")
-    if problem:
-        return page(request, "forgot.html", email=email, error=problem)
-    request.session["reset_id"] = user["id"]
+    if user:
+        problem = send_code(user, "reset")
+        if problem and not problem.startswith("Wait"):
+            import logging
+            logging.getLogger(__name__).warning("Password reset delivery unavailable")
+
+
+def reset_email(request):
+    return request.session.get("reset_email", "")
+
+
+@app.post("/forgot")
+def forgot(request: Request, background: BackgroundTasks, email: str = Form("")):
+    email = email.strip().lower()[:254]
+    request.session.pop("reset_id", None)
+    request.session["reset_email"] = email
+    background.add_task(deliver_reset_code, email)
     return go("/forgot/reset")
 
 
 @app.get("/forgot/reset")
 def reset_form(request: Request, error: str = "", sent: int = 0):
-    user = waiting_or_none(request, "reset_id")
-    if user is None:
+    email = reset_email(request)
+    if not email:
         return go("/forgot")
-    return page(request, "reset.html", pending=user, error=error, sent=sent)
+    return page(request, "reset.html", pending={"email": email}, error=error, sent=sent)
 
 
 @app.post("/forgot/reset/resend")
-def reset_resend(request: Request):
-    """Another code for somebody already on the page, without sending them
-    back to the form that asks for an address they have just given."""
-    user = waiting_or_none(request, "reset_id")
-    if user is None:
+def reset_resend(request: Request, background: BackgroundTasks):
+    email = reset_email(request)
+    if not email:
         return go("/forgot")
-    age = db.code_age(user["id"])
-    if age is not None and age < RESEND_SECONDS:
-        wait = int(RESEND_SECONDS - age) + 1
-        return go(reset_url(f"Wait {wait} seconds, then ask again."))
-    problem = send_code(user, "reset")
-    return go(reset_url(problem) if problem else reset_url(sent=True))
+    background.add_task(deliver_reset_code, email)
+    return go(reset_url(sent=True))
 
 
 @app.post("/forgot/reset")
 def reset(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = Form(""),
           d4: str = Form(""), d5: str = Form(""), d6: str = Form(""),
           password: str = Form(""), password2: str = Form("")):
-    user = waiting_or_none(request, "reset_id")
-    if user is None:
+    email = reset_email(request)
+    if not email:
         return go("/forgot")
-    user_id = user["id"]
 
     def fail(message):
-        return page(request, "reset.html", pending=user, error=message)
+        return page(request, "reset.html", pending={"email": email}, error=message)
 
     if password != password2:
         return fail("The two passwords are not the same.")
     wrong = passwords.problem(password)
     if wrong:
         return fail(wrong)
-    result = db.check_code(user_id, "".join([d1, d2, d3, d4, d5, d6]).strip(), "reset")
-    if result != "ok":
-        return fail(CODE_ERRORS[result])
-
-    db.set_password(user_id, passwords.hash_password(password))
-    request.session.pop("reset_id", None)
-    sign_in(request, user_id)
+    user = db.get_user_by_email(email)
+    code = "".join([d1, d2, d3, d4, d5, d6]).strip()
+    if user is None or db.check_code(user["id"], code, "reset") != "ok":
+        return fail("That code is invalid or expired. Wait a minute and request a new one.")
+    db.set_password(user["id"], passwords.hash_password(password))
+    sign_in(request, user["id"])
     return go("/housing")
 
 
@@ -2288,11 +2286,23 @@ def chat_messages(request: Request, conv_id: int):
     conv = db.get_conversation(conv_id) if me else None
     if not me or not db.can_see_conversation(conv, me["id"]):
         return JSONResponse({"error": "Access refused"}, status_code=403)
-    if not speculative(request):
-        db.mark_read(conv_id, me["id"])
     messages = db.messages_of(conv_id)
     html = templates.env.get_template("partials/messages.html").render(messages=messages, me=me)
-    return JSONResponse({"messages": [dict(m) for m in messages], "html": html})
+    return JSONResponse({"messages": [dict(m) for m in messages], "html": html,
+                         "has_unread": any(m["sender_id"] != me["id"] and not m["read_at"] for m in messages)})
+
+
+@app.post("/chat/{conv_id}/read")
+def chat_read(request: Request, conv_id: int, through: str = Form("")):
+    me = me_or_none(request)
+    conv = db.get_conversation(conv_id) if me else None
+    if not me or not db.can_see_conversation(conv, me["id"]):
+        return JSONResponse({"error": "Access refused"}, status_code=403)
+    through_id = safe_id(through)
+    if not through_id:
+        return JSONResponse({"error": "Invalid message"}, status_code=400)
+    db.mark_read(conv_id, me["id"], through_id)
+    return JSONResponse({"ok": True})
 
 
 @app.post("/chat/{conv_id}")
@@ -2304,6 +2314,13 @@ def chat_send(request: Request, background: BackgroundTasks, conv_id: int,
     conv = db.get_conversation(conv_id)
     if not db.can_see_conversation(conv, me["id"]):
         return page(request, "missing.html", active="chats")
+    if not body.strip() or len(body.strip()) > 500:
+        away = conv["archived_owner"] if conv["owner_id"] == me["id"] else conv["archived_starter"]
+        other_id = conv["starter_id"] if conv["owner_id"] == me["id"] else conv["owner_id"]
+        return page(request, "chat.html", conv=conv, other=db.get_user(other_id),
+                    messages=db.messages_of(conv_id), archived=bool(away), active="chats", me=me,
+                    back=ours(back) or "/chats", draft=body,
+                    message_error="Write a message of 1–500 characters. Your text has been kept.")
     if db.send_message(conv_id, me["id"], body):
         background.add_task(push.new_message, conv, me["id"], body.strip())
     keep = ours(back)

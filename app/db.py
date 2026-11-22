@@ -1164,12 +1164,12 @@ def send_message(conv_id, sender_id, body):
     return new_id
 
 
-def mark_read(conv_id, reader_id):
+def mark_read(conv_id, reader_id, through_id=9223372036854775807):
     conn = connect()
     conn.execute(
         "UPDATE messages SET read_at = ?"
-        " WHERE conversation_id = ? AND sender_id <> ? AND read_at IS NULL",
-        (now(), conv_id, reader_id),
+        " WHERE conversation_id = ? AND sender_id <> ? AND read_at IS NULL AND id <= ?",
+        (now(), conv_id, reader_id, through_id),
     )
     conn.commit()
     conn.close()
