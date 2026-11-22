@@ -415,7 +415,7 @@ def main():
                              # which is how anybody writing it thinks of it.
                              # The column holds the sum, so it is worked out
                              # here rather than stored twice.
-                             deposit=rent * dep, minutes_campus=mins,
+                             deposit=(rent * dep if dep is not None else None), minutes_campus=mins,
                              flatmates=mates, features=has,
                              days_ago=2 + n, views=34 - n * 3)
     # Three places are real adverts on housing sites (checked 18 Nov 2026),
