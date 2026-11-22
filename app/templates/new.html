@@ -76,6 +76,7 @@
             <input id="external_url" name="external_url" type="text" inputmode="url"
                    autocomplete="off" autocapitalize="off" spellcheck="false"
                    maxlength="500" placeholder="idealista.pt/… or uniplaces.com/…"
+                   value="{{ v.external_url }}"
                    aria-label="Link to the same place on a housing site">
           </div>
           <button class="btn btn--quiet autofill-go" type="button" id="autofill-go" disabled>Fill in</button>
@@ -99,12 +100,23 @@
     {% if tab.kind == 'ticket' or (tab.kind == 'housing' and SCREENSHOTS_ON()) %}
     <div class="autofill-box" id="autofill" data-kind="{{ tab.kind }}" data-max="{{ SCREENSHOTS_MAX }}">
       {% if tab.kind == 'ticket' %}
+      {#- The same field as on a room, and it does the same two things: it
+          fills the form in, and it stays on the entry as a button to the
+          event. Checked against the ticket sites while you type. -#}
       <label class="label" for="autofill_url">Link to the event</label>
-      <div class="autofill-row">
-        <input class="input" id="autofill_url" type="text" inputmode="url"
-               autocomplete="off" autocapitalize="off" spellcheck="false"
-               maxlength="500" placeholder="luma.com/… or dice.fm/event/…">
-        <button class="btn btn--quiet autofill-go" type="button" id="autofill-go">Fill in</button>
+      <div class="linkfield" data-platforms='{{ TICKETS.PLATFORMS | tojson }}'
+           data-names="{{ TICKETS.PLATFORM_NAMES | join(', ') }}">
+        <div class="autofill-row">
+          <div class="prefixed">
+            <span class="linkfield-icon">{{ icon.link(18) }}</span>
+            <input id="autofill_url" name="external_url" type="text" inputmode="url"
+                   autocomplete="off" autocapitalize="off" spellcheck="false"
+                   maxlength="500" placeholder="luma.com/… or dice.fm/event/…"
+                   value="{{ v.external_url }}"
+                   aria-label="Link to the same event on a ticket site">
+          </div>
+          <button class="btn btn--quiet autofill-go" type="button" id="autofill-go">Fill in</button>
+        </div>
       </div>
       {% endif %}
       {% if SCREENSHOTS_ON() %}
@@ -115,9 +127,11 @@
       <input class="sr" id="autofill_shot" type="file" multiple
              accept="image/png,image/jpeg,image/webp">
       {% endif %}
-      <p class="note autofill-status" id="autofill-status" aria-live="polite">
+      <p class="note autofill-status{% if tab.kind == 'ticket' %} linkfield-status{% endif %}"
+         id="autofill-status" aria-live="polite">
         {% if tab.kind == 'ticket' %}
-          Optional. Links work with Luma, DICE, Xceed, BOL and Eventbrite.
+          Optional. A link goes on your entry as a button. Filling in works
+          with Luma, DICE, Xceed, BOL and Eventbrite.
           {% if SCREENSHOTS_ON() %}Screenshots work with any site, also Shotgun and RA.{% endif %}
         {% else %}
           Optional. Already on Idealista, Imovirtual or Uniplaces? Take up to

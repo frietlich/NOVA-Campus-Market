@@ -626,7 +626,8 @@ EDITABLE = ("title", "description", "price", "info", "category", "condition",
             "event_date", "event_time", "place", "address", "quantity",
             "course_id", "hand_in", "group_size", "available_from",
             "months_min", "bills_included", "bills_estimate",
-            "deposit", "minutes_campus", "flatmates", "features")
+            "deposit", "minutes_campus", "flatmates", "features",
+            "external_url")
 
 
 def update_listing(listing_id, owner_id, **fields):

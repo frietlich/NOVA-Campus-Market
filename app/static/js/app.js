@@ -1147,7 +1147,11 @@
   const box = document.querySelector(".linkfield");
   if (!box) return;
   const field = box.querySelector("input");
-  const status = box.querySelector(".linkfield-status");
+  // On a room the line sits inside the field's box; on a ticket it is the
+  // shared status line further down, under the screenshot button.
+  const status = box.querySelector(".linkfield-status")
+    || document.querySelector(".linkfield-status");
+  if (!status) return;
   const platforms = JSON.parse(box.dataset.platforms || "[]");
   const names = box.dataset.names || "";
   const hint = status.innerHTML;

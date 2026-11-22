@@ -274,6 +274,7 @@ templates.env.globals["SORT_OPTIONS"] = SORT_OPTIONS
 templates.env.globals["SORT_SHORT"] = SORT_SHORT
 templates.env.globals["PRICE_BANDS"] = PRICE_BANDS
 templates.env.globals["HOUSING"] = housing
+templates.env.globals["TICKETS"] = ticket_import
 templates.env.globals["SCREENSHOTS_ON"] = screenshots.is_set_up
 templates.env.globals["SCREENSHOTS_MAX"] = screenshots.MAX_IMAGES
 templates.env.globals["PUSH_ON"] = push.is_set_up
@@ -1764,12 +1765,22 @@ async def new_listing(request: Request,
         if not flatmates.strip().isdigit() or int(flatmates) > FLATMATES_MAX:
             return oops(f"Say how many flatmates there are, 0 to {FLATMATES_MAX}.")
 
-    link = housing.clean_listing_url(external_url) if kind == "housing" else None
-    if kind == "housing" and external_url.strip() and not link:
-        return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
-                    my_courses=mine,
-                    error="That link is not from a housing site we know. "
-                          "Use one from " + ", ".join(housing.PLATFORM_NAMES) + ".")
+    # The link to the same thing somewhere else. A room has housing sites, a
+    # ticket has ticket sites, and both are checked against their own list,
+    # so nothing we have not vetted ever becomes a button on an entry.
+    sites = {"housing": (housing.clean_listing_url, housing.PLATFORM_NAMES, "housing"),
+             "ticket": (ticket_import.clean_url, ticket_import.PLATFORM_NAMES, "ticket")}
+    link = None
+    if kind in sites:
+        clean, names, what = sites[kind]
+        link = clean(external_url)
+        if external_url.strip() and not link:
+            # Through oops, like every other refusal here, so the form comes
+            # back with everything the student typed still in it. Writing the
+            # page by hand here left out the typed values and turned a bad
+            # link into a crash.
+            return oops(f"That link is not from a {what} site we know. "
+                        "Use one from " + ", ".join(names) + ".")
 
     if kind == "group" and not hand_in.strip():
         return oops("A group entry needs the date the group has to be together.")

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% import "partials/icons.html" as icon %}
 {% import "partials/avatar.html" as av %}
+{% import "partials/queue.html" as q %}
 {% import "partials/art.html" as art %}
 {% block title %} · {{ listing.title }}{% endblock %}
 
@@ -332,86 +333,44 @@
 
     {% elif listing.description %}<p class="text">{{ listing.description }}</p>{% endif %}
 
-    {% if listing.type == 'ticket' and listing.address %}
-      {# No map of our own. The phone already has one, so we hand the address
-         over to it. Same row as on a room: the name of the place, then the
-         address under it, because on a ticket the venue is what you know
-         and the street is the detail. #}
-      <div class="rows rows--out">
-        <a class="row" href="https://maps.google.com/?q={{ listing.address | urlencode }}"
-           target="_blank" rel="noopener">
-          <span class="row-sign">{{ icon.pin(21, 1.7) }}</span>
-          <div class="row-body">
-            <span class="row-name">{{ listing.place or 'Open in maps' }}</span>
-            <span class="row-meta">{{ listing.address }}</span>
-          </div>
-          <span class="row-go">{{ icon.chev(17) }}</span>
-        </a>
-      </div>
-    {% endif %}
-
-    {# The queue. Whoever writes first is first, and everyone can see where
-       they stand without asking "is it still available?". Buyers only see
-       numbers, the owner sees the names, in order, each one a way into the
-       chat. Groups are left out: there several people can get a spot. #}
-    {% if listing.type != 'group' %}
-      {% set asked = queue | length %}
-      {% if listing.owner_id == me.id %}
-        <div class="queue">
-          <div class="queue-head">
-            <b>{% if asked %}{{ asked }} {{ 'student' if asked == 1 else 'students' }} asked, in order{% else %}Nobody has asked yet{% endif %}</b>
-            <span>{% if asked %}First to write is on top. When it is gone, close the entry and everyone sees it is taken.{% else %}Everyone who writes shows up here, first one on top.{% endif %}</span>
-          </div>
-          {% if asked %}
-            <div class="queue-rows">
-              {% for q in queue %}
-                {#- Carries the way back, so the arrow in that chat returns to
-                    this entry and not to the list of chats. -#}
-                <a class="queue-row" href="/chat/{{ q.conversation_id }}?back=/listing/{{ listing.id }}">
-                  <span class="queue-n">{{ loop.index }}</span>
-                  {{ av.avatar(q.name, q.photo, "sm") }}
-                  <span class="queue-who">
-                    <b class="truncate">{{ q.name }}</b>
-                    <span>wrote {{ q.first_at | ago }}</span>
-                  </span>
-                  <span class="queue-go">Chat</span>
-                </a>
-              {% endfor %}
-            </div>
+    {% if listing.type == 'ticket' %}
+      {# Where it is, and where the ticket came from. No map of our own: the
+         phone already has one, so we hand the address over to it. Same pair
+         of rows as on a room, because it is the same pair of questions. #}
+      {% set other = TICKETS.platform_of(listing.external_url) %}
+      {% if listing.address or other %}
+        <div class="rows rows--out">
+          {% if listing.address %}
+            <a class="row" href="https://maps.google.com/?q={{ listing.address | urlencode }}"
+               target="_blank" rel="noopener">
+              <span class="row-sign">{{ icon.pin(21, 1.7) }}</span>
+              <div class="row-body">
+                <span class="row-name">{{ listing.place or 'Open in maps' }}</span>
+                <span class="row-meta">{{ listing.address }}</span>
+              </div>
+              <span class="row-go">{{ icon.chev(17) }}</span>
+            </a>
+          {% endif %}
+          {% if other %}
+            <a class="row" href="{{ other.url }}" target="_blank"
+               rel="noopener noreferrer nofollow">
+              <span class="row-sign">{{ icon.globe(21, 1.7) }}</span>
+              <div class="row-body">
+                <span class="row-name">See it on {{ other.name }}</span>
+                <span class="row-meta">{{ other.domain }}</span>
+              </div>
+              <span class="row-go row-go--flat">{{ icon.external(18) }}<span class="sr">opens in a new tab</span></span>
+            </a>
           {% endif %}
         </div>
-      {% elif listing.status == 'open' %}
-        {% set shown = 9 %}
-        {% set spots = asked if my_place else asked + 1 %}
-        <div class="queue queue--buyer">
-          {# One dot per student who asked. Yours is the big one; before you
-             write it is dashed, the spot you would get. #}
-          {% set target = my_place or spots %}
-          {% set ghost = 'qd--ghost' if not my_place else '' %}
-          <div class="queue-dots" aria-hidden="true">
-            {% for n in range(1, [spots, shown] | min + 1) %}
-              <span class="qd {{ ('qd--me ' ~ ghost) if n == target else '' }}"></span>
-            {% endfor %}
-            {% if spots > shown %}
-              <span class="qd-more">+{{ spots - shown }}</span>
-              {% if target > shown %}<span class="qd qd--me {{ ghost }}"></span>{% endif %}
-            {% endif %}
-          </div>
-          <div class="queue-head">
-            {% if my_place %}
-              <b>You were the {{ my_place | ordinal }} to ask</b>
-              <span>{% if my_place == 1 %}Nobody wrote before you.{% else %}{{ my_place - 1 }} {{ 'student' if my_place == 2 else 'students' }} wrote before you.{% endif %}
-                {{ listing.owner_name.split(' ')[0] }} sees everyone in the order they wrote.</span>
-            {% elif asked %}
-              <b>{{ asked }} {{ 'student has' if asked == 1 else 'students have' }} asked already</b>
-              <span>Write now and you are {{ (asked + 1) | ordinal }} in line.</span>
-            {% else %}
-              <b>Nobody has asked yet</b>
-              <span>Write now and you are first in line.</span>
-            {% endif %}
-          </div>
-        </div>
       {% endif %}
+    {% endif %}
+
+    {#- Where you stand, on somebody else's open entry. Not on your own,
+        and not on a group, where several people can get a spot. -#}
+    {% if listing.type != 'group' and listing.owner_id != me.id
+          and listing.status == 'open' %}
+      {{ q.queue(queue | length, my_place) }}
     {% endif %}
 
     <div class="rule"></div>

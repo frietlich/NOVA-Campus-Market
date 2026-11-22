@@ -400,3 +400,49 @@ def test_push_does_not_follow_redirects(monkeypatch):
 def test_supported_browser_push_providers(endpoint):
     from app import push
     assert push.valid_endpoint(endpoint)
+
+
+def test_ticket_keeps_a_known_link_and_refuses_the_rest(world):
+    """A ticket stores its event link the same way a room stores its advert.
+
+    Only a site on the ticket list gets through, and a housing link is not
+    one, or the button on a ticket could send somebody to a flat.
+    """
+    users, clients = world
+    good = {"kind": "ticket", "title": "Student night", "price": "12",
+            "quantity": "1", "event_date": "2027-02-01", "event_time": "23:00",
+            "place": "Urban Beach", "address": "Cais da Viscondessa, 1200-109 Lisboa",
+            "description": "One ticket left", "category": "party",
+            "external_url": "lu.ma/student-night"}
+    assert clients[0].post("/new", data=good, headers=ORIGIN,
+                           follow_redirects=False).status_code == 303
+    kept = db.listings_of_user(users[0])[0]
+    assert kept["external_url"] == "https://lu.ma/student-night"
+
+    for bad in ("https://idealista.pt/imovel/1/", "https://evil.com/lu.ma"):
+        before = len(db.listings_of_user(users[0]))
+        response = clients[0].post(
+            "/new", data=dict(good, title="Another", external_url=bad), headers=ORIGIN)
+        assert response.status_code == 200
+        assert "not from a ticket site we know" in response.text
+        assert len(db.listings_of_user(users[0])) == before
+
+
+def test_an_entry_can_lose_its_link_again(world):
+    """external_url is editable, so a dead advert can be taken off."""
+    users, clients = world
+    fields = {"kind": "housing", "title": "A room", "price": "400",
+              "bills_estimate": "35", "category": "shared_flat", "flatmates": "2",
+              "available_from": "2027-02-01", "description": "A furnished room",
+              "place": "carcavelos", "address": "Rua de Teste 1, 2775-000 Carcavelos",
+              "deposit": "400", "months_min": "1", "minutes_campus": "10",
+              "external_url": "badi.com/room/9"}
+    assert clients[0].post("/new", data=fields, headers=ORIGIN,
+                           follow_redirects=False).status_code == 303
+    listing = db.listings_of_user(users[0])[0]
+    assert listing["external_url"] == "https://badi.com/room/9"
+
+    clients[0].post("/new", data=dict(fields, edit_id=str(listing["id"]),
+                                      external_url=""), headers=ORIGIN,
+                    follow_redirects=False)
+    assert db.get_listing(listing["id"])["external_url"] is None

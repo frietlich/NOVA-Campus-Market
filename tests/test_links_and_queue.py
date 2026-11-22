@@ -1,9 +1,9 @@
-"""The link to another housing site, and the queue of who asked first."""
+"""The link to the same thing on another site, and the queue of who asked first."""
 import os
 import tempfile
 import unittest
 
-from app import db, housing
+from app import db, housing, ticket_import
 
 
 class HousingLinkTests(unittest.TestCase):
@@ -31,6 +31,45 @@ class HousingLinkTests(unittest.TestCase):
         self.assertEqual(other["name"], "Idealista")
         self.assertEqual(other["domain"], "idealista.pt")
         self.assertIsNone(housing.platform_of(None))
+
+
+class TicketLinkTests(unittest.TestCase):
+    """A ticket carries the same kind of link, checked against its own list."""
+
+    def test_links_from_known_ticket_sites_are_kept(self):
+        self.assertEqual(ticket_import.clean_url("lu.ma/logos-gcp2"),
+                         "https://lu.ma/logos-gcp2")
+        self.assertEqual(ticket_import.clean_url("http://www.eventbrite.pt/e/123#x"),
+                         "https://www.eventbrite.pt/e/123")
+
+    def test_links_anywhere_else_are_refused(self):
+        for bad in ("https://evil.com/lu.ma",
+                    "https://lu.ma.evil.com/",
+                    "https://fakedice.fm/",
+                    "https://me:secret@lu.ma/",
+                    "javascript:alert(1)",
+                    "lu.ma/a b",
+                    ""):
+            with self.subTest(link=bad):
+                self.assertIsNone(ticket_import.clean_url(bad))
+
+    def test_a_housing_link_is_not_a_ticket_link(self):
+        """The two lists stay apart, or a room would end up on the ticket tab."""
+        self.assertIsNone(ticket_import.clean_url("https://idealista.pt/imovel/1/"))
+        self.assertIsNone(housing.clean_listing_url("https://lu.ma/logos-gcp2"))
+
+    def test_the_button_names_the_site(self):
+        other = ticket_import.platform_of("https://shotgun.live/en/events/x")
+        self.assertEqual(other["name"], "Shotgun")
+        self.assertEqual(other["domain"], "shotgun.live")
+        self.assertIsNone(ticket_import.platform_of(None))
+        self.assertIsNone(ticket_import.platform_of("https://example.com/x"))
+
+    def test_both_helpers_answer_in_the_same_shape(self):
+        """The entry page draws one row for either kind, so the keys must match."""
+        self.assertEqual(
+            sorted(ticket_import.platform_of("https://dice.fm/event/1")),
+            sorted(housing.platform_of("https://badi.com/room/1")))
 
 
 class QueueTests(unittest.TestCase):

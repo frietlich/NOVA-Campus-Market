@@ -2520,7 +2520,9 @@ img { display: block; max-width: 100%; }
    is the one that must not be turned on its side. */
 .row-go--flat { transform: none; align-items: center; }
 
-/* The queue: where you stand, or, for the owner, who asked in what order. */
+/* The queue: where you stand on somebody else's entry. Your own entry
+   does not draw it; the chats are already that list, in the order that
+   helps you answer. */
 .queue {
   margin-top: 18px;
   padding: 14px;
@@ -2551,34 +2553,6 @@ img { display: block; max-width: 100%; }
 .qd-more { font-size: 12px; font-weight: 700; color: var(--muted); }
 @keyframes qd-pulse { 50% { transform: scale(0.86); } }
 @media (prefers-reduced-motion: reduce) { .qd--ghost { animation: none; } }
-
-.queue-rows {
-  display: flex; flex-direction: column;
-  border-top: 1px solid var(--line);
-}
-.queue-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--line);
-  color: inherit;
-}
-.queue-row:last-child { border-bottom: none; padding-bottom: 0; }
-.queue-n {
-  width: 24px; height: 24px; flex: none;
-  border-radius: 999px;
-  background: var(--accent-soft); color: var(--accent);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 12px; font-weight: 800;
-}
-.queue-row:first-child .queue-n { background: var(--accent); color: #FFFFFF; }
-.queue-who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.queue-who b { font-size: 14px; font-weight: 600; }
-.queue-who span { font-size: 12px; color: var(--muted); }
-.queue-go { flex: none; font-size: 13px; font-weight: 700; color: var(--accent); }
-
-@media (prefers-color-scheme: dark) {
-  .elsewhere-mark, .queue-row:first-child .queue-n { color: #0B0B0F; }
-}
 
 /* ---------------------------------------------------------- the gallery */
 
