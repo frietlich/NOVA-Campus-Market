@@ -1,0 +1,55 @@
+{#- The chats, in a column of their own, on wide screens only.
+
+    The whole point of the wide layout: a room on the left and the person
+    letting it on the right, at the same time. Which thread is open is in
+    the address as ?chat=<id>, so it survives a reload and a sent message,
+    and going back closes it again without any script having to remember.
+
+    The stylesheet hides this column below 1280 pixels, where there is no
+    room for it, and the phone never sees it at all. -#}
+{% import "partials/icons.html" as icon %}
+{% import "partials/avatar.html" as av %}
+
+<aside class="dock" id="chat-panel" aria-label="Chats">
+
+  {% if dock_open %}
+    <div class="dock-head">
+      <a class="icon-btn icon-btn--small" href="{{ here }}" aria-label="Back to all chats">{{ icon.back(18) }}</a>
+      <a class="dock-who" href="/chat/{{ dock_open.id }}">
+        {{ av.avatar(dock_with.name, dock_with.photo, "sm") }}
+        <span class="dock-who-text">
+          <b class="truncate">{{ dock_with.name }}</b>
+          <span class="truncate">{{ dock_open.title }}</span>
+        </span>
+      </a>
+      <a class="icon-btn icon-btn--small" href="/listing/{{ dock_open.listing_id }}"
+         aria-label="Open the entry this is about">{{ icon.external(16) }}</a>
+      <button type="button" class="icon-btn icon-btn--small dock-close" data-close-dock aria-label="Hide chat panel" title="Hide chats">{{ icon.close() }}</button>
+    </div>
+
+    <div class="dock-thread" data-dock-thread data-live-chat="{{ dock_open.id }}">
+      {% with messages=dock_messages %}{% include "partials/messages.html" %}{% endwith %}
+    </div>
+
+    <form class="composer composer--dock" method="post" action="/chat/{{ dock_open.id }}?beside=1">
+      {#- Back to this very page with the thread still open, so sending a
+          message does not throw you out of whatever you were reading. -#}
+      <input type="hidden" name="back" value="{{ here_with_chat }}">
+      <label class="sr" for="dock-body">Message {{ dock_with.name }}</label>
+      <input id="dock-body" name="body" type="text" required maxlength="500" title="Up to 500 characters" placeholder="Message" autocomplete="off">
+      <button class="send" type="submit" aria-label="Send message">{{ icon.send() }}</button>
+    </form>
+
+  {% else %}
+    <div class="dock-head dock-head--list">
+      <b>Chats</b>
+      <div class="dock-head-actions">
+        <a class="link link--tiny" href="/chats">All chats</a>
+        <button type="button" class="icon-btn icon-btn--small dock-close" data-close-dock aria-label="Hide chat panel" title="Hide chats">{{ icon.close() }}</button>
+      </div>
+    </div>
+
+    <div data-live-chat-list>{% include "partials/chat_list.html" %}</div>
+  {% endif %}
+
+</aside>

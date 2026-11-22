@@ -61,6 +61,10 @@
 {% block body %}
 <div class="app detail" data-kind="{{ listing.type }}">
 
+  {#- Whatever the top of the entry is, a photo strip, a ticket stub or a
+      pinned notice, it is one block. On a wide screen it becomes the left
+      column and stays put while the facts beside it scroll. -#}
+  <div class="detail-top">
   {% if listing.type == 'ticket' %}
 
     {# A ticket has no photo, so the block carries the three things you look
@@ -195,6 +199,8 @@
       {% endif %}
     </div>
   {% endif %}
+
+  </div>
 
   {#- The bar at the foot floats over the page, so the page has to end above
       it. On your own entry the bar carries two buttons stacked and is that
@@ -434,7 +440,12 @@
           an entry's chats. Closed has one name in this app. -#}
       <button class="btn btn--quiet" type="button" disabled>Entry closed</button>
     {% else %}
+      {#- On a wide screen the chat belongs in the column on the right, beside
+          the entry you are reading, not on a page of its own. The box below
+          is filled in by the script when that column is actually on screen,
+          so a phone keeps going to the chat page as before. -#}
       <form method="post" action="/listing/{{ listing.id }}/chat">
+        <input type="hidden" name="beside" value="" data-beside>
         <button class="btn" type="submit">{% if my_place %}Open your chat{% else %}Message {{ listing.owner_name.split(' ')[0] }}{% endif %}</button>
       </form>
     {% endif %}
