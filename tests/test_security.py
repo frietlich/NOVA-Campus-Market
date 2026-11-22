@@ -316,7 +316,7 @@ def test_listing_edit_preserves_owner_and_rejects_invalid_values(world):
     assert db.get_listing(listing)["price"] == 12.5
 
 
-@pytest.mark.parametrize("value", ["²", "9" * 5000])
+@pytest.mark.parametrize("value", ["\u00b2", "9" * 5000])
 def test_invalid_numeric_fields_do_not_crash(world, value):
     _, clients = world
     response = clients[0].post("/new", headers=ORIGIN, data={
