@@ -2534,10 +2534,22 @@ async def security_checks(request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"
     response.headers["Content-Security-Policy"] = "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-    response.headers["Cache-Control"] = "no-store"
+    # Every page carries live state and must never come out of the browser's
+    # store. The stylesheet and the scripts are the opposite: they already
+    # have the file's own timestamp in their address, so a new one is a new
+    # address, and telling the browser to forget them means fetching the
+    # same unchanged file on every single page.
+    if not request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store"
     if not LOCAL_DEMO:
         response.headers["Strict-Transport-Security"] = "max-age=31536000"
     return response
 
 
-app.add_middleware(SessionMiddleware, secret_key=SECRET, max_age=60 * 60 * 8, https_only=not LOCAL_DEMO, same_site="lax")
+# Thirty days, not eight hours. A marketplace between students is not a
+# bank: being thrown out every morning costs more in people giving up than
+# a long session costs in risk, and the cookie is signed, Secure and
+# HttpOnly either way.
+app.add_middleware(SessionMiddleware, secret_key=SECRET,
+                   max_age=60 * 60 * 24 * 30,
+                   https_only=not LOCAL_DEMO, same_site="lax")
