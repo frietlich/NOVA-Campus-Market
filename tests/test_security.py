@@ -237,7 +237,8 @@ def test_housing_fields_survive_valid_publication(world):
     response = clients[0].post("/new", data={
         "kind":"housing", "title":"New room", "price":"400", "bills_estimate":"35",
         "category":"shared_flat", "flatmates":"2", "available_from":"2027-02-01",
-        "description":"A furnished room", "place":"carcavelos", "address":"Test Street 1, 2775-123 Carcavelos",
+        "description":"A furnished room", "place":"carcavelos",
+        "address":"Rua de Teste 1, 2775-000 Carcavelos",
         "deposit":"400", "months_min":"1", "minutes_campus":"10",
     }, headers=ORIGIN, follow_redirects=False)
     assert response.status_code == 303
