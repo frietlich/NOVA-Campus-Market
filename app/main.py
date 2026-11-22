@@ -813,6 +813,61 @@ async def bad_address(request: Request, error: RequestValidationError):
 TAB_PAGES = ("listings.html", "chats.html")
 PLACES = TAB_PAGES + ("profile.html",)
 
+# The screens that carry the bar at the foot of a phone. Exactly the four
+# that drew it themselves before the nav moved into the shell, and no more:
+# a form or an entry is a place you came to from one of these and leaves by
+# its own arrow, so a bar underneath it would offer a second way out that
+# throws away what you were doing. On a wide screen the rail is on every
+# screen regardless, which is the point of a rail.
+FOOT_BAR = PLACES + ("missing.html",)
+
+# ------------------------------------------------------------- the wide view
+
+# On a wide screen the chats stand in a column of their own, open the whole
+# time, so you can read an entry and answer about it without leaving either.
+# The column is not drawn on the two screens that are already the chats, nor
+# while signed out, and never on a phone, where the stylesheet hides it.
+DOCK_OFF = ("chats.html", "chat.html", "dev.html")
+DOCK_CHATS = 12
+
+
+def dock_for(request, me, template):
+    """What the chat column shows: the list, and the thread if one is open.
+
+    Which thread is open is written in the address as ?chat=<id>, so it
+    survives a reload, a sent message and the back button without a line of
+    script. Anything we are not allowed to see simply does not open.
+    """
+    if me is None or template in DOCK_OFF:
+        return {"dock": False}
+
+    values = {"dock": True,
+              "dock_chats": db.conversations_of(me["id"])[:DOCK_CHATS],
+              "dock_open": None, "dock_with": None, "dock_messages": []}
+
+    asked = (request.query_params.get("chat") or "").strip()
+    if asked.isdigit():
+        conv = db.get_conversation(int(asked))
+        if db.can_see_conversation(conv, me["id"]):
+            other_id = (conv["starter_id"] if conv["owner_id"] == me["id"]
+                        else conv["owner_id"])
+            if not speculative(request):
+                db.mark_read(conv["id"], me["id"])
+            values["dock_open"] = conv
+            values["dock_with"] = db.get_user(other_id)
+            values["dock_messages"] = db.messages_of(conv["id"])
+            values["here_with_chat"] = here(request, chat=conv["id"])
+    return values
+
+
+def here(request, chat=None):
+    """This page's own address, with the chat column's state written into it."""
+    parts = {k: v for k, v in request.query_params.items() if k != "chat"}
+    if chat is not None:
+        parts["chat"] = str(chat)
+    tail = urlencode(parts)
+    return request.url.path + ("?" + tail if tail else "")
+
 
 def page(request, template, **values):
     """Render a template with the things every page needs.
@@ -836,6 +891,10 @@ def page(request, template, **values):
     values.setdefault("theme", (me["theme"] or "") if me else "")
     values.setdefault("unread", db.unread_total(me["id"]) if me else 0)
     values.setdefault("active", "")
+    values.setdefault("foot_bar", template in FOOT_BAR)
+    for key, value in dock_for(request, me, template).items():
+        values.setdefault(key, value)
+    values.setdefault("here", here(request))
     if template in PLACES:
         where = request.url.path
         if request.url.query:
@@ -1456,7 +1515,7 @@ def listing_save(request: Request, listing_id: int):
 
 
 @app.post("/listing/{listing_id}/chat")
-def listing_chat(request: Request, listing_id: int):
+def listing_chat(request: Request, listing_id: int, beside: str = Form("")):
     me = me_or_none(request)
     if me is None:
         return go("/start")
@@ -1464,9 +1523,13 @@ def listing_chat(request: Request, listing_id: int):
     if row is None or row["owner_id"] == me["id"]:
         return go(f"/listing/{listing_id}")
     conv_id = db.open_conversation(listing_id, me["id"])
-    # The way back belongs to the entry you wrote from, not to the chats
-    # tab. Writing about a room and landing in a list of chats loses the
+    # Wide enough for the chat column, and the chat opens in it: the entry
+    # stays on screen and you write about it while looking at it. Otherwise
+    # the chat page, with the way back pointing at the entry you wrote from,
+    # because writing about a room and landing in a list of chats loses the
     # room you were looking at.
+    if beside == "1":
+        return go(f"/listing/{listing_id}?chat={conv_id}")
     return go(f"/chat/{conv_id}?back=/listing/{listing_id}")
 
 
