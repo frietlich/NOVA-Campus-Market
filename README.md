@@ -13,7 +13,7 @@ You need Python 3.12 or newer (3.12 is used in CI). From this folder, once:
     python3 -m venv .venv
     source .venv/bin/activate
     pip install -r requirements.txt
-    python -m app.seed
+    python -m app.seed --wipe
 
 And every time you work:
 
@@ -22,7 +22,7 @@ And every time you work:
 
 Then open http://127.0.0.1:8000 in the browser.
 
-`python -m app.seed` wipes the database and writes the fake students and entries
+`python -m app.seed --wipe` wipes the database and writes the fake students and entries
 again. Run it whenever you want a clean start.
 
 ## Logging in

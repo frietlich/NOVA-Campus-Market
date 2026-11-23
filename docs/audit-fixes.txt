@@ -1,0 +1,26 @@
+SECURITY AND RELIABILITY REVIEW — PR #12
+Branch: fix/audit-security-chat. Base: main (6ea5a22).
+Desktop layout and live chat UI have been moved to the shared desktop-layout branch.
+This proposal preserves the mobile layout already on main.
+
+Included fixes
+- Atomic conversation creation and connections closed on failure.
+- Authenticated upload paths after normalization; no upload caching.
+- Password changes/resets revoke older sessions with an additive session_version column.
+- Generic recovery responses for registered/unknown addresses, including resend/errors.
+- Strict ID/time/return-path validation and retained links after form errors.
+- Rejected long/blank chat messages retain their draft and show an explanation.
+- Idempotent listing closure, purpose-aware code cooldown messages, .env database
+  selection before import, and explicit --wipe demo seed instructions.
+
+Review order
+Merge this security proposal first if approved, then review the shared desktop branch.
+The desktop branch builds on these fixes so the combined application stays tested.
+Neither branch has been merged into main by this work.
+
+Deployment
+Back up the database and restart to apply the additive migration. Configure real
+SMTP, session secret, HTTPS/proxy and persistent storage; disable demo mode.
+Tests use isolated data and never send real mail or call a paid API.
+
+After the split: 187 tests and 62 subtests passed locally.

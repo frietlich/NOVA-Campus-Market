@@ -66,10 +66,11 @@
 
   </div>
 
+  {% if message_error %}<p class="error" role="alert">{{ message_error }}</p>{% endif %}
   <form class="composer" method="post" action="/chat/{{ conv.id }}">
     {% if back != '/chats' %}<input type="hidden" name="back" value="{{ back }}">{% endif %}
     <label class="sr" for="body">Message</label>
-    <input id="body" name="body" type="text" placeholder="Message" autocomplete="off">
+    <input id="body" name="body" type="text" required maxlength="500" title="Up to 500 characters" value="{{ draft or '' }}" placeholder="Message" autocomplete="off">
     <button class="send" type="submit" aria-label="Send message">{{ icon.send() }}</button>
   </form>
 
