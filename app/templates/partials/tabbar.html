@@ -17,7 +17,7 @@
       {{ t.label }}
     </a>
   {% endfor %}
-  <a class="tab" href="/chats"{% if active == 'chats' %} aria-current="page"{% endif %}>
+  <a class="tab tab--chats" href="/chats"{% if active == 'chats' %} aria-current="page"{% endif %}>
     {{ icon.chat(24) }}
     {% if unread %}<span class="pip" aria-hidden="true"></span>{% endif %}
     Chats

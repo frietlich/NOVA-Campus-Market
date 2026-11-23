@@ -15,7 +15,7 @@
   {% if dock_open %}
     <div class="dock-head">
       <a class="icon-btn icon-btn--small" href="{{ here }}" aria-label="Back to all chats">{{ icon.back(18) }}</a>
-      <a class="dock-who" href="/chat/{{ dock_open.id }}">
+      <a class="dock-who" href="/student/{{ dock_with.id }}">
         {{ av.avatar(dock_with.name, dock_with.photo, "sm") }}
         <span class="dock-who-text">
           <b class="truncate">{{ dock_with.name }}</b>
@@ -24,7 +24,14 @@
       </a>
       <a class="icon-btn icon-btn--small" href="/listing/{{ dock_open.listing_id }}"
          aria-label="Open the entry this is about">{{ icon.external(16) }}</a>
-      <button type="button" class="icon-btn icon-btn--small dock-close" data-close-dock aria-label="Hide chat panel" title="Hide chats">{{ icon.close() }}</button>
+      {% if dock_open.owner_id != me.id %}
+        <form method="post" action="/chat/{{ dock_open.id }}/{{ 'unarchive' if dock_archived else 'archive' }}?back={{ here | urlencode }}">
+          <button class="icon-btn icon-btn--small" type="submit"
+                  aria-label="{{ 'Take this chat out of your archive' if dock_archived else 'Archive this chat' }}">
+            {{ icon.unarchive(18) if dock_archived else icon.archive(18) }}
+          </button>
+        </form>
+      {% endif %}
     </div>
 
     <div class="dock-thread" data-dock-thread data-live-chat="{{ dock_open.id }}">
@@ -41,15 +48,9 @@
     </form>
 
   {% else %}
-    <div class="dock-head dock-head--list">
-      <b>Chats</b>
-      <div class="dock-head-actions">
-        <a class="link link--tiny" href="/chats">All chats</a>
-        <button type="button" class="icon-btn icon-btn--small dock-close" data-close-dock aria-label="Hide chat panel" title="Hide chats">{{ icon.close() }}</button>
-      </div>
+    <div class="dock-overview-scroll" data-desktop-chat-overview>
+      {{ dock_overview_html | safe }}
     </div>
-
-    <div data-live-chat-list>{% include "partials/chat_list.html" %}</div>
   {% endif %}
 
 </aside>

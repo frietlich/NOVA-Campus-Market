@@ -1504,14 +1504,6 @@
 
 // Only refresh the visible message area, leaving typed text and the page alone.
 (function liveChat() {
-  document.querySelector('[data-close-dock]')?.addEventListener('click', () => {
-    document.querySelector('.shell').classList.add('shell--chat-hidden');
-    document.querySelectorAll('[data-beside]').forEach((box) => { box.value = ''; });
-  });
-  document.querySelector('[data-open-dock]')?.addEventListener('click', () => {
-    document.querySelector('.shell').classList.remove('shell--chat-hidden');
-    document.querySelectorAll('[data-beside]').forEach((box) => { box.value = '1'; });
-  });
   document.querySelectorAll('[data-live-chat]').forEach((thread) => {
     let previous = null;
     let stopped = false;
@@ -1569,6 +1561,24 @@
             dot = document.createElement('span'); dot.className = 'pip'; dot.setAttribute('aria-hidden','true'); nav.appendChild(dot);
           } else if (!data.unread && dot) { dot.remove(); }
           nav.title = data.unread ? data.unread + ' unread messages' : 'Chats';
+          const panel = document.querySelector('[data-desktop-chat-overview]');
+          const panelOverview = panel?.querySelector('[data-chat-overview]');
+          if (panelOverview && panel.getClientRects().length && data.version !== dockVersion
+              && !panelOverview.contains(document.activeElement)) {
+            const next = new DOMParser().parseFromString(data.overview_html, 'text/html')
+              .querySelector('[data-chat-overview]');
+            if (next) {
+              const top = panel.scrollTop;
+              const folds = new Map([...panelOverview.querySelectorAll('input[type="checkbox"][id]')]
+                .map(e => [e.id, e.checked]));
+              next.querySelectorAll('input[type="checkbox"][id]').forEach(e => {
+                if (folds.has(e.id)) e.checked = folds.get(e.id);
+              });
+              panelOverview.replaceChildren(...next.childNodes);
+              panel.scrollTop = top;
+              dockVersion = data.version;
+            }
+          }
           const list = document.querySelector('[data-live-chat-list]');
           if (list && list.getClientRects().length && data.version !== dockVersion && !list.contains(document.activeElement)) {
             const scroller = list.querySelector('.dock-list');
@@ -1577,7 +1587,7 @@
             if (list.querySelector('.dock-list')) list.querySelector('.dock-list').scrollTop = top;
             dockVersion = data.version;
           }
-          const overview = document.querySelector('[data-chat-overview]');
+          const overview = document.querySelector('.shell-main [data-chat-overview]');
           const editingOverview = () => overview && overview.contains(document.activeElement)
             && !document.activeElement.matches('input[type="checkbox"]');
           if (overview && data.version !== overviewVersion && !editingOverview()) {

@@ -3071,7 +3071,7 @@ html.lightbox-open, html.lightbox-open body { overflow: hidden; }
 
 .dock { display: none; }
 
-@media (min-width: 1280px) {
+@media (min-width: 900px) {
   .shell { max-width: 1480px; }
   .shell--dock {
     grid-template-columns: var(--rail) minmax(0, 1fr) var(--dock);
@@ -3802,4 +3802,134 @@ html.onb-open, html.onb-open body { overflow: hidden; }
   }
   .app.detail .more-facts .fact span { font-size: 13px; color: var(--muted); }
   .app.detail .more-facts .fact b { font-size: 16px; font-weight: 650; text-align: left; margin: 0; }
+}
+
+/* Desktop workspace: one navigation rail, full category rows and a permanent
+   mobile-style inbox. All overrides stay above the existing phone breakpoint. */
+@media (min-width: 900px) {
+  :root { --rail: clamp(160px, 12vw, 200px); --dock: clamp(320px, 29vw, 440px); }
+  .shell { max-width: 1920px; gap: 24px; padding: 24px 28px 40px; }
+  .shell--dock { grid-template-columns: var(--rail) minmax(0, 1fr) var(--dock); }
+  .tab--chats, .desktop-duplicate,
+  .shell-main .head > a[href="/profile"], .dock .chat-profile { display: none; }
+  .tabbar { top: 24px; }
+  .shell-main .screen { gap: 18px; }
+  .shell-main .head { min-height: 44px; }
+  .shell-main .head h1 { font-size: 30px; }
+  .shell-main .search { max-width: none; }
+  .app[data-kind] .days,
+  .app[data-kind="housing"] .days,
+  .app[data-kind="ticket"] .days {
+    display: flex; flex-direction: column; gap: 28px; max-width: none;
+  }
+  .app[data-kind] .day-block,
+  .app[data-kind="housing"] .days .day-block {
+    width: 100%; max-width: none; flex: none; gap: 12px; min-width: 0;
+  }
+  .app[data-kind] .day-head { margin: 0; }
+  .list { max-width: none; }
+  .app[data-kind="housing"] .days .list,
+  .app[data-kind="housing"] .list,
+  .app[data-kind="item"] .list {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
+    gap: 18px; max-width: none;
+  }
+  .app[data-kind="housing"] .days .list .card { width: auto; height: 100%; }
+  .app[data-kind="ticket"] .days .list,
+  .app[data-kind="group"] .days .list {
+    display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; width: 100%;
+  }
+  .app[data-kind="ticket"] .card,
+  .app[data-kind="group"] .card { padding: 18px; min-height: 112px; gap: 16px; }
+  .app[data-kind="ticket"] .card-title,
+  .app[data-kind="group"] .card-title { font-size: 17px; }
+  .app[data-kind="ticket"] .card-body,
+  .app[data-kind="group"] .card-body { gap: 5px; }
+  .app[data-kind="item"] .strip {
+    grid-template-columns: repeat(auto-fill, minmax(min(170px, 100%), 1fr)); gap: 18px;
+  }
+  .app[data-kind="item"] .strip .scard { width: 100%; max-width: 220px; }
+  .scard-title, .scard-price { font-size: 14px; }
+
+  .dock, .shell--chat-hidden .dock {
+    display: flex; top: 24px; height: calc(100dvh - 48px); min-width: 0;
+  }
+  .dock-collapsed { display: none !important; }
+  .dock-overview-scroll {
+    display: flex; flex-direction: column; gap: 16px;
+    padding: 20px; min-height: 0; flex: 1; overflow-y: auto; overflow-x: hidden;
+  }
+  .dock-overview-scroll .head { min-height: 44px; }
+  .dock-overview-scroll .head h1 { font-size: 26px; }
+  .dock-overview-scroll .search { width: 100%; max-width: none; }
+  .dock-overview-scroll .segment { flex: none; }
+  .dock-overview-scroll .chips { flex: none; }
+  .dock-overview-scroll .ch-card, .dock-overview-scroll .ch-row { min-width: 0; }
+  .dock-overview-scroll .ch-body { min-width: 0; }
+  .dock-overview-scroll .empty { padding: 24px 0; }
+  .dock .composer--dock { width: 100%; max-width: none; }
+  .dock .dock-head { min-height: 68px; }
+
+  .shell--out { padding: 0; }
+  body:not([data-auth-page="login"]) .shell--out .app,
+  body:not([data-auth-page="login"]) .shell--out .app:has(> .form) {
+    width: min(66vw, 960px); max-width: 960px;
+  }
+  body:not([data-auth-page="login"]) .shell--out .gate,
+  body:not([data-auth-page="login"]) .shell--out .screen,
+  body:not([data-auth-page="login"]) .shell--out .app > .form {
+    padding: 32px 40px;
+  }
+}
+
+/* Account pages keep comfortable spacing. Short screens scroll naturally;
+   controls and text never shrink simply to force the page into the viewport. */
+.signup-layout, .signup-details, .signup-courses, .signup-footer,
+.auth-passwords, .auth-field { display: contents; }
+@media (min-width: 900px) {
+  .shell--out .shell-main { padding: 28px 32px; }
+  body:not([data-auth-page="login"]) .shell--out .app,
+  body:not([data-auth-page="login"]) .shell--out .app:has(> .form) {
+    width: min(76vw, 960px); max-width: 960px;
+  }
+  .shell--out .app .gate,
+  .shell--out .app .screen,
+  body:not([data-auth-page="login"]) .shell--out .app .gate,
+  body:not([data-auth-page="login"]) .shell--out .app > .form { padding: 32px 36px; }
+  .shell--out .brand { gap: 10px; }
+  .shell--out .mark, .shell--out .mark--brand {
+    width: 64px; height: 64px; border-radius: 17px;
+  }
+  .shell--out .mark svg { width: 46px; height: 46px; }
+  .shell--out .gate h1 { margin-top: 24px; font-size: 28px; }
+  .shell--out .gate .cap { margin: 22px 0 8px; }
+  .shell--out .input { height: 48px; }
+  .shell--out .btn { height: 48px; min-height: 48px; flex-shrink: 0; }
+  .shell--out .grow { min-height: 24px; }
+  .shell--out .sheet-head { padding: 0; margin-bottom: 16px; }
+  .shell--out .note { margin-top: 14px; }
+  .shell--out .note .link, .shell--out .again .link { min-height: 32px; }
+  .shell--out .gate--start .kinds { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 24px; gap: 16px; }
+  .shell--out .kind { padding: 18px; gap: 8px; }
+  .shell--out .way { margin-top: 24px; }
+  .shell--out .ball { width: 30px; height: 30px; margin-bottom: 8px; }
+  .shell--out .way-line { top: 14px; }
+
+  .signup-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 36px; margin-top: 24px; }
+  .signup-details { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+  .signup-details > .photo-pick { flex-direction: row; justify-content: flex-start; gap: 16px; margin: 0 0 4px; }
+  .signup-details .photo-slot .avatar { width: 64px; height: 64px; font-size: 24px; }
+  .signup-details .photo-slot img { width: 64px; height: 64px; object-fit: cover; border-radius: 50%; }
+  .shell--out .auth-field { display: flex; flex-direction: column; min-width: 0; gap: 8px; }
+  .shell--out .auth-field .label, .shell--out .auth-field .cap { margin: 0; }
+  .signup-details > .rules { margin: -8px 0 0; }
+  .signup-courses { display: flex; flex-direction: column; min-width: 0; }
+  .signup-courses > .label { margin: 0 0 10px; }
+  .signup-courses .scroller { max-height: min(420px, 50dvh); overflow-y: auto; }
+  .signup-footer { display: flex; flex-direction: column; margin-top: 28px; }
+  .signup-footer .note { margin-bottom: 0; }
+  .auth-passwords { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; margin-top: 24px; }
+}
+@media (min-width: 1200px) {
+  .shell--out .gate--start .kinds { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }

@@ -853,7 +853,8 @@ def dock_for(request, me, template):
 
     values = {"dock": True,
               "dock_chats": db.conversations_of(me["id"])[:DOCK_CHATS],
-              "dock_open": None, "dock_with": None, "dock_messages": []}
+              "dock_open": None, "dock_with": None, "dock_messages": [],
+              "dock_overview_html": dock_overview(request, me)}
 
     asked = (request.query_params.get("chat") or "").strip()
     if safe_id(asked) is not None:
@@ -865,6 +866,8 @@ def dock_for(request, me, template):
             values["dock_open"] = conv
             values["dock_with"] = db.get_user(other_id)
             values["dock_messages"] = db.messages_of(conv["id"])
+            values["dock_archived"] = bool(conv["archived_owner"] if conv["owner_id"] == me["id"]
+                                            else conv["archived_starter"])
             values["here_with_chat"] = here(request, chat=conv["id"])
     return values
 
@@ -919,6 +922,7 @@ def page(request, template, **values):
     for key, value in dock_for(request, me, template).items():
         values.setdefault(key, value)
     values.setdefault("here", here(request))
+    values.setdefault("auth_page", template.removesuffix(".html") if me is None else "")
     if template in PLACES:
         where = request.url.path
         if request.url.query:
@@ -2207,15 +2211,19 @@ def chat_updates(request: Request, page_url: str = ""):
                                         sort_keys=True, default=str).encode()).hexdigest()
     html = templates.env.get_template("partials/chat_list.html").render(
         dock_chats=conversations[:DOCK_CHATS], here=ours(page_url) or "/housing")
-    return JSONResponse({"version": version, "unread": db.unread_total(me["id"]), "dock_html": html})
+    safe_page = ours(page_url) or "/housing"
+    from urllib.parse import urlsplit
+    target = urlsplit(safe_page)
+    panel_scope = dict(request.scope, path=target.path,
+                       query_string=target.query.encode("utf-8"))
+    panel_request = Request(panel_scope)
+    overview = dock_overview(panel_request, me, overview_only=True)
+    return JSONResponse({"version": version, "unread": db.unread_total(me["id"]),
+                         "dock_html": html, "overview_html": overview})
 
 
-@app.get("/chats")
-def chats(request: Request, side: str = "", kind: str = "", bundle: str = "",
-          q: str = "", archived: int = 0):
-    me = me_or_none(request)
-    if me is None:
-        return go("/start")
+def chat_overview_values(request, me, side="", kind="", bundle="", q="", archived=0):
+    """One set of chat rules for the phone page and desktop panel."""
     everything = db.conversations_of(me["id"])
     # What somebody put away is kept out of the list and counted at its
     # foot. The archive is one screen with nothing on it but the chats, so
@@ -2289,7 +2297,7 @@ def chats(request: Request, side: str = "", kind: str = "", bundle: str = "",
     # The switch counts the archive as well. A side with nothing but
     # archived chats still has to be one you can press, or the only way
     # back to them would be to type the address.
-    return page(request, "chats.html", blocks=blocks, chats=chats_flat,
+    return dict(blocks=blocks, chats=chats_flat,
                 side=side, kind=kind, bundle=bundle, q=q,
                 kinds=kinds, bundles=bundles, archived=archived,
                 kept=kept_n, kept_unread=sum(r["unread"] for r in kept),
@@ -2299,8 +2307,49 @@ def chats(request: Request, side: str = "", kind: str = "", bundle: str = "",
                                 if r["owner_id"] == me["id"]),
                 unread_buy=sum(r["unread"] for r in live
                                if r["owner_id"] != me["id"]),
-                active="chats", me=me,
-                **(chat_pane(request, me) if not archived else {"pane_on": False}))
+                active="chats", me=me)
+
+
+def chat_navigation(request, embedded=False):
+    """Keep listing filters separate from chat filters in the right panel."""
+    keep = {k: v for k, v in request.query_params.items()
+            if k != "chat" and not k.startswith("dock_")} if embedded else {}
+    def link(**params):
+        values = dict(keep)
+        values.update({("dock_" + k if embedded else k): str(v)
+                       for k, v in params.items() if v != ""})
+        path = request.url.path if embedded else "/chats"
+        return path + ("?" + urlencode(values) if values else "")
+    return dict(embedded=embedded, overview_only=False, chat_keep=keep,
+                chat_action=request.url.path if embedded else "/chats",
+                chat_link=link,
+                conversation_link=(lambda conv_id: here(request, chat=conv_id)) if embedded
+                                  else (lambda conv_id: f"/chat/{conv_id}"),
+                chat_archive_link=(lambda path: path + "?" + urlencode({"back": here(request)}))
+                                  if embedded else (lambda path: path))
+
+
+def dock_overview(request, me, overview_only=False):
+    fields = {key: request.query_params.get("dock_" + key, "")
+              for key in ("side", "kind", "bundle", "q")}
+    fields["archived"] = request.query_params.get("dock_archived") == "1"
+    values = chat_overview_values(request, me, **fields)
+    values.update(chat_navigation(request, embedded=True))
+    values.update(overview_only=overview_only, pane_open=None)
+    return templates.env.get_template("partials/chat_content.html").render(**values)
+
+
+@app.get("/chats")
+def chats(request: Request, side: str = "", kind: str = "", bundle: str = "",
+          q: str = "", archived: int = 0):
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    values = chat_overview_values(request, me, side, kind, bundle, q, archived)
+    values.update(chat_navigation(request))
+    values.update(chat_pane(request, me) if not archived else {"pane_on": False})
+    return page(request, "chats.html", **values)
+
 
 
 @app.get("/chat/{conv_id}")
@@ -2388,9 +2437,9 @@ def chat_archive(request: Request, conv_id: int):
     if not db.can_see_conversation(conv, me["id"]):
         return page(request, "missing.html", active="chats")
     if conv["owner_id"] == me["id"]:
-        return go("/chats?side=sell")
+        return go(ours(request.query_params.get("back", "")) or "/chats?side=sell")
     db.archive_chat(conv_id, me["id"], on=True)
-    return go("/chats?side=buy")
+    return go(ours(request.query_params.get("back", "")) or "/chats?side=buy")
 
 
 @app.post("/chat/{conv_id}/unarchive")
@@ -2402,9 +2451,9 @@ def chat_unarchive(request: Request, conv_id: int):
     if not db.can_see_conversation(conv, me["id"]):
         return page(request, "missing.html", active="chats")
     if conv["owner_id"] == me["id"]:
-        return go("/chats?side=sell")
+        return go(ours(request.query_params.get("back", "")) or "/chats?side=sell")
     db.archive_chat(conv_id, me["id"], on=False)
-    return go("/chats?side=buy")
+    return go(ours(request.query_params.get("back", "")) or "/chats?side=buy")
 
 
 @app.post("/listing/{listing_id}/archive")
@@ -2414,7 +2463,7 @@ def entry_archive(request: Request, listing_id: int):
     if me is None:
         return go("/start")
     db.archive_entry(listing_id, me["id"], on=True)
-    return go("/chats?side=sell")
+    return go(ours(request.query_params.get("back", "")) or "/chats?side=sell")
 
 
 @app.post("/listing/{listing_id}/unarchive")
@@ -2423,7 +2472,7 @@ def entry_unarchive(request: Request, listing_id: int):
     if me is None:
         return go("/start")
     db.archive_entry(listing_id, me["id"], on=False)
-    return go("/chats?side=sell")
+    return go(ours(request.query_params.get("back", "")) or "/chats?side=sell")
 
 
 # ------------------------------------------------------------------ profile

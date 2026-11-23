@@ -29,17 +29,24 @@
               formnovalidate>Send a new code</button>
     </div>
 
-    <span class="cap" style="margin-top: 14px">New password</span>
+    <div class="auth-passwords">
+      <div class="auth-field">
+    <span class="cap">New password</span>
     <input class="input" id="password" name="password" type="password" required
            autocomplete="new-password" minlength="8" maxlength="30">
 
-    <p class="rules" id="pw-rules">{{ PASSWORD_RULES }}</p>
 
-    <span class="cap" style="margin-top: 18px">Repeat the new password</span>
+
+      </div>
+      <div class="auth-field">
+    <span class="cap">Repeat the new password</span>
     <input class="input" id="password2" name="password2" type="password" required
            autocomplete="new-password" minlength="8" maxlength="30">
 
-    <div class="grow" style="min-height: 38px"></div>
+      </div>
+    </div>
+    <p class="rules" id="pw-rules">{{ PASSWORD_RULES }}</p>
+    <div class="grow"></div>
 
     <button class="btn" type="submit">Save and log in</button>
     <a class="btn btn--quiet" href="/login" style="margin-top: 10px">Back to log in</a>
