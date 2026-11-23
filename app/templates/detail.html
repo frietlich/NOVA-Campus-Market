@@ -127,7 +127,7 @@
         </div>
       </a>
       <span class="verified">{{ icon.check() }} Verified</span>
-      <p class="side-posted">Posted {{ listing.created_at | ago }} · {{ listing.views }} views</p>
+      <p class="side-posted">Posted {{ listing.created_at | ago }} · {{ listing.views }} {{ 'view' if listing.views == 1 else 'views' }}</p>
     </div>
   {% endset %}
 
@@ -162,7 +162,7 @@
       {% endif %}
       {% if listing.status == 'closed' %}<span class="detail-closed">Closed</span>{% endif %}
     </div>
-    <p class="detail-stats">Posted {{ listing.created_at | ago }} · {{ listing.views }} views</p>
+    <p class="detail-stats">Posted {{ listing.created_at | ago }} · {{ listing.views }} {{ 'view' if listing.views == 1 else 'views' }}</p>
   </header>
 
   <div class="detail-top">
@@ -508,7 +508,7 @@
 
     <div class="rule"></div>
 
-    <p class="posted">Posted {{ listing.created_at | ago }} · {{ listing.views }} students viewed
+    <p class="posted">Posted {{ listing.created_at | ago }} · {{ listing.views }} {{ 'student' if listing.views == 1 else 'students' }} viewed
       this<span id="saves"{{ ' hidden' if not saves }}> · <span data-count>{{ saves }}</span>
       saved</span></p>
 

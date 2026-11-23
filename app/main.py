@@ -403,6 +403,10 @@ def clean_price(text):
     text = (text or "").strip()
     if not text:
         return None, None
+    # A plain number that is only too big gets told the ceiling, not that
+    # it is not a number. 999999999 used to be refused for its shape.
+    if re.fullmatch(r"\d+(?:[.,]\d+)?", text) and float(text.replace(",", ".")) > PRICE_MAX:
+        return None, f"A price can be at most {PRICE_MAX:,} euros."
     if not PRICE_SHAPE.fullmatch(text):
         return None, "A price is a plain number, like 25 or 12.50."
     value = float(text.replace(",", "."))

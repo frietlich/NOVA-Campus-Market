@@ -94,7 +94,7 @@
              placeholder="Course name or code" autocomplete="off">
     </div>
 
-    <p class="note" id="no-programme-courses" hidden>Select a programme to see its official courses.</p>
+    <p class="note" id="no-programme-courses" style="text-align: left; margin: 8px 2px" hidden>Select a programme to see its official courses.</p>
     <div class="rows scroller" id="list">
       {% for c in courses %}
         <label class="row pick" data-text="{{ (c.code ~ ' ' ~ c.name) | lower }}" data-programmes='{{ c.programmes | tojson }}'>

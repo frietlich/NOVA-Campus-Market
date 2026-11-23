@@ -47,7 +47,7 @@
         </div>
         <div class="row-body">
           <span class="row-name truncate">{{ l.title }}</span>
-          <span class="row-meta">{{ l.views }} views{% if l.price is not none %} · {{ l.price | money }}{% endif %}</span>
+          <span class="row-meta">{{ l.views }} {{ 'view' if l.views == 1 else 'views' }}{% if l.price is not none %} · {{ l.price | money }}{% endif %}</span>
         </div>
         {% if mark %}<span class="badge">Open</span>{% endif %}
       </a>

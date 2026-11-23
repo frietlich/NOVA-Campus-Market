@@ -87,6 +87,24 @@ def test_invalid_price_never_creates_listing(world, price):
     assert response.status_code==200
     assert len(db.listings_of_user(users[0]))==before
 
+@pytest.mark.parametrize("price", ["10001", "999999999", "12345678,50"])
+def test_a_price_that_is_only_too_high_is_told_the_ceiling(world, price):
+    users, clients=world
+    response=clients[0].post("/new", data={"kind":"item","title":"Test","description":"A used desk", "price":price}, headers=ORIGIN)
+    assert response.status_code==200
+    assert "A price can be at most 10,000 euros." in response.text
+    assert "plain number" not in response.text
+
+def test_one_view_is_singular(world):
+    users, clients=world
+    listing=db.create_listing(users[0], "item", "A desk", price=20)
+    with db.connect() as conn:
+        conn.execute("UPDATE listings SET views=1 WHERE id=?", (listing,))
+    conn.close()
+    page=clients[0].get("/profile").text
+    assert "1 view " in page or "1 view<" in page or "1 view ·" in page
+    assert "1 views" not in page
+
 def test_image_content_and_size(world):
     users, clients=world
     before=len(db.listings_of_user(users[0]))

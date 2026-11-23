@@ -3992,3 +3992,29 @@ html.onb-open, html.onb-open body { overflow: hidden; }
 @media (min-width: 1200px) {
   .shell--out .gate--start .kinds { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
+
+/* On the start page the panel is wide enough for the four kinds side by
+   side, and the two buttons under them used to stretch the same width.
+   On a desktop they stay a button's size, in the middle. */
+@media (min-width: 900px) {
+  .shell--out .gate--start > .btn {
+    width: 100%; max-width: 360px; align-self: center;
+  }
+}
+
+/* The same for the one button at the foot of Create an account. */
+@media (min-width: 900px) {
+  .shell--out .signup-footer > .btn {
+    width: 100%; max-width: 360px; align-self: center;
+  }
+}
+
+/* And on the three code pages: Check your inbox, Forgot your password and
+   Set a new password. Their panels are as wide as the start page's. */
+@media (min-width: 900px) {
+  body[data-auth-page="verify"] .shell--out .gate > .btn,
+  body[data-auth-page="forgot"] .shell--out .gate > .btn,
+  body[data-auth-page="reset"] .shell--out .gate > .btn {
+    width: 100%; max-width: 360px; align-self: center;
+  }
+}
