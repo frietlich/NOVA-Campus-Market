@@ -57,3 +57,17 @@ def test_signed_out_there_is_nobody_to_welcome(world):  # noqa: F811
     assert tour_flag(out, "/start") == "done"
     # And the page that records it does not fall over without one.
     assert out.post("/tour/seen", headers=ORIGIN).status_code == 200
+
+
+def test_asking_for_the_tour_is_not_handed_on_to_the_links(world):  # noqa: F811
+    # ?tour=1 plays the tour once. A sign-up lands on /housing?tour=1, and
+    # the chat column used to copy it into every link and form, so after
+    # Skip the next click in that column started the tour all over again.
+    users, clients = world
+    listing = db.create_listing(users[1], "item", "A desk", price=20)
+    db.open_conversation(listing, users[0])
+    for address in ("/housing?tour=1", "/market?tour=1&category=books",
+                    "/chats?tour=1"):
+        page = clients[0].get(address).text
+        assert "tour=1" not in page, address
+        assert 'name="tour"' not in page, address

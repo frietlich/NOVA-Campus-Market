@@ -4032,3 +4032,15 @@ html.onb-open, html.onb-open body { overflow: hidden; }
    off the right edge of the entry page and the page scrolled sideways. The
    chat bubbles have done the same since the start. */
 .detail-head h1, .detail-sum h1, .text { overflow-wrap: anywhere; }
+
+/* Changing tab loads a new page, and the rail with your photo used to be
+   drawn again with it, so the photo blinked on every change. With this the
+   browser swaps the pages without a blank frame in between and keeps the
+   rail where it is. There is no fade: the content changes at once, as
+   before. A browser that does not know this simply ignores it. */
+@view-transition { navigation: auto; }
+::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+@media (min-width: 900px) {
+  .tabbar { view-transition-name: rail; }
+  ::view-transition-old(rail), ::view-transition-new(rail) { animation: none; }
+}

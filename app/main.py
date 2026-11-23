@@ -893,7 +893,10 @@ def chat_pane(request, me):
 
 def here(request, chat=None):
     """This page's own address, with the chat column's state written into it."""
-    parts = {k: v for k, v in request.query_params.items() if k != "chat"}
+    # tour=1 asks for the welcome tour once. It is not state of the page, so
+    # it is never handed on: a link that kept it brought the tour back after
+    # Skip, on the next click in the chat column.
+    parts = {k: v for k, v in request.query_params.items() if k not in ("chat", "tour")}
     if chat is not None:
         parts["chat"] = str(chat)
     tail = urlencode(parts)
@@ -1414,7 +1417,7 @@ def tab_page(request, kind, q, scope="mine", cat="", day="", sort="",
     # typing in the box threw away the filters you had just set, while the
     # filters kept your search. The two halves of one screen have to agree.
     keep = {name: value for name, value in request.query_params.items()
-            if name != "q" and value}
+            if name not in ("q", "tour") and value}
 
     return page(request, "listings.html", tab=tab, listings=rows, q=q or "",
                 keep=keep,
@@ -2309,7 +2312,7 @@ def chat_overview_values(request, me, side="", kind="", bundle="", q="", archive
 def chat_navigation(request, embedded=False):
     """Keep listing filters separate from chat filters in the right panel."""
     keep = {k: v for k, v in request.query_params.items()
-            if k != "chat" and not k.startswith("dock_")} if embedded else {}
+            if k not in ("chat", "tour") and not k.startswith("dock_")} if embedded else {}
     def link(**params):
         values = dict(keep)
         values.update({("dock_" + k if embedded else k): str(v)
@@ -2839,8 +2842,13 @@ async def security_checks(request, call_next):
     # changes under its name, and no-store would mean fetching every
     # thumbnail again on every list, which on a phone over mobile data is
     # the difference between a list that appears and one that loads.
+    #
+    # A year and immutable, because a picture is never written over: every
+    # upload gets a new random name, and a new profile photo is a new file.
+    # So the browser never asks again, not even on a reload, which is what
+    # made a profile photo blink on every change of tab.
     if clean_path.startswith("/static/uploads/"):
-        response.headers["Cache-Control"] = "private, max-age=86400"
+        response.headers["Cache-Control"] = "private, max-age=31536000, immutable"
     elif not request.url.path.startswith("/static/"):
         response.headers["Cache-Control"] = "no-store"
     if not LOCAL_DEMO:

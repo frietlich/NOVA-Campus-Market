@@ -33,7 +33,7 @@ def test_upload_auth_cannot_be_bypassed_by_path_normalization(world, prefix):
             # Out of every shared cache on the way, which is what this test
             # is about, but not out of the reader's own browser: no-store
             # fetched every thumbnail again on every list.
-            assert response.headers["cache-control"] == "private, max-age=86400"
+            assert response.headers["cache-control"] == "private, max-age=31536000, immutable"
     finally:
         path.unlink(missing_ok=True)
 

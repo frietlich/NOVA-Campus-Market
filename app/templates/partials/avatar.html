@@ -4,7 +4,9 @@
 {% macro avatar(name, photo=None, size='md') %}
 <span class="avatar avatar--{{ size }}">
   {%- if photo -%}
-    <img src="/static/uploads/{{ photo }}" alt="">
+    {#- decoding=sync: the page is drawn with the photo in it, not first
+        with an empty circle that the photo then fills a moment later. -#}
+    <img src="/static/uploads/{{ photo }}" alt="" decoding="sync">
   {%- else -%}
     {{ name | initials }}
   {%- endif -%}

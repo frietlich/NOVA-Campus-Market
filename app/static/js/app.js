@@ -1578,7 +1578,10 @@
       } catch (_) { /* A temporary connection failure retries next time. */ }
       setTimeout(refresh, 3000);
     }
-    setTimeout(refresh, 3000);
+    // The first look happens at once. Waiting three seconds meant a chat
+    // opened in the column and left again quickly stayed unread, because
+    // in the column it is this request, not the page, that marks it read.
+    refresh();
   });
 })();
 
