@@ -15,7 +15,7 @@
           bell between them. Groups has no bell and the gap simply
           closes. -#}
       <div class="head-actions">
-        <a href="/profile" aria-label="Your profile">{{ av.avatar(me.name, me.photo) }}</a>
+        <a class="desktop-duplicate" href="/profile" aria-label="Your profile">{{ av.avatar(me.name, me.photo) }}</a>
         {% if PUSH_ON() and tab.kind in ('ticket', 'housing', 'item') %}
           {# The bell: save the search on screen, with every filter that is
              set, and tell me when something new fits it. Tapped again on the
@@ -30,7 +30,7 @@
                     aria-label="{% if watching %}Stop notifications for this search{% else %}Notify me about new {{ tab.label }} for this search{% endif %}">{{ icon.bell(20, 1.8) }}</button>
           </form>
         {% endif %}
-        <a class="plus" href="/new?kind={{ tab.kind }}" aria-label="New {{ tab.label }} entry">{{ icon.plus() }}</a>
+        <a class="plus desktop-duplicate" href="/new?kind={{ tab.kind }}" aria-label="New {{ tab.label }} entry">{{ icon.plus() }}</a>
       </div>
     </div>
 
@@ -245,6 +245,9 @@
     {% if listings %}
       {% if days is not none %}
 
+        {#- The wrapper is invisible on a phone (display: contents). On a
+            wide screen Tickets lays its days out side by side. -#}
+        <div class="days">
         {% for day in days %}
           <div class="day-block">
             <span class="section day-head">{{ day.date | day_label }}</span>
@@ -264,20 +267,23 @@
             {% endif %}
           </div>
         {% endfor %}
+        </div>
 
       {% elif blocks is not none %}
 
         {# Groups is read course by course. There is nothing sensible to
            filter a course list by, so the course is the heading instead and
            two entries for the same one stand together. #}
+        <div class="days">
         {% for b in blocks %}
-          <div class="day-block">
+          <div class="day-block" style="--n: {{ b.rows | length }}">
             <span class="section day-head">{{ b.head }}</span>
             <div class="list">
               {% for l in b.rows %}{{ c.card(l) }}{% endfor %}
             </div>
           </div>
         {% endfor %}
+        </div>
 
       {% else %}
         {#- The heading belongs in the same block as the list it heads, the
@@ -319,6 +325,5 @@
     {% endif %}
 
   </div>
-  {% include "partials/tabbar.html" %}
 </div>
 {% endblock %}

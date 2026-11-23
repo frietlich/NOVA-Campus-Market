@@ -31,8 +31,19 @@
 <link rel="icon" href="{{ asset('img/icon-192.png') }}" sizes="192x192">
 <link rel="stylesheet" href="{{ asset('css/app.css') }}">
 </head>
-<body>
-{% block body %}{% endblock %}
+<body data-auth-page="{{ auth_page }}">
+{#- The shell. On a phone it is nothing at all, the page is the page. From
+    900 pixels it becomes a grid: the tabs leave the foot and stand as a rail
+    on the left, and from 1280 the chats take a column of their own on the
+    right. The rail lives here and not in each screen, so every screen has
+    it, the entry and the forms included. -#}
+<div class="shell{{ ' shell--dock' if dock }}{{ ' shell--out' if not me }}">
+  {% if me %}{% include "partials/tabbar.html" %}{% endif %}
+  <div class="shell-main">{% block body %}{% endblock %}</div>
+  {% if dock %}
+    {% include "partials/dock.html" %}
+  {% endif %}
+</div>
 {#- A short confirmation after the moments that matter. The page that sends you
     here adds ?done=... to the address; the script removes it again. -#}
 {%- set TOASTS = {

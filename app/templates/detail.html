@@ -61,6 +61,111 @@
 {% block body %}
 <div class="app detail" data-kind="{{ listing.type }}">
 
+  {#- The button, kept here once and printed inside the summary. On a
+      phone it still floats at the foot of the screen, so where it sits in
+      the page changes nothing there; on a wide screen it lands in the card
+      on the right, under the price, where the decision is made. -#}
+  {% set action_bar %}
+  <div class="actionbar">
+    {% if listing.owner_id == me.id %}
+      {% if listing.status == 'open' %}
+        <div class="actionbar-stack">
+          <a class="btn" href="/listing/{{ listing.id }}/edit?back={{ back | urlencode }}">Edit this entry</a>
+          <form method="post" action="/listing/{{ listing.id }}/close">
+            <button class="btn btn--quiet" type="submit">Close this entry</button>
+          </form>
+        </div>
+      {% else %}
+        {#- An entry whose day has been cannot go back up as it is. It
+            would leave the tab on the spot and close itself again in the
+            morning, so the page says the one thing that does help. -#}
+        {% set over = (listing.type == 'ticket' and listing.event_date
+                       and listing.event_date < today_iso())
+                   or (listing.type == 'group' and listing.hand_in
+                       and listing.hand_in < today_iso()) %}
+        <div class="actionbar-stack">
+          {% if over %}
+            <a class="btn" href="/listing/{{ listing.id }}/edit?back={{ back | urlencode }}">Change the date</a>
+            <p class="note" style="margin: 0">
+              {{ 'The last day to join has passed.' if listing.type == 'group'
+                 else 'This event has passed.' }}
+            </p>
+          {% else %}
+            <form method="post" action="/listing/{{ listing.id }}/reopen">
+              <button class="btn" type="submit">Put it back up</button>
+            </form>
+            <a class="btn btn--quiet" href="/listing/{{ listing.id }}/edit?back={{ back | urlencode }}">Edit this entry</a>
+          {% endif %}
+        </div>
+      {% endif %}
+    {% elif listing.status == 'closed' %}
+      {#- The same two words as the badge in a saved list and the line over
+          an entry's chats. Closed has one name in this app. -#}
+      <button class="btn btn--quiet" type="button" disabled>Entry closed</button>
+    {% else %}
+      {#- On a wide screen the chat belongs in the column on the right, beside
+          the entry you are reading, not on a page of its own. The box below
+          is filled in by the script when that column is actually on screen,
+          so a phone keeps going to the chat page as before. -#}
+      <form method="post" action="/listing/{{ listing.id }}/chat">
+        <input type="hidden" name="beside" value="" data-beside>
+        <button class="btn" type="submit">{% if my_place %}Open your chat{% else %}Message {{ listing.owner_name.split(' ')[0] }}{% endif %}</button>
+      </form>
+    {% endif %}
+  </div>
+  {% endset %}
+
+  {#- Who put it up, a second time, for the card on the right on a wide
+      screen. The phone never shows this copy; it keeps the one at the end. -#}
+  {% set side_owner %}
+    <div class="side-owner">
+      <a class="owner-who" href="/student/{{ listing.owner_id }}">
+        {{ av.avatar(listing.owner_name, listing.owner_photo, "md") }}
+        <div class="owner-body">
+          <span class="owner-name">{{ listing.owner_name }}</span>
+          <span class="owner-course">{{ listing.owner_programme | programme(listing.owner_cems) }}</span>
+        </div>
+      </a>
+      <span class="verified">{{ icon.check() }} Verified</span>
+      <p class="side-posted">Posted {{ listing.created_at | ago }} · {{ listing.views }} views</p>
+    </div>
+  {% endset %}
+
+
+  {#- Whatever the top of the entry is, a photo strip, a ticket stub or a
+      pinned notice, it is one block. On a wide screen it becomes the left
+      column and stays put while the facts beside it scroll. -#}
+  {#- On a wide screen the page opens like a listing site: the name and
+      the few facts you scan for across the top, then the pictures, then
+      the details beside a box with the price and the button. A phone
+      never shows this head; its name stays under the picture. -#}
+  <header class="detail-head">
+    <h1>{{ listing.title }}</h1>
+    <div class="detail-meta">
+      {% if listing.type == 'housing' %}
+        <span>{{ 'Place' if listing.category == 'other' else HOUSING.KIND_LABELS.get(listing.category, 'Place') }}
+          {%- if listing.place and listing.place != 'other' %} in {{ HOUSING.AREA_LABELS.get(listing.place, listing.place) }}{% endif %}</span>
+        {% if listing.minutes_campus %}<span>About {{ listing.minutes_campus }} min to campus</span>{% endif %}
+        {% if listing.months_min %}<span>Minimum {{ listing.months_min }} months</span>{% endif %}
+      {% elif listing.type == 'ticket' %}
+        {% if listing.event_date %}<span>{{ listing.event_date | pretty_date }}</span>{% endif %}
+        {% if listing.event_time %}<span>{{ listing.event_time }}</span>{% endif %}
+        {% if listing.place %}<span>{{ listing.place }}</span>{% endif %}
+        {% if listing.category | category %}<span>{{ listing.category | category }}</span>{% endif %}
+      {% elif listing.type == 'item' %}
+        {% if listing.category | category %}<span>{{ listing.category | category }}</span>{% endif %}
+        {% if listing.condition %}<span>{{ listing.condition | condition }}</span>{% endif %}
+      {% elif listing.type == 'group' %}
+        {% if listing.course_name %}<span>{{ listing.course_name }}</span>{% endif %}
+        {% if listing.quantity %}<span>{{ listing.quantity }} {{ 'spot' if listing.quantity == 1 else 'spots' }} left</span>{% endif %}
+        {% if listing.hand_in %}<span>{{ listing.hand_in | days_left }} to join</span>{% endif %}
+      {% endif %}
+      {% if listing.status == 'closed' %}<span class="detail-closed">Closed</span>{% endif %}
+    </div>
+    <p class="detail-stats">Posted {{ listing.created_at | ago }} · {{ listing.views }} views</p>
+  </header>
+
+  <div class="detail-top">
   {% if listing.type == 'ticket' %}
 
     {# A ticket has no photo, so the block carries the three things you look
@@ -169,7 +274,7 @@
       {% if photos %}
         {# All the photos side by side. Swipe on a phone, the arrows or the
            keyboard on a laptop; the counter and the dots follow along. #}
-        <div class="gallery" data-gallery tabindex="0"
+        <div class="gallery" data-gallery data-n="{{ photos | length }}" tabindex="0"
              aria-label="Photos{% if photos | length > 1 %}, swipe for more{% endif %}">
           {% for p in photos %}
             {#- Tapping one opens it full screen. A button, not an image with a
@@ -178,6 +283,7 @@
                     aria-label="Open photo {{ loop.index }} of {{ photos | length }} full screen">
               <img src="/static/uploads/{{ p.filename }}" alt="Photo {{ loop.index }} of {{ photos | length }}"
                    {% if not loop.first %}loading="lazy"{% endif %} draggable="false">
+              {% if loop.index == 5 and photos | length > 5 %}<span class="gallery-more">+{{ photos | length - 5 }}</span>{% endif %}
             </button>
           {% endfor %}
         </div>
@@ -196,11 +302,17 @@
     </div>
   {% endif %}
 
+  </div>
+
   {#- The bar at the foot floats over the page, so the page has to end above
       it. On your own entry the bar carries two buttons stacked and is that
       much taller, which is also the one case where the page runs long,
       because the queue of everyone who asked is on it. -#}
   <div class="detail-body{% if listing.owner_id == me.id %} detail-body--mine{% endif %}">
+    {#- Two halves, invisible on a phone. On a wide screen the summary
+        (name, price, key facts) is a card on the right beside the photo,
+        and the details run on under the photo on the left. -#}
+    <div class="detail-sum">
 
     <h1>{{ listing.title }}</h1>
     {% if listing.type == 'housing' %}
@@ -230,10 +342,10 @@
     {% if listing.type != 'housing' %}
     <div class="pills">
       {% if listing.type == 'ticket' %}
-        {% if listing.category %}<span class="pill pill--on">{{ listing.category | category }}</span>{% endif %}
+        {% if listing.category | category %}<span class="pill pill--on">{{ listing.category | category }}</span>{% endif %}
         {% if not listing.quantity %}<span class="pill">Only one</span>{% endif %}
       {% elif listing.type == 'item' %}
-        {% if listing.category %}<span class="pill pill--on">{{ listing.category | category }}</span>{% endif %}
+        {% if listing.category | category %}<span class="pill pill--on">{{ listing.category | category }}</span>{% endif %}
         {% if listing.condition %}<span class="pill">{{ listing.condition | condition }}</span>{% endif %}
       {% elif listing.type == 'group' %}
         {% if listing.course_name %}<span class="pill pill--on">{{ listing.course_name }}</span>{% endif %}
@@ -244,10 +356,18 @@
     </div>
     {% endif %}
 
+    {% if listing.type != 'housing' %}
+    {{ action_bar }}{{ side_owner }}
+    </div>
+    <div class="detail-more">
+    {% endif %}
+    {% if listing.description %}<span class="block-head more-head">About this {{ {'ticket':'ticket','item':'item','group':'group'}[listing.type] }}</span>{% endif %}
+
     {% if listing.type == 'housing' %}
 
       {# What it really costs, worked out. Rent plus bills is the number you
          compare with, and nobody can do that from a grey line of text. #}
+      <p class="side-price">{{ (listing.price + (0 if listing.bills_included else (listing.bills_estimate or 0))) | money }}<span> /month</span></p>
       <div class="costs">
         <div class="cost"><span>Rent</span><b>{{ listing.price | money }}</b></div>
         {% if listing.bills_included %}
@@ -270,6 +390,10 @@
         {% endif %}
       </div>
 
+      {#- The facts are kept once and shown twice: in the summary on a
+          phone, and as tiles in the story on a wide screen, where the box
+          on the right is for the price and the button. -#}
+      {% set facts_html %}
       <div class="facts">
         {% if listing.available_from %}
           <div class="fact">{{ icon.pin(17) }}<span>Move in from</span><b>{{ listing.available_from | pretty_date }}</b></div>
@@ -284,7 +408,16 @@
           <div class="fact">{{ icon.people(17) }}<span>You would live with</span><b>{{ listing.flatmates }} {{ 'student' if listing.flatmates == 1 else 'students' }}</b></div>
         {% endif %}
       </div>
+      {% endset %}
+      {{ facts_html }}
 
+    {{ action_bar }}{{ side_owner }}
+    </div>
+    <div class="detail-more">
+      {% if 'class="fact"' in facts_html %}
+        <span class="block-head more-head">At a glance</span>
+        <div class="more-facts">{{ facts_html }}</div>
+      {% endif %}
       {% set has = HOUSING.feature_list(listing.features) %}
       {% if has %}
         <span class="block-head">The flat has</span>
@@ -395,50 +528,9 @@
       </a>
       <span class="verified">{{ icon.check() }} Verified</span>
     </div>
+    </div>
   </div>
 
-  <div class="actionbar">
-    {% if listing.owner_id == me.id %}
-      {% if listing.status == 'open' %}
-        <div class="actionbar-stack">
-          <a class="btn" href="/listing/{{ listing.id }}/edit?back={{ back | urlencode }}">Edit this entry</a>
-          <form method="post" action="/listing/{{ listing.id }}/close">
-            <button class="btn btn--quiet" type="submit">Close this entry</button>
-          </form>
-        </div>
-      {% else %}
-        {#- An entry whose day has been cannot go back up as it is. It
-            would leave the tab on the spot and close itself again in the
-            morning, so the page says the one thing that does help. -#}
-        {% set over = (listing.type == 'ticket' and listing.event_date
-                       and listing.event_date < today_iso())
-                   or (listing.type == 'group' and listing.hand_in
-                       and listing.hand_in < today_iso()) %}
-        <div class="actionbar-stack">
-          {% if over %}
-            <a class="btn" href="/listing/{{ listing.id }}/edit?back={{ back | urlencode }}">Change the date</a>
-            <p class="note" style="margin: 0">
-              {{ 'The last day to join has passed.' if listing.type == 'group'
-                 else 'This event has passed.' }}
-            </p>
-          {% else %}
-            <form method="post" action="/listing/{{ listing.id }}/reopen">
-              <button class="btn" type="submit">Put it back up</button>
-            </form>
-            <a class="btn btn--quiet" href="/listing/{{ listing.id }}/edit?back={{ back | urlencode }}">Edit this entry</a>
-          {% endif %}
-        </div>
-      {% endif %}
-    {% elif listing.status == 'closed' %}
-      {#- The same two words as the badge in a saved list and the line over
-          an entry's chats. Closed has one name in this app. -#}
-      <button class="btn btn--quiet" type="button" disabled>Entry closed</button>
-    {% else %}
-      <form method="post" action="/listing/{{ listing.id }}/chat">
-        <button class="btn" type="submit">{% if my_place %}Open your chat{% else %}Message {{ listing.owner_name.split(' ')[0] }}{% endif %}</button>
-      </form>
-    {% endif %}
-  </div>
 
 </div>
 {% endblock %}

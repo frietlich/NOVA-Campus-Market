@@ -26,9 +26,12 @@
 
 // A chat opens at the newest message, not at the oldest.
 (function thread() {
-  const thread = document.getElementById("thread");
-  if (!thread) return;
-  window.scrollTo(0, document.body.scrollHeight);
+  document.querySelectorAll('#thread, [data-dock-thread]').forEach((thread) => {
+    thread.scrollTop = thread.scrollHeight;
+    if (thread.id === 'thread' && matchMedia('(max-width: 899px)').matches) {
+      window.scrollTo(0, document.body.scrollHeight);
+    }
+  });
 })();
 
 // The new entry sheet shows what you picked, so you see it before you publish.
@@ -153,7 +156,6 @@
   const SHELF = "folds";
 
   const blocks = Array.from(document.querySelectorAll(".ch-block[data-key]"));
-  if (!blocks.length) return;
   const boxOf = (block) => block.querySelector("input[type=checkbox]");
 
   const nearby = (where) => {
@@ -169,7 +171,7 @@
 
   const store = () => {
     const now = {};
-    blocks.forEach((block) => {
+    document.querySelectorAll('.ch-block[data-key]').forEach((block) => {
       const box = boxOf(block);
       if (box) now[block.dataset.key] = box.checked;
     });
@@ -201,9 +203,8 @@
     }
   }
 
-  blocks.forEach((block) => {
-    const box = boxOf(block);
-    if (box) box.addEventListener("change", store);
+  document.addEventListener('change', (event) => {
+    if (event.target.closest('.ch-block[data-key]')) store();
   });
   window.addEventListener("pagehide", store);
 })();
@@ -1527,6 +1528,155 @@
 
 })();
 
+// Where a new chat should open. On a wide screen the chats have a column of
+// their own beside the entry, and opening the chat there keeps the entry on
+// screen, which is the whole point of the wide layout. The form carries an
+// empty box; filling it in is how the server is told the column is there.
+// A phone never fills it in and keeps going to the chat page.
+(function chatBeside() {
+  const boxes = document.querySelectorAll("[data-beside]");
+  if (!boxes.length) return;
+  const mark = () => {
+    const dock = document.querySelector(".dock");
+    const open = Boolean(dock && dock.offsetParent !== null);
+    boxes.forEach((box) => { box.value = open ? "1" : ""; });
+  };
+  mark();
+  window.addEventListener("resize", mark);
+})();
+
+// Only refresh the visible message area, leaving typed text and the page alone.
+(function liveChat() {
+  document.querySelectorAll('[data-live-chat]').forEach((thread) => {
+    let previous = null;
+    let stopped = false;
+    async function refresh() {
+      if (stopped) return;
+      try {
+        if (!document.hidden && thread.offsetParent !== null) {
+          const response = await fetch('/chat/' + thread.dataset.liveChat + '/messages', { cache: 'no-store' });
+          if (response.status === 403) { stopped = true; return; }
+          if (response.ok) {
+            const data = await response.json();
+            const fingerprint = JSON.stringify(data.messages);
+            if (fingerprint !== previous) {
+              const nearEnd = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 80;
+              // HTML is rendered by our escaped Jinja template, never built from raw message text.
+              thread.innerHTML = data.html;
+              if (nearEnd) thread.scrollTop = thread.scrollHeight;
+              previous = fingerprint;
+            }
+            // A read receipt acknowledges only the messages actually displayed.
+            if (data.has_unread && !document.hidden && thread.offsetParent !== null) {
+              await fetch('/chat/' + thread.dataset.liveChat + '/read', {
+                method: 'POST',
+                body: new URLSearchParams({through: String(data.messages[data.messages.length - 1].id)})
+              });
+            }
+          }
+        }
+      } catch (_) { /* A temporary connection failure retries next time. */ }
+      setTimeout(refresh, 3000);
+    }
+    setTimeout(refresh, 3000);
+  });
+})();
+
+// Refresh chat lists and unread dots without touching a form or typed message.
+(function liveChatOverview() {
+  const nav = document.querySelector('nav a.tab[href="/chats"]');
+  if (!nav) return;
+  let dockVersion = null;
+  let overviewVersion = null;
+  let stopped = false;
+  async function refresh() {
+    if (stopped) return;
+    try {
+      if (!document.hidden) {
+        const here = new URL(location.href);
+        here.searchParams.delete('chat');
+        const response = await fetch('/chats/updates?' + new URLSearchParams({page_url: here.pathname + here.search}), {cache:'no-store'});
+        if (response.status === 403) { stopped = true; return; }
+        if (response.ok) {
+          const data = await response.json();
+          let dot = nav.querySelector('.pip');
+          if (data.unread && !dot) {
+            dot = document.createElement('span'); dot.className = 'pip'; dot.setAttribute('aria-hidden','true'); nav.appendChild(dot);
+          } else if (!data.unread && dot) { dot.remove(); }
+          nav.title = data.unread ? data.unread + ' unread messages' : 'Chats';
+          const panel = document.querySelector('[data-desktop-chat-overview]');
+          const panelOverview = panel?.querySelector('[data-chat-overview]');
+          if (panelOverview && panel.getClientRects().length && data.version !== dockVersion
+              && !panelOverview.contains(document.activeElement)) {
+            const next = new DOMParser().parseFromString(data.overview_html, 'text/html')
+              .querySelector('[data-chat-overview]');
+            if (next) {
+              const top = panel.scrollTop;
+              const folds = new Map([...panelOverview.querySelectorAll('input[type="checkbox"][id]')]
+                .map(e => [e.id, e.checked]));
+              next.querySelectorAll('input[type="checkbox"][id]').forEach(e => {
+                if (folds.has(e.id)) e.checked = folds.get(e.id);
+              });
+              panelOverview.replaceChildren(...next.childNodes);
+              panel.scrollTop = top;
+              dockVersion = data.version;
+            }
+          }
+          const list = document.querySelector('[data-live-chat-list]');
+          if (list && list.getClientRects().length && data.version !== dockVersion && !list.contains(document.activeElement)) {
+            const scroller = list.querySelector('.dock-list');
+            const top = scroller ? scroller.scrollTop : 0;
+            list.innerHTML = data.dock_html;
+            if (list.querySelector('.dock-list')) list.querySelector('.dock-list').scrollTop = top;
+            dockVersion = data.version;
+          }
+          const overview = document.querySelector('.shell-main [data-chat-overview]');
+          const editingOverview = () => overview && overview.contains(document.activeElement)
+            && !document.activeElement.matches('input[type="checkbox"]');
+          if (overview && data.version !== overviewVersion && !editingOverview()) {
+            const page = await fetch(location.pathname + location.search, {cache:'no-store',headers:{'Purpose':'prefetch'}});
+            if (page.ok && new URL(page.url).pathname === '/chats') {
+              const next = new DOMParser().parseFromString(await page.text(), 'text/html').querySelector('[data-chat-overview]');
+              if (next && !editingOverview()) {
+                const focusedId = overview.contains(document.activeElement) ? document.activeElement.id : '';
+                const folds = new Map([...overview.querySelectorAll('input[type="checkbox"][id]')].map(e=>[e.id,e.checked]));
+                next.querySelectorAll('input[type="checkbox"][id]').forEach(e=>{if(folds.has(e.id))e.checked=folds.get(e.id);});
+                overview.replaceChildren(...next.childNodes);
+                if (focusedId) document.getElementById(focusedId)?.focus({preventScroll:true});
+                overviewVersion = data.version;
+              }
+            }
+          }
+        }
+      }
+    } catch (_) { /* Retry after a temporary connection failure. */ }
+    setTimeout(refresh, 4000);
+  }
+  setTimeout(refresh, 1000);
+})();
+
+// On the Chats page of a wide screen a chat opens in the pane beside the
+// list instead of on a page of its own. The address carries it as ?chat=<id>,
+// which the server reads, so a reload or a sent message keeps it open.
+// Listening on the document, because the list is redrawn as messages come in.
+(function chatPane() {
+  const pane = document.querySelector(".ch-pane");
+  if (!pane) return;
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest('a[href^="/chat/"]');
+    if (!link || pane.offsetParent === null) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+    const id = (link.getAttribute("href").match(/^\/chat\/(\d+)/) || [])[1];
+    if (!id) return;
+    event.preventDefault();
+    const url = new URL(location.href);
+    url.searchParams.set("chat", id);
+    location.assign(url.pathname + url.search);
+  });
+  const box = pane.querySelector("#pane-body");
+  if (box) box.focus({ preventScroll: true });
+})();
+
 // ------------------------------------------------------------------ the tour
 //
 // Two parts. First the story: four cards you swipe through, where Bea, a
@@ -1652,6 +1802,24 @@
     const next = head.nextElementSibling;
     return next ? [head, next] : [head];
   };
+  // The first of several places that is actually on screen. The + in the
+  // head is hidden on a laptop, where New entry in the sidebar does its job.
+  const shown = (...sels) => () => {
+    for (const sel of sels) {
+      const e = [...document.querySelectorAll(sel)].find((x) => x.getClientRects().length);
+      if (e) return e;
+    }
+    return null;
+  };
+  // The inbox: the column on the right on a laptop, the Chats tab on a phone.
+  const inbox = (sel, all) => () => {
+    const dock = document.querySelector(".dock");
+    const root = dock && dock.getClientRects().length ? dock : document.querySelector(".screen");
+    if (!root) return null;
+    const found = [...root.querySelectorAll(sel)].filter((e) => e.getClientRects().length);
+    if (!found.length) return null;
+    return all ? found : found[0];
+  };
   const CHAPTERS = {
     housing: { label: "Housing", icon: "housing", page: "/housing" },
     ticket: { label: "Tickets", icon: "ticket", page: "/tickets" },
@@ -1662,26 +1830,28 @@
   };
   const STEPS = [
     { ch: "housing", el: ".tabbar", title: "Your home base",
-      text: "Housing, Tickets, Market, Groups and your Chats. Each tab has its own colour, so you always know where you are." },
+      text: "Housing, Tickets, Market, Groups and your Chats. Each tab has its own colour, so you always know where you are.",
+      wide: { text: "Housing, Tickets, Market and Groups, each in its own colour. New entry and your profile sit right below. Your chats live on the right." } },
     { ch: "housing", el: ".search", title: "Search anything",
       text: "A street, an area like Carcavelos, or just “balcony”. Search works the same way in every tab." },
     { ch: "housing", el: ".hbar", title: "Filters that matter",
       text: "Rent, area, bills included, minutes to campus, move-in date. Then sort by rent or by who's free first." },
     { ch: "housing", el: ".bell", title: "Let the rooms come to you",
-      text: "Set your filters, then tap the bell. When a new room fits your search, your phone tells you." },
-    { ch: "housing", el: () => document.querySelector(".head-actions .plus:not(.bell)") || document.querySelector(".tab--rail"), title: "Renting out your room?",
-      text: "Tap +. Paste the Uniplaces or Idealista link, or a few screenshots of the ad, and the form fills itself in." },
+      text: "Set your filters, then tap the bell. When a new room fits your search, your phone tells you.",
+      wide: { text: "Set your filters, then click the bell. When a new room fits your search, you get a notification." } },
+    { ch: "housing", el: shown(".head-actions .plus:not(.bell)", ".tab--rail"), title: "Renting out your room?",
+      text: "Tap +. Paste the Uniplaces or Idealista link, or a few screenshots of the ad, and the form fills itself in.",
+      wide: { text: "Click New entry. Paste the Uniplaces or Idealista link, or a few screenshots of the ad, and the form fills itself in." } },
     { ch: "housing", el: ".card", title: "The full picture",
       text: "Open a room: photos, rent plus bills worked out, a button to the original ad, and how many students reached out before you." },
-    { ch: "housing", el: ".dock", title: "Your chats, right beside you",
-      text: "On a big screen your chats stay open here. Read a room on the left and talk to the person letting it on the right." },
 
     { ch: "ticket", el: ".chips", title: "Tickets for what you're into",
       text: "Parties, concerts, sports and more. Tickets are sorted by day, so tonight is on top." },
     { ch: "ticket", el: ".card", title: "Sold out? Not here.",
       text: "Open a ticket and tap its bell: you hear when someone puts up another one for the same event." },
-    { ch: "ticket", el: () => document.querySelector(".head-actions .plus:not(.bell)") || document.querySelector(".tab--rail"), title: "Can't make it?",
-      text: "Sell your ticket in seconds: paste the Luma, DICE or Eventbrite link, or a screenshot, and it's filled in." },
+    { ch: "ticket", el: shown(".head-actions .plus:not(.bell)", ".tab--rail"), title: "Can't make it?",
+      text: "Sell your ticket in seconds: paste the Luma, DICE or Eventbrite link, or a screenshot, and it's filled in.",
+      wide: { text: "Click New entry and sell your ticket in seconds: paste the Luma, DICE or Eventbrite link, or a screenshot, and it's filled in." } },
 
     { ch: "item", el: ".filters", title: "Second-hand, first class",
       text: "Bikes, desks, books, a winter coat. Filter by category, price and condition." },
@@ -1693,10 +1863,19 @@
     { ch: "group", el: () => document.querySelector(".card") || document.querySelector(".empty"), title: "Missing a teammate?",
       text: "A group with a free spot posts it here. Message them and the spot is yours. The bell on a group tells you about new ones in that course." },
 
-    { ch: "chats", el: '.segment', title: "Buying and selling, apart",
+    // Chats, top to bottom: the search, the two sides, the kinds, the list.
+    // On a phone that is the Chats tab. On a laptop there is no Chats page:
+    // the same inbox is the column on the right of every page, so the walk
+    // stays where it is and points there.
+    { ch: "chats", el: inbox(".search"), title: "Find any chat",
+      text: "Type a name, an entry or a word from a message, and the right chat is on top." },
+    { ch: "chats", el: inbox(".segment"), title: "Buying and selling, apart",
       text: "“You asked” is what you want. “Your entries” is who wrote about your things. They never get mixed up." },
-    { ch: "chats", el: () => document.querySelector(".ch-list") || document.querySelector(".empty"), title: "One chat per entry",
-      text: "Every chat is about one entry, so you always know who asked about what. Deal done? Archive it." },
+    { ch: "chats", el: inbox(".chips .chip", true), title: "One kind at a time",
+      text: "Show only your Housing, Market or Groups chats, or All of them." },
+    { ch: "chats", el: () => inbox(".ch-list")() || inbox(".empty")(), title: "One chat per entry",
+      text: "Every chat is about one entry, so you always know who asked about what. Deal done? Archive it.",
+      wide: { text: "Every chat is about one entry, so you always know who asked about what. Click one and it opens right here, so you can read a room and talk to its owner at the same time." } },
 
     { ch: "me", el: ".panel", title: "This is you",
       text: "The tick means a verified Nova student. Everyone you talk to here has one too." },
@@ -1707,12 +1886,18 @@
   ];
   const ORDER = Object.keys(CHAPTERS);
   const here = location.pathname.replace(/\/+$/, "") || "/";
+  if (window.matchMedia("(min-width: 900px)").matches) {
+    STEPS.forEach((st) => { if (st.wide) Object.assign(st, st.wide); });
+    CHAPTERS.chats.page = CHAPTERS.group.page;
+  }
   const onPage = (n) => CHAPTERS[STEPS[n].ch].page === here;
   const find = (n) => {
     const el = STEPS[n].el;
     let got = typeof el === "function" ? el() : document.querySelector(el);
     if (!got) return null;
     got = (Array.isArray(got) ? got : [got]).filter((e) => e && e.getClientRects().length);
+    // Something nearly as wide as the window is not a thing to point at.
+    got = got.filter((e) => e.getBoundingClientRect().width < window.innerWidth * 0.95);
     return got.length ? got : null;
   };
 
@@ -1819,7 +2004,17 @@
       root.innerHTML = `<div class="onb-dim"></div><div class="onb-hole"></div><div class="onb-tip"></div>`;
     }
     const els = find(s);
-    els[0].scrollIntoView({ block: "center", behavior: "instant" });
+    // Scroll only when the thing is not already on screen. The chat column
+    // on a laptop stays put, so moving the page under it only jolts.
+    // Everything that lights up must be clear of the tab bar at the foot of
+    // a phone, not just its first line.
+    const rects = els.map((e) => e.getBoundingClientRect());
+    const topY = Math.min(...rects.map((r) => r.top));
+    const botY = Math.max(...rects.map((r) => r.bottom));
+    const foot = bar && bar.getBoundingClientRect().top > window.innerHeight / 2
+      ? bar.getBoundingClientRect().top : window.innerHeight;
+    const inView = topY >= 0 && botY <= foot - 8;
+    if (!inView && !els[0].closest(".dock")) els[0].scrollIntoView({ block: "center", behavior: "instant" });
     root.dataset.kind = t.ch;
     const tip = root.querySelector(".onb-tip");
     tip.innerHTML = `
@@ -1878,6 +2073,16 @@
     const left = Math.min(Math.max(cx - tw / 2, 12), Math.max(W - tw - 12, 12));
     tip.style.left = left + "px";
     tip.style.setProperty("--arrow-x", Math.min(Math.max(cx - left, 22), tw - 22) + "px");
+    // A safety net: whatever a browser measured, the bubble must end up on
+    // screen, or there is no Next and no End tour to press. If it did not,
+    // it goes to the bottom middle, without its arrow.
+    const b = tip.getBoundingClientRect();
+    const lost = !b.width || b.top < 0 || b.bottom > H || b.left < 0 || b.right > W;
+    tip.classList.toggle("onb-tip--free", lost);
+    if (lost) {
+      tip.style.top = ""; tip.style.bottom = "16px";
+      tip.style.left = Math.max((W - tw) / 2, 12) + "px";
+    }
   }
 
   function finale() {

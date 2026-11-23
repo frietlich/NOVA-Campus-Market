@@ -693,9 +693,9 @@ img { display: block; max-width: 100%; }
 
 .code input {
   width: 100%; max-width: 47px; height: 58px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--muted);
   border-radius: var(--r-tile);
-  background: var(--card);
+  background: var(--fill-2);
   font: inherit; font-size: 22px; font-weight: 600; text-align: center;
   color: var(--ink);
   outline: none;
@@ -1093,6 +1093,8 @@ img { display: block; max-width: 100%; }
 /* ------------------------------------------------------------- the by day */
 
 .day-block { display: flex; flex-direction: column; }
+/* Around Tickets' days; on a phone it is as if it were not there. */
+.days { display: contents; }
 
 .day-head {
   position: sticky;
@@ -2746,6 +2748,558 @@ html.lightbox-open, html.lightbox-open body { overflow: hidden; }
 }
 @media (prefers-reduced-motion: reduce) { .filled { animation: none; } }
 
+
+/* ========================================================== the wide view */
+
+/* Everything above is the phone, and it stays exactly as it is. What
+   follows only ever switches on when there is width to spend.
+
+   Two steps. At 900 the tabs leave the foot of the screen and become a rail
+   on the left, on every screen rather than only on the five that are tabs.
+   At 1280 the chats take a column of their own on the right, so a room and
+   the person letting it are on screen at the same time, which is the whole
+   reason to use a big screen for this at all.
+
+   The rule underneath all of it: nothing is stretched. Every screen says
+   what it does with the extra width, either more columns or a column of its
+   own sensible size. A form a thousand pixels wide is not a better form. */
+
+:root { --rail: 212px; --dock: 352px; }
+
+.avatar--xs { width: 26px; height: 26px; font-size: 11px; }
+
+/* The nav at the foot belongs to the five tab screens only. Everywhere else
+   on a phone the way back is the arrow in the corner, as before. */
+@media (max-width: 899px) {
+  .tabbar:not(.tabbar--foot) { display: none; }
+  .rail-rule, .tab--rail { display: none; }
+}
+
+@media (min-width: 900px) {
+
+  /* ---- the shell */
+
+  .shell {
+    display: grid;
+    grid-template-columns: var(--rail) minmax(0, 1fr);
+    align-items: start;
+    gap: 26px;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 22px 24px 40px;
+  }
+  .shell-main { min-width: 0; }
+
+  /* The phone's page fills the screen and carries its own gutters. In the
+     grid the column is the gutter, so both go. */
+  .shell:not(.shell--out) .app { max-width: none; min-height: 0; }
+
+  /* ---- before you are in */
+
+  /* Nobody to show a rail to, and nothing to put beside the form. Signing
+     up is one short column either way, so here it becomes a panel in the
+     middle of the page rather than a phone screen left on a wall. The auto
+     margins centre it without ever clipping a tall form. */
+  .shell--out { display: block; max-width: none; padding: 0; }
+  .shell--out .shell-main {
+    min-height: 100dvh;
+    display: flex;
+    padding: 40px 24px;
+  }
+  .shell--out .app {
+    margin: auto;
+    max-width: 452px;
+    min-height: 0;
+    background: var(--card);
+    border: 1px solid var(--hair);
+    border-radius: 26px;
+    overflow: hidden;
+  }
+  /* These screens are built to fill a phone from top to bottom: a full
+     height box and a spacer that pushes the buttons to the foot. In a
+     panel both of those only make it taller than the window. */
+  .shell--out .gate,
+  .shell--out .screen {
+    min-height: 0;
+    padding: 30px 30px 26px;
+  }
+  .shell--out .grow { flex: none; min-height: 18px; }
+  .app--tabs { padding-bottom: 0; }
+  .screen { padding: 0; gap: 14px; }
+
+  /* ---- the rail */
+
+  .tabbar {
+    position: sticky;
+    top: 22px;
+    left: auto; bottom: auto; transform: none;
+    width: auto; max-width: none; height: auto;
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 10px;
+    background: var(--card);
+    border: 1px solid var(--hair);
+    border-top: 1px solid var(--hair);
+    border-radius: var(--r-card);
+    box-shadow: none;
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+    z-index: 1;
+  }
+  .tabbar .glide { display: none; }
+
+  .tab {
+    flex: none;
+    min-height: 40px;
+    flex-direction: row; justify-content: flex-start;
+    gap: 11px;
+    padding: 0 11px;
+    font-size: 14px; font-weight: 600;
+    border-radius: var(--r-tile);
+  }
+  .tab svg { flex: none; }
+  .tab[aria-current="page"] { background: var(--accent-soft); }
+  /* Each tab keeps its own colour on the rail, the way it does at the foot.
+     The tab carries data-kind itself, so --k and --k-soft are already set
+     on it by the rules further up and nothing new has to be named. */
+  .tab[data-kind][aria-current="page"] { background: var(--k-soft); }
+  .tab:hover { background: var(--fill); }
+  .tab[aria-current="page"]:hover { background: var(--accent-soft); }
+  .tab[data-kind][aria-current="page"]:hover { background: var(--k-soft); }
+
+  /* The dot sits after the word, at the end of the row. Before, it came
+     first in the row and its auto margin pushed the word to the far edge. */
+  .tab .pip { position: static; order: 1; margin: 0 0 0 auto; width: 7px; height: 7px; border: none; }
+
+  .rail-rule { display: block; height: 1px; background: var(--hair); margin: 8px 4px; }
+  .tab--rail { display: flex; }
+  .tab--me { background: var(--fill); }
+  .tab--me .avatar { flex: none; }
+
+  /* ---- the bars that floated */
+
+  /* On a phone these are fixed to the bottom of the screen because the
+     screen is the page. Here the column is the page, and a bar fixed to the
+     viewport would sit under the rail and across the chats. */
+  .actionbar, .composer, .chat-head, .savebar {
+    position: static;
+    left: auto; transform: none;
+    width: auto; max-width: none;
+    background: transparent;
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+    border: none; box-shadow: none;
+    padding: 0;
+  }
+
+  /* ---- the four lists */
+
+  /* Cards keep their own width and the row simply holds more of them.
+     Stretching one card across a thousand pixels is what made the first
+     attempt look thin. */
+  .list {
+    display: grid;
+    /* The upper bound is what keeps a card a card. With only 1fr the last
+       column swallowed the leftover width and a single card ended up
+       stretched across the page, which is the thing this whole layout is
+       trying to avoid. A card is never wider than it is on a phone. */
+    /* auto-fill counts its columns with the upper bound, so a 424px
+       maximum fitted only one column into the 806px a MacBook leaves
+       between the rail and the chats. Columns now share the row instead,
+       and the list's own maximum keeps three of them from ever growing
+       past a phone card's width. */
+    grid-template-columns: repeat(auto-fill, minmax(min(330px, 100%), 1fr));
+    max-width: calc(3 * 424px + 2 * 10px);
+    gap: 10px;
+    align-items: start;
+  }
+  .head h1 { font-size: 30px; }
+  .search { max-width: 560px; }
+
+  /* Desktop has room for rows of tiles; keep every new entry visible
+     instead of leaving the last tile clipped in a phone swipe strip. */
+  .strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+    gap: 16px;
+    margin: 0;
+    padding: 0 0 4px;
+    overflow: visible;
+    scroll-snap-type: none;
+  }
+  .strip .scard { width: auto; min-width: 0; }
+  .strip .scard-pic { width: 100%; height: auto; aspect-ratio: 1; }
+
+  /* Tickets: one or two tickets a day made a long thin strip with half the
+     screen empty. On a wide screen the days stand side by side and the week
+     reads like a calendar, left to right, then the next row. */
+  .app[data-kind="ticket"] .days {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(330px, 100%), 1fr));
+    max-width: calc(3 * 424px + 2 * 10px);
+    gap: 22px 16px;
+    align-items: start;
+  }
+  .app[data-kind="ticket"] .days .list { grid-template-columns: minmax(0, 1fr); }
+
+  /* Housing and Market: on a wide screen a card is a tile, the photo on
+     top and the words under it, the way people browse rooms and things on
+     every website. Three to a row on a MacBook. The phone keeps its rows. */
+  .app[data-kind="housing"] .list,
+  .app[data-kind="item"] .list {
+    grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
+    gap: 16px;
+  }
+  .app[data-kind="housing"] .list .card,
+  .app[data-kind="item"] .list .card {
+    flex-direction: column; gap: 0;
+    padding: 0;
+    overflow: hidden;
+    height: 100%;
+  }
+  .app[data-kind="housing"] .list .thumb,
+  .app[data-kind="item"] .list .thumb {
+    width: 100%; height: auto;
+    aspect-ratio: 4 / 3;
+    border-radius: 0;
+  }
+  .app[data-kind="housing"] .list .card-body,
+  .app[data-kind="item"] .list .card-body {
+    justify-content: flex-start;
+    padding: 12px 14px 14px;
+  }
+  .app[data-kind="housing"] .list .card-title,
+  .app[data-kind="item"] .list .card-title { -webkit-line-clamp: 1; }
+  /* Housing is grouped by the month a place is free, and most months
+     hold one or two rooms. Each month takes only the width of its tiles,
+     so short months share a row instead of leaving it empty. */
+  .app[data-kind="housing"] .days {
+    display: flex; flex-wrap: wrap; align-items: flex-start;
+    gap: 26px 20px;
+  }
+  /* A month is as wide as its rooms, at most three to a row: --n is the
+     number of rooms in it, set on the block by the template. */
+  .app[data-kind="housing"] .days .day-block {
+    flex: 0 0 auto; max-width: 100%;
+    width: calc(min(var(--n, 1), 3) * 236px + (min(var(--n, 1), 3) - 1) * 16px);
+  }
+  .app[data-kind="housing"] .days .list { display: flex; flex-direction: row; flex-wrap: wrap; gap: 16px; }
+  .app[data-kind="housing"] .days .list .card { width: 236px; height: auto; }
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05), 0 10px 24px rgba(0, 0, 0, 0.08);
+  }
+  .card:active { transform: scale(0.99); }
+
+  /* The two tab screens that are lists of single lines, not grids of
+     cards. A row with a name and one line of text gains nothing from a
+     thousand pixels, so they keep a column's width like the forms do. */
+  /* Aligned to the left edge like every other tab, not floating in the
+     middle of the page with a gap after the rail. */
+  .app--tabs:not([data-kind]) .screen { max-width: 760px; }
+
+  /* ---- an entry */
+
+  /* One column until there is room for two that are both worth having.
+     Between 900 and 1100 the photo would be a stamp beside the facts. */
+  .app.detail { max-width: 640px; }
+}
+
+@container main-content (min-width: 720px) {
+  .app.detail {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(320px, 380px);
+    grid-template-rows: auto auto;
+    align-items: start;
+    gap: 24px;
+  }
+  /* The photo stays while the facts beside it scroll, which is what every
+     housing site does and what the phone cannot offer. */
+  .detail-top {
+    grid-column: 1; grid-row: 1 / span 2;
+    position: sticky; top: 22px;
+    border-radius: var(--r-card);
+    overflow: hidden;
+  }
+  /* A room is a wide picture, not a tall one. Letting it take its own
+     shape beats any fixed height, which only ever fits one screen. */
+  .detail .hero { height: auto; aspect-ratio: 4 / 3; max-height: calc(100dvh - 120px); }
+  .detail .gallery-nav { opacity: 0; transition: opacity 0.12s ease; }
+  .detail-top:hover .gallery-nav { opacity: 1; }
+  .detail-body {
+    grid-column: 2; grid-row: 1;
+    margin-top: 0;
+    padding: 20px;
+    border: 1px solid var(--hair);
+    border-radius: var(--r-card);
+  }
+  .detail-body--mine { padding-bottom: 20px; }
+  /* The arrow stays. The rail says where you can go, the arrow says where
+     you came from, and those are not the same thing. */
+  .detail .back { top: 14px; left: 14px; }
+  .detail .actionbar {
+    grid-column: 2; grid-row: 2;
+    display: flex; gap: 12px;
+  }
+  .app.detail { max-width: none; }
+}
+
+@media (min-width: 900px) {
+
+  /* ---- the chat, when it is a page of its own */
+
+  /* A thread is a column of short lines. Wider only pushes the two sides
+     further apart and makes it harder to read, not easier. */
+  .chat-page { display: flex; flex-direction: column; gap: 12px; max-width: 740px; }
+  .chat-head {
+    padding: 12px 14px;
+    background: var(--card);
+    border: 1px solid var(--hair);
+    border-radius: var(--r-card);
+  }
+  .thread { padding: 0; height: auto; min-height: 50vh; }
+  .composer {
+    padding: 10px;
+    background: var(--card);
+    border: 1px solid var(--hair);
+    border-radius: var(--r-card);
+    position: sticky; bottom: 16px;
+  }
+
+  /* ---- the forms and the settings screens */
+
+  /* A form is read down a column, so it keeps a column's width and sits on
+     a surface of its own instead of floating on the page. */
+  .app:not(.app--tabs):not(.detail):not(.chat-page) .screen,
+  .app.notify .screen {
+    max-width: 620px;
+  }
+  .sheet-head { padding-top: 0; }
+  .savebar { position: sticky; bottom: 16px; max-width: 620px; }
+}
+
+/* ---- the chats, in their own column */
+
+.dock { display: none; }
+
+@media (min-width: 900px) {
+  .shell { max-width: 1480px; }
+  .shell--dock {
+    grid-template-columns: var(--rail) minmax(0, 1fr) var(--dock);
+  }
+
+  .dock {
+    position: sticky;
+    top: 22px;
+    height: calc(100dvh - 62px);
+    display: flex; flex-direction: column;
+    background: var(--card);
+    border: 1px solid var(--hair);
+    border-radius: var(--r-card);
+    overflow: hidden;
+  }
+
+  .dock-head {
+    flex: none;
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--hair);
+  }
+  .dock-head--list { justify-content: space-between; }
+  .dock-head--list b { font-size: 15px; font-weight: 700; }
+  .dock-who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; color: inherit; }
+  .dock-who-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .dock-who-text b { font-size: 14px; font-weight: 600; }
+  .dock-who-text span { font-size: 12px; color: var(--muted); }
+
+  .dock-list { flex: 1; min-height: 0; overflow-y: auto; padding: 6px; }
+  .dock-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 10px;
+    border-radius: var(--r-tile);
+    color: inherit;
+  }
+  .dock-row:hover { background: var(--fill); }
+  .dock-row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .dock-row-top { display: flex; align-items: baseline; gap: 8px; }
+  .dock-row-top b { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; }
+  .dock-row-when { flex: none; font-size: 11px; color: var(--muted); }
+  .dock-row-about { font-size: 12px; font-weight: 600; color: var(--accent); }
+  .dock-row-last { font-size: 12px; color: var(--muted); }
+  .dock-row--new .dock-row-last { color: var(--ink); font-weight: 600; }
+  .dock-row .pip { position: static; flex: none; width: 8px; height: 8px; border: none; margin: 0; }
+
+  .dock-thread {
+    flex: 1; min-height: 0; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 14px;
+  }
+  .dock-nothing { margin: auto; font-size: 13px; color: var(--muted); text-align: center; }
+
+  .composer--dock {
+    flex: none;
+    position: static;
+    padding: 10px;
+    border: none; border-top: 1px solid var(--hair);
+    border-radius: 0;
+    background: var(--card);
+  }
+
+  .dock-empty {
+    margin: auto;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 24px; text-align: center;
+    color: var(--muted);
+  }
+  .dock-empty b { font-size: 14px; color: var(--ink); }
+  .dock-empty p { margin: 0; font-size: 12px; line-height: 1.5; }
+
+  .icon-btn--small { width: 32px; height: 32px; flex: none; }
+}
+
+/* Size detail columns by their available space, including beside the chat. */
+.shell-main { container-type: inline-size; container-name: main-content; }
+.stub { --split: clamp(68px, 24cqi, 96px); --split-right: 34px; }
+.stub-fields { flex-wrap: wrap; column-gap: 16px; row-gap: 8px; }
+.stub-fields .field { flex-shrink: 0; }
+.dock-head-actions { display: flex; align-items: center; gap: 12px; }
+.dock-close { border-radius: 10px; background: var(--fill); color: var(--muted); }
+.dock-close:hover { color: var(--ink); }
+.dock-close:focus-visible, .dock-reopen:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+/* Keep the open and close controls in the same top-right location.
+   The chat column stays reserved, so neither control covers an advert. */
+.dock-collapsed { display: none; }
+.dock-reopen {
+  height: 32px; display: inline-flex; align-items: center; gap: 7px;
+  padding: 0 10px; border: 1px solid var(--hair); border-radius: 10px;
+  background: var(--card); color: var(--accent); font: inherit;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.dock-reopen:hover { background: var(--accent-soft); }
+@media (min-width: 1280px) {
+  .shell--chat-hidden .dock { display: none; }
+  .shell--chat-hidden .dock-collapsed {
+    display: flex; justify-content: flex-end; grid-column: 3; grid-row: 1;
+    position: sticky; top: 22px; padding: 13px 15px;
+  }
+}
+
+/* Desktop forms keep a readable width and a consistent surface on every route. */
+@media (min-width: 900px) {
+  .shell:not(.shell--out) .app:has(> .form) {
+    max-width: 720px; margin-inline: auto; padding: 24px;
+    background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-card);
+  }
+  .shell:not(.shell--out) .app > .form { padding: 0; min-width: 0; }
+  .shell--out .app:has(> .form) { max-width: 560px; }
+  .shell--out .app > .form { padding: 24px 28px; }
+  .form .sheet-head { margin-bottom: 12px; }
+  .form .savebar {
+    width: 100%; max-width: none; padding: 12px;
+    background: var(--card); border: 1px solid var(--hair); border-radius: 16px;
+  }
+  .chat-page .thread {
+    height: min(62dvh, 660px); min-height: 280px; overflow-y: auto;
+    padding: 16px; border: 1px solid var(--hair); border-radius: var(--r-card);
+    background: var(--card);
+  }
+  .chat-page .composer { position: static; }
+}
+[data-live-chat-list] { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+[data-chat-overview] { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+
+@media (min-width: 900px) {
+  .shell:not(.shell--out) .app.chat-page { max-width: 900px; }
+  .shell:not(.shell--out) .app:not([data-kind]) > .screen { margin-inline: auto; }
+  /* Chats and Profile are tabs, so they start at the rail like Housing
+     and Tickets do. The forms stay centred. */
+  .shell:not(.shell--out) .app.app--tabs:not([data-kind]) > .screen { margin-inline: 0 auto; }
+}
+
+/* ---- the Chats page, split in two on a wide screen
+
+   The list on the left, the open conversation on the right, the way every
+   messaging app on a laptop works. Clicking a chat opens it in the pane
+   instead of leaving the page. Below 1100 pixels, and on every phone, the
+   pane is not there and a chat opens as a page of its own, as before. */
+.ch-pane { display: none; }
+
+@media (min-width: 1100px) {
+  .app.chats-split {
+    display: grid;
+    grid-template-columns: minmax(340px, 440px) minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+  /* min-width 0 lets the list column hold to its track: otherwise one long
+     last message, which never wraps, makes it wider than its own column. */
+  .shell:not(.shell--out) .app.app--tabs.chats-split:not([data-kind]) > .screen { max-width: none; margin: 0; min-width: 0; }
+
+  .ch-pane {
+    display: flex; flex-direction: column;
+    position: sticky; top: 22px;
+    height: calc(100dvh - 44px); min-height: 420px;
+    background: var(--card);
+    border: 1px solid var(--hair);
+    border-radius: var(--r-card);
+    overflow: hidden;
+  }
+  .ch-pane-head {
+    flex: none;
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--hair);
+  }
+  .ch-pane-who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; color: inherit; }
+  .ch-pane-who-text { min-width: 0; display: flex; flex-direction: column; }
+  .ch-pane-who-text b { font-size: 15px; }
+  .ch-pane-who-text span { font-size: 12px; color: var(--muted); }
+  .ch-pane-thread {
+    flex: 1; min-height: 0; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 16px;
+  }
+  .ch-pane .composer--pane {
+    flex: none;
+    position: static;
+    padding: 10px;
+    background: transparent;
+    border: none; border-top: 1px solid var(--hair);
+    border-radius: 0;
+  }
+  .ch-pane-empty {
+    margin: auto;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 24px;
+    text-align: center; color: var(--muted);
+  }
+  .ch-pane-empty b { color: var(--ink); font-size: 16px; }
+  .ch-pane-empty p { margin: 0; font-size: 13px; }
+
+  /* The chat that is open on the right, marked in the list on the left. */
+  .ch-card.is-open, .ch-row.is-open {
+    background: var(--accent-soft);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+}
+
+/* ---- choosing what to put up, at the top of a new entry */
+.kind-pick {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
+  margin-top: 6px;
+}
+.kind-opt {
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 10px 4px;
+  border: 1px solid var(--hair); border-radius: var(--r-tile);
+  background: var(--card); color: var(--muted);
+  font-size: 12px; font-weight: 600;
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+.kind-opt:hover { color: var(--k); }
+.kind-opt:active { transform: scale(0.97); }
+.kind-opt--on {
+  background: var(--k-soft); color: var(--k);
+  border-color: var(--k);
+}
+
 /* ============================================================= the tour */
 
 html.onb-open, html.onb-open body { overflow: hidden; }
@@ -3043,4 +3597,347 @@ html.onb-open, html.onb-open body { overflow: hidden; }
     box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
   }
   .onb-skip { top: 18px; }
+}
+
+/* The tour's bubble when it could not sit next to its button. */
+.onb-tip--free::before { display: none; }
+
+/* On a wide screen the welcome story is a wide, short card, not a phone
+   standing in the middle of the window. */
+@media (min-width: 900px) {
+  .onb:not(.onb--spots):not(.onb--travel) .onb-sheet {
+    max-width: 600px;
+    height: min(640px, calc(100vh - 48px));
+  }
+  .onb-sheet .onb-card { padding: 20px 40px 0; gap: 10px; }
+  .onb-sheet .onb-stage .bea { width: 132px; }
+  .onb-sheet .onb-stage--small .bea { width: 92px; }
+  .onb-sheet .onb-bubble--small { left: calc(50% + 44px); top: 4px; }
+  .onb-sheet .onb-foot { padding: 14px 40px 0; }
+  .onb-sheet .onb-kinds { grid-template-columns: repeat(4, 1fr); }
+  .onb--end .onb-sheet { height: auto; padding-bottom: 28px; }
+}
+
+/* ---- an entry: summary on the right, details under the photo
+
+   On a phone the two halves are not boxes at all (display: contents), so
+   the page reads top to bottom exactly as before. */
+.detail-sum, .detail-more { display: contents; }
+
+/* Parts made for the wide screen only. A phone keeps its own page. */
+.side-owner, .detail-head, .side-price, .more-head, .more-facts { display: none; }
+
+@container main-content (min-width: 720px) {
+  /* One page, like a listing site: a single surface with the name across
+     the top, the pictures under it, and then the story on the left beside
+     a box with the price and the button. The box stays in view while you
+     scroll the story. */
+  .app.detail {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+    grid-template-areas: "head head" "top top" "more side";
+    column-gap: 32px; row-gap: 22px;
+    align-items: start;
+    padding: 26px 28px 32px;
+    background: var(--card);
+    border: 1px solid var(--hair);
+    border-radius: 22px;
+  }
+  .app.detail .detail-body { display: contents; }
+
+  /* ---- the head */
+  .app.detail .detail-head { grid-area: head; display: block; min-width: 0; }
+  .detail-head h1 {
+    margin: 0;
+    font-size: 30px; font-weight: 750; letter-spacing: -0.7px; line-height: 1.15;
+  }
+  .detail-meta {
+    display: flex; flex-wrap: wrap; align-items: center;
+    margin-top: 10px;
+    font-size: 15px; color: var(--ink-2);
+  }
+  .detail-meta span + span::before {
+    content: "•"; margin: 0 10px; color: var(--faint);
+  }
+  .detail-meta .detail-closed { color: var(--accent); font-weight: 600; }
+  .detail-stats { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+
+  /* ---- the pictures */
+  .app.detail .detail-top {
+    grid-area: top;
+    position: static;
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .app.detail .hero {
+    aspect-ratio: auto;
+    height: min(440px, 44cqw);
+    max-height: none;
+    background: transparent;
+  }
+  /* A mosaic: the first photo large, the next ones beside it in a grid,
+     each one opening the full-screen viewer as before. */
+  .app.detail .gallery {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 8px;
+    overflow: hidden;
+    scroll-snap-type: none;
+  }
+  .app.detail .gallery-shot {
+    position: relative;
+    width: 100%; height: 100%; min-height: 0;
+    overflow: hidden;
+  }
+  .app.detail .gallery-shot img { transition: transform 0.35s ease, filter 0.2s ease; }
+  .app.detail .gallery-shot:hover img { transform: scale(1.03); filter: brightness(0.92); }
+  .app.detail .gallery-shot:first-child { grid-row: 1 / span 2; }
+  .app.detail .gallery-shot:nth-child(n+6) { display: none; }
+  .app.detail .gallery[data-n="1"] { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+  .app.detail .gallery[data-n="1"] .gallery-shot:first-child { grid-row: auto; }
+  .app.detail .gallery[data-n="2"] { grid-template-columns: 2fr 1fr; }
+  .app.detail .gallery[data-n="2"] .gallery-shot:nth-child(2) { grid-row: 1 / span 2; }
+  .app.detail .gallery[data-n="3"] { grid-template-columns: 2fr 1fr; }
+  .app.detail .gallery[data-n="4"] .gallery-shot:nth-child(2) { grid-column: 2 / span 2; }
+  .gallery-more {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+    color: #fff; font-size: 22px; font-weight: 700;
+  }
+  .app.detail .gallery-dots,
+  .app.detail .gallery-nav { display: none; }
+  /* No photos: the drawing is a band, not a wall. */
+  .app.detail .hero:not(:has(.gallery)) { height: 260px; background: var(--fill); }
+  .app.detail .hero:not(:has(.gallery)) .cover {
+    width: auto; height: calc(100% - 32px); aspect-ratio: 4 / 3;
+    border-radius: 14px;
+  }
+  .app.detail .hero .back,
+  .app.detail .hero .save { top: 14px; }
+
+  /* A ticket and a group have no photos. Their stub and their notice sit
+     in a band of their colour, centred, at a size that reads as an object
+     and not as a banner stretched across the page. */
+  .app.detail .ticket-head,
+  .app.detail .board { padding: 18px 18px 30px; }
+  .app.detail .ticket-head .stub { max-width: 560px; margin-inline: auto; }
+  .app.detail .board .notice { max-width: 520px; margin: 22px auto 0; }
+  .app.detail .ticket-top { margin-bottom: -26px; position: relative; z-index: 2; }
+
+  /* ---- the box on the right */
+  .app.detail .detail-sum {
+    grid-area: side;
+    position: sticky; top: 22px;
+    display: flex; flex-direction: column; gap: 14px;
+    padding: 24px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    box-shadow: 0 10px 34px rgba(16, 24, 40, 0.10);
+  }
+  :root[data-theme="dark"] .app.detail .detail-sum { box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45); }
+  .app.detail .detail-sum > * { margin-top: 0; margin-bottom: 0; }
+  /* The name and the tags are in the head now. */
+  .app.detail .detail-sum > h1,
+  .app.detail .detail-sum > .pills,
+  .app.detail .detail-sum > .sub:not(.sub--price) { display: none; }
+  .app.detail[data-kind="ticket"] .detail-sum > .sub { display: block; }
+  .app.detail .detail-sum .sub {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.6px; color: var(--ink);
+  }
+  .app.detail .side-price {
+    display: block; margin: 0;
+    font-size: 30px; font-weight: 750; letter-spacing: -0.6px;
+  }
+  .app.detail .side-price span { font-size: 16px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+  /* The total is the big number above; the table under it is the breakdown. */
+  .app.detail .costs .cost--sum, .app.detail .costs .cost-rule { display: none; }
+
+  .app.detail .detail-sum .actionbar { display: flex; margin-top: 2px; }
+  .app.detail .detail-sum .actionbar form,
+  .app.detail .detail-sum .actionbar .btn { width: 100%; }
+
+  .app.detail .side-owner {
+    display: flex; align-items: center; gap: 10px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+  }
+  .app.detail .side-posted { display: none; }
+
+  /* ---- the story on the left: no box of its own, it is the page */
+  .app.detail .detail-more {
+    grid-area: more;
+    display: flex; flex-direction: column; gap: 16px;
+    min-width: 0;
+  }
+  .app.detail .detail-more > * { margin-top: 0; margin-bottom: 0; }
+  .app.detail .detail-more > .rule,
+  .app.detail .detail-more > .posted,
+  .app.detail .detail-more > .owner { display: none; }
+  .app.detail .detail-more .more-head { display: block; }
+  .app.detail .detail-more .block-head {
+    margin-bottom: -6px;
+    font-size: 20px; font-weight: 700; letter-spacing: -0.3px;
+    text-transform: none; color: var(--ink);
+  }
+  .app.detail .detail-more .text { font-size: 16px; line-height: 1.6; }
+
+  /* A room's four facts as tiles under the pictures, so the box on the
+     right is only price and button and the two columns end together. */
+  .app.detail .detail-sum .facts { display: none; }
+  .app.detail .more-facts { display: block; }
+  .app.detail .more-facts .facts {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px; margin: 0;
+  }
+  .app.detail .more-facts .fact {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto;
+    column-gap: 12px; row-gap: 2px;
+    align-items: center;
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--fill);
+  }
+  .app.detail .more-facts .fact svg {
+    grid-row: 1 / span 2;
+    width: 22px; height: 22px;
+    color: var(--accent);
+  }
+  .app.detail .more-facts .fact span { font-size: 13px; color: var(--muted); }
+  .app.detail .more-facts .fact b { font-size: 16px; font-weight: 650; text-align: left; margin: 0; }
+}
+
+/* Desktop workspace: one navigation rail, full category rows and a permanent
+   mobile-style inbox. All overrides stay above the existing phone breakpoint. */
+@media (min-width: 900px) {
+  :root { --rail: clamp(160px, 12vw, 200px); --dock: clamp(320px, 29vw, 440px); }
+  .shell { max-width: 1920px; gap: 24px; padding: 24px 28px 40px; }
+  .shell--dock { grid-template-columns: var(--rail) minmax(0, 1fr) var(--dock); }
+  .tab--chats, .desktop-duplicate,
+  .shell-main .head > a[href="/profile"], .dock .chat-profile { display: none; }
+  .tabbar { top: 24px; }
+  .shell-main .screen { gap: 18px; }
+  .shell-main .head { min-height: 44px; }
+  .shell-main .head h1 { font-size: 30px; }
+  .shell-main .search { max-width: none; }
+  .app[data-kind] .days,
+  .app[data-kind="housing"] .days,
+  .app[data-kind="ticket"] .days {
+    display: flex; flex-direction: column; gap: 28px; max-width: none;
+  }
+  .app[data-kind] .day-block,
+  .app[data-kind="housing"] .days .day-block {
+    width: 100%; max-width: none; flex: none; gap: 12px; min-width: 0;
+  }
+  .app[data-kind] .day-head { margin: 0; }
+  .list { max-width: none; }
+  .app[data-kind="housing"] .days .list,
+  .app[data-kind="housing"] .list,
+  .app[data-kind="item"] .list {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
+    gap: 18px; max-width: none;
+  }
+  .app[data-kind="housing"] .days .list .card { width: auto; height: 100%; }
+  .app[data-kind="ticket"] .days .list,
+  .app[data-kind="group"] .days .list {
+    display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; width: 100%;
+  }
+  .app[data-kind="ticket"] .card,
+  .app[data-kind="group"] .card { padding: 18px; min-height: 112px; gap: 16px; }
+  .app[data-kind="ticket"] .card-title,
+  .app[data-kind="group"] .card-title { font-size: 17px; }
+  .app[data-kind="ticket"] .card-body,
+  .app[data-kind="group"] .card-body { gap: 5px; }
+  .app[data-kind="item"] .strip {
+    grid-template-columns: repeat(auto-fill, minmax(min(170px, 100%), 1fr)); gap: 18px;
+  }
+  .app[data-kind="item"] .strip .scard { width: 100%; max-width: 220px; }
+  .scard-title, .scard-price { font-size: 14px; }
+
+  .dock, .shell--chat-hidden .dock {
+    display: flex; top: 24px; height: calc(100dvh - 48px); min-width: 0;
+  }
+  .dock-collapsed { display: none !important; }
+  .dock-overview-scroll {
+    display: flex; flex-direction: column; gap: 16px;
+    padding: 20px; min-height: 0; flex: 1; overflow-y: auto; overflow-x: hidden;
+  }
+  .dock-overview-scroll .head { min-height: 44px; }
+  .dock-overview-scroll .head h1 { font-size: 26px; }
+  .dock-overview-scroll .search { width: 100%; max-width: none; }
+  .dock-overview-scroll .segment { flex: none; }
+  .dock-overview-scroll .chips { flex: none; }
+  .dock-overview-scroll .ch-card, .dock-overview-scroll .ch-row { min-width: 0; }
+  .dock-overview-scroll .ch-body { min-width: 0; }
+  .dock-overview-scroll .empty { padding: 24px 0; }
+  .dock .composer--dock { width: 100%; max-width: none; }
+  .dock .dock-head { min-height: 68px; }
+
+  .shell--out { padding: 0; }
+  body:not([data-auth-page="login"]) .shell--out .app,
+  body:not([data-auth-page="login"]) .shell--out .app:has(> .form) {
+    width: min(66vw, 960px); max-width: 960px;
+  }
+  body:not([data-auth-page="login"]) .shell--out .gate,
+  body:not([data-auth-page="login"]) .shell--out .screen,
+  body:not([data-auth-page="login"]) .shell--out .app > .form {
+    padding: 32px 40px;
+  }
+}
+
+/* Account pages keep comfortable spacing. Short screens scroll naturally;
+   controls and text never shrink simply to force the page into the viewport. */
+.signup-layout, .signup-details, .signup-courses, .signup-footer,
+.auth-passwords, .auth-field { display: contents; }
+@media (min-width: 900px) {
+  .shell--out .shell-main { padding: 28px 32px; }
+  body:not([data-auth-page="login"]) .shell--out .app,
+  body:not([data-auth-page="login"]) .shell--out .app:has(> .form) {
+    width: min(76vw, 960px); max-width: 960px;
+  }
+  .shell--out .app .gate,
+  .shell--out .app .screen,
+  body:not([data-auth-page="login"]) .shell--out .app .gate,
+  body:not([data-auth-page="login"]) .shell--out .app > .form { padding: 32px 36px; }
+  .shell--out .brand { gap: 10px; }
+  .shell--out .mark, .shell--out .mark--brand {
+    width: 64px; height: 64px; border-radius: 17px;
+  }
+  .shell--out .mark svg { width: 46px; height: 46px; }
+  .shell--out .gate h1 { margin-top: 24px; font-size: 28px; }
+  .shell--out .gate .cap { margin: 22px 0 8px; }
+  .shell--out .input { height: 48px; }
+  .shell--out .btn { height: 48px; min-height: 48px; flex-shrink: 0; }
+  .shell--out .grow { min-height: 24px; }
+  .shell--out .sheet-head { padding: 0; margin-bottom: 16px; }
+  .shell--out .note { margin-top: 14px; }
+  .shell--out .note .link, .shell--out .again .link { min-height: 32px; }
+  .shell--out .gate--start .kinds { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 24px; gap: 16px; }
+  .shell--out .kind { padding: 18px; gap: 8px; }
+  .shell--out .way { margin-top: 24px; }
+  .shell--out .ball { width: 30px; height: 30px; margin-bottom: 8px; }
+  .shell--out .way-line { top: 14px; }
+
+  .signup-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 36px; margin-top: 24px; }
+  .signup-details { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+  .signup-details > .photo-pick { flex-direction: row; justify-content: flex-start; gap: 16px; margin: 0 0 4px; }
+  .signup-details .photo-slot .avatar { width: 64px; height: 64px; font-size: 24px; }
+  .signup-details .photo-slot img { width: 64px; height: 64px; object-fit: cover; border-radius: 50%; }
+  .shell--out .auth-field { display: flex; flex-direction: column; min-width: 0; gap: 8px; }
+  .shell--out .auth-field .label, .shell--out .auth-field .cap { margin: 0; }
+  .signup-details > .rules { margin: -8px 0 0; }
+  .signup-courses { display: flex; flex-direction: column; min-width: 0; }
+  .signup-courses > .label { margin: 0 0 10px; }
+  .signup-courses .scroller { max-height: min(420px, 50dvh); overflow-y: auto; }
+  .signup-footer { display: flex; flex-direction: column; margin-top: 28px; }
+  .signup-footer .note { margin-bottom: 0; }
+  .auth-passwords { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; margin-top: 24px; }
+}
+@media (min-width: 1200px) {
+  .shell--out .gate--start .kinds { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
