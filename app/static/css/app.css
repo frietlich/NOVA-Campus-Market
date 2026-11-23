@@ -4114,3 +4114,9 @@ html.onb-open, html.onb-open body { overflow: hidden; }
 .pic-x:focus-visible, .pic-x:has(input:focus-visible) {
   outline: 2px solid var(--accent); outline-offset: 2px;
 }
+
+/* What a fill from a link or a screenshot wrote in stays framed until it is
+   changed. The rule above only reached boxes with the input class, so the
+   rent, the price and the description, which are built differently, were
+   filled in silently. */
+.prefixed.is-filled, .textarea.is-filled { border-color: var(--accent); }

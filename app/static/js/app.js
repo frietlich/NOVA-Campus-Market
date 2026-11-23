@@ -940,7 +940,11 @@
         field.value = String(value);
         lastFilled.push({ field, hint: null, target: field, before });
       }
-      mark(field, field);
+      // In a box with a € in front the frame around it is what you see,
+      // so that is what gets marked, while the field itself is listened to.
+      const shows = field.closest(".prefixed") || field;
+      lastFilled[lastFilled.length - 1].target = shows;
+      mark(field, shows);
       done.push(NAMES[name] || name);
     });
     return done;
@@ -1515,8 +1519,10 @@
 })();
 
 // Autofill on the housing form: from the link, or from the pasted advert.
-// Whatever is found goes into the fields and lights up briefly, so the
-// student sees what changed and checks it before publishing.
+// Whatever is found goes into the fields, lights up once and then stays
+// framed until the student changes it, the way a ticket filled from its
+// link does. A flash alone was gone before anybody had scrolled down to
+// look, so nothing showed what had come from the advert.
 (function autofill() {
   const box = document.querySelector(".autofill");
   if (!box) return;
@@ -1541,11 +1547,17 @@
     result.textContent = message;
   }
 
-  function mark(el) {
+  function mark(el, field) {
     if (!el) return;
     el.classList.remove("filled");
     void el.offsetWidth;            // restart the animation
-    el.classList.add("filled");
+    el.classList.add("filled", "is-filled");
+    // Added after the fill has sent its own input and change, so only the
+    // student's next edit takes the frame away.
+    const own = field || el;
+    const clear = () => el.classList.remove("is-filled");
+    own.addEventListener("input", clear, { once: true });
+    own.addEventListener("change", clear, { once: true });
   }
 
   function fill(fields) {
@@ -1557,7 +1569,7 @@
         boxes.forEach((b) => {
           if (value.includes(b.value) && !b.checked) {
             b.checked = true; b.dispatchEvent(new Event("change", { bubbles: true }));
-            mark(b.closest(".opt")); any = true;
+            mark(b.closest(".opt"), b); any = true;
           }
         });
         if (any) done.push(NAMES.features);
@@ -1570,7 +1582,7 @@
       el.value = value;
       el.dispatchEvent(new Event("input", { bubbles: true }));
       el.dispatchEvent(new Event("change", { bubbles: true }));
-      mark(el.closest(".prefixed") || el);
+      mark(el.closest(".prefixed") || el, el);
       if (NAMES[key]) done.push(NAMES[key]);
     }
     return done;

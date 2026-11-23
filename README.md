@@ -7,6 +7,45 @@ Nova students. A web app you can add to the home screen.
 
 Team project for Introduction to Programming, Nova SBE, fall 2026.
 
+## Objectives
+
+Nova students look for the same four things every semester, and today each
+of them lives in a different WhatsApp group, Instagram story or housing site:
+
+* a room or a flat near campus,
+* a ticket somebody can no longer use,
+* second-hand things, from a desk to a bike,
+* the last free spot in a group project.
+
+Campus Market puts all four in one place that only verified Nova students
+can enter. The goals were:
+
+1. **Trust.** Every account is a confirmed `@novasbe.pt` address, so the
+   person on the other side is a fellow student, not a stranger.
+2. **One place, four kinds.** Housing, Tickets, Market and Groups share one
+   app, one login and one chat, each tab ordered the way that kind is
+   searched (rooms by move-in date, tickets by day, groups by course).
+3. **Talk directly.** Every entry has a private chat between the two
+   students, no phone numbers handed out.
+4. **Little typing.** A ticket or a room fills itself in from the link or a
+   screenshot of the original advert, and the student only checks it.
+5. **Works on a phone.** It is a web app you add to the home screen, with
+   push notifications, and it also has a full desktop layout.
+
+## What it does
+
+* Sign up with a Nova address, a password and a 6-digit code by e-mail.
+* Four tabs with search and filters: Housing (rent, area, move-in, minutes
+  to campus, bills, features), Tickets (by day, one card per event),
+  Market (category, price, condition) and Groups (your courses, or all).
+* Put up an entry with up to 7 photos, edit it, close it and reopen it.
+* Fill in a ticket or a room from its link (Luma, DICE, Eventbrite,
+  Uniplaces, ...) or from screenshots read by Claude.
+* A private chat per entry and student, with read receipts.
+* Hearts to save entries, saved searches and notifications for new
+  entries, messages and watched events.
+* Profiles with programme, courses and photo, and a welcome tour.
+
 ## Team
 
 | Name                              | Student number |
@@ -147,7 +186,10 @@ Never put the normal Gmail password in there, and never commit `.env`. Each
 of us who wants real e-mails keeps their own.
 
 Gmail sends a few hundred mails a day from a normal account, which is fine for
-building and a small test. For the real launch we want a proper provider.
+building and a small test. Any other SMTP provider works the same way, only
+the five lines change. Brevo, for example, is `smtp-relay.brevo.com` on port
+587, with the login and the SMTP key from its "SMTP & API" page as user and
+password, and a sender address confirmed there as `MAIL_FROM`.
 
 ## How the code is protected
 
@@ -207,6 +249,8 @@ predictable by design. All of it lives in `db.new_code` and `db.check_code`.
     course_watches    the bell on the groups of one course
     ai_reads          how many screenshots a student had read today
     security_limits   login and form attempts, for the rate limits
+    form_tokens       one per sent new-entry form, so a double click on
+                      Publish makes one entry and not two
 
 All of it is one SQLite file, `campus.db`, next to this README and not in git.
 Uploaded photos are files in `app/static/uploads/`, also not in git.
@@ -462,10 +506,10 @@ Firefox show it on http://127.0.0.1:8000 already.
 Things we left out on purpose, in the order that would pay off most.
 
 A real map on the page instead of a link out, which needs a mapping library
-and an API key. A proper mail provider instead of a Gmail account, which
-sends a few hundred mails a day. Deleting an entry or a chat: an entry that
-carries chats is the other student's record too, so closing it is what we
-offer instead.
+and an API key. Deleting an entry or a chat: an entry that carries chats is
+the other student's record too, so closing it is what we offer instead. A
+pixel-perfect layout for every width between a phone and a laptop: the app is
+built and checked for both, the widths in between are usable but plainer.
 
 ## Rules we agreed on
 
