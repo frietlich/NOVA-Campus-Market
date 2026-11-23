@@ -4,7 +4,7 @@
 
 - Require a random session secret and verified Nova accounts on protected pages.
 - Use Secure, HttpOnly, SameSite=Lax session cookies in production.
-- Disable the development account selector unless CAMPUS_SECURITY_DEMO=1.
+- Remove the development account selector at /dev entirely.
 - Protect state-changing requests by checking the Origin or Referer.
 - Restrict uploaded images to signed-in verified users. Re-encode validated
   JPEG, PNG and WebP uploads, reject images above 5 MB or 20 million pixels.
