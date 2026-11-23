@@ -2647,7 +2647,16 @@ async def security_checks(request, call_next):
     # have the file's own timestamp in their address, so a new one is a new
     # address, and telling the browser to forget them means fetching the
     # same unchanged file on every single page.
-    if not request.url.path.startswith("/static/") or clean_path.startswith("/static/uploads/"):
+    #
+    # A student's photo sits between the two. It belongs to signed-in eyes
+    # only, so no shared cache along the way may hold a copy, which is what
+    # private says. The reader's own browser may keep it: the file never
+    # changes under its name, and no-store would mean fetching every
+    # thumbnail again on every list, which on a phone over mobile data is
+    # the difference between a list that appears and one that loads.
+    if clean_path.startswith("/static/uploads/"):
+        response.headers["Cache-Control"] = "private, max-age=86400"
+    elif not request.url.path.startswith("/static/"):
         response.headers["Cache-Control"] = "no-store"
     if not LOCAL_DEMO:
         response.headers["Strict-Transport-Security"] = "max-age=31536000"
