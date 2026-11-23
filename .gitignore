@@ -7,3 +7,5 @@ campus.db
 app/static/uploads/*
 !app/static/uploads/.gitkeep
 .DS_Store
+.coverage
+htmlcov/
