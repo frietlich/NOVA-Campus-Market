@@ -105,6 +105,20 @@ def test_one_view_is_singular(world):
     assert "1 view " in page or "1 view<" in page or "1 view ·" in page
     assert "1 views" not in page
 
+def test_one_month_one_entry_one_chat_are_singular(world):
+    users, clients=world
+    room=db.create_listing(users[0], "housing", "A room", price=400)
+    with db.connect() as conn:
+        conn.execute("UPDATE listings SET months_min=1 WHERE id=?", (room,))
+    conn.close()
+    db.open_conversation(room, users[1])
+    detail=clients[1].get(f"/listing/{room}").text
+    assert "1 month" in detail and "1 months" not in detail
+    housing=clients[1].get("/housing").text
+    assert "1 month min" in housing and "1 months" not in housing
+    profile=clients[0].get("/profile").text
+    assert "<span>entry</span>" in profile and "<span>chat</span>" in profile
+
 def test_image_content_and_size(world):
     users, clients=world
     before=len(db.listings_of_user(users[0]))

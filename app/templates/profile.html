@@ -24,8 +24,8 @@
         </div>
       </div>
       <div class="stats">
-        <div class="stat"><b>{{ mine | length }}</b><span>entries</span></div>
-        <div class="stat"><b>{{ chat_count }}</b><span>chats</span></div>
+        <div class="stat"><b>{{ mine | length }}</b><span>{{ 'entry' if mine | length == 1 else 'entries' }}</span></div>
+        <div class="stat"><b>{{ chat_count }}</b><span>{{ 'chat' if chat_count == 1 else 'chats' }}</span></div>
         <div class="stat"><b>{{ me.created_at | month }}</b><span>joined</span></div>
       </div>
     </div>

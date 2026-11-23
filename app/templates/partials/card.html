@@ -69,7 +69,7 @@
         {%- if l.available_from %}From {{ l.available_from | day_month }}{% endif -%}
         {%- if l.flatmates %} · {{ l.flatmates }} flatmate{{ '' if l.flatmates == 1 else 's' }}
         {%- elif l.category == 'studio' or l.category == 'whole_flat' %} · on your own{% endif -%}
-        {%- if l.months_min %} · {{ l.months_min }} months min{% endif -%}
+        {%- if l.months_min %} · {{ l.months_min }} {{ 'month' if l.months_min == 1 else 'months' }} min{% endif -%}
       </span>
       {#- The area, where the name of whoever put it up used to be. Which
           student it is decides nothing when you are looking for a room,

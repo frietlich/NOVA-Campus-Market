@@ -4026,3 +4026,9 @@ html.onb-open, html.onb-open body { overflow: hidden; }
 @media (max-width: 899px) {
   .gate:has(> .sheet-head:first-child) { padding-top: 0; }
 }
+
+/* A title or a description is whatever a student typed, and a pasted link
+   or one long compound word has no space to break at. Without this it ran
+   off the right edge of the entry page and the page scrolled sideways. The
+   chat bubbles have done the same since the start. */
+.detail-head h1, .detail-sum h1, .text { overflow-wrap: anywhere; }

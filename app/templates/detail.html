@@ -146,7 +146,7 @@
         <span>{{ 'Place' if listing.category == 'other' else HOUSING.KIND_LABELS.get(listing.category, 'Place') }}
           {%- if listing.place and listing.place != 'other' %} in {{ HOUSING.AREA_LABELS.get(listing.place, listing.place) }}{% endif %}</span>
         {% if listing.minutes_campus %}<span>About {{ listing.minutes_campus }} min to campus</span>{% endif %}
-        {% if listing.months_min %}<span>Minimum {{ listing.months_min }} months</span>{% endif %}
+        {% if listing.months_min %}<span>Minimum {{ listing.months_min }} {{ 'month' if listing.months_min == 1 else 'months' }}</span>{% endif %}
       {% elif listing.type == 'ticket' %}
         {% if listing.event_date %}<span>{{ listing.event_date | pretty_date }}</span>{% endif %}
         {% if listing.event_time %}<span>{{ listing.event_time }}</span>{% endif %}
@@ -399,7 +399,7 @@
           <div class="fact">{{ icon.pin(17) }}<span>Move in from</span><b>{{ listing.available_from | pretty_date }}</b></div>
         {% endif %}
         {% if listing.months_min %}
-          <div class="fact">{{ icon.check(17) }}<span>Minimum stay</span><b>{{ listing.months_min }} months</b></div>
+          <div class="fact">{{ icon.check(17) }}<span>Minimum stay</span><b>{{ listing.months_min }} {{ 'month' if listing.months_min == 1 else 'months' }}</b></div>
         {% endif %}
         {% if listing.minutes_campus %}
           <div class="fact">{{ icon.house(17) }}<span>To campus</span><b>about {{ listing.minutes_campus }} min</b></div>
