@@ -1526,3 +1526,411 @@
   });
 
 })();
+
+// ------------------------------------------------------------------ the tour
+//
+// Two parts. First the story: four cards you swipe through, where Bea, a
+// (made-up) Nova student, says why the app exists and how it works. Then, if
+// you want, a walk through the whole app: she takes you from Housing to
+// Tickets, Market, Groups, Chats and your profile, and points at the real
+// buttons on each page.
+//
+// The walk goes from page to page, so where you are in it is kept in
+// sessionStorage ("cm-tour-walk") and every page picks it up again. A step
+// whose button is not on the page (no bell when notifications are off, no
+// entries in an empty tab) is simply left out.
+//
+// Shown once per browser. "Take the tour again" on the profile, or ?tour=1 in
+// the address, plays it again. Skippable everywhere, Esc closes it.
+(function tour() {
+  const WALK = "cm-tour-walk";
+  const store = {
+    get(k, s = localStorage) { try { return s.getItem(k); } catch (e) { return null; } },
+    set(k, v, s = localStorage) { try { s.setItem(k, v); } catch (e) {} },
+    drop(k, s = localStorage) { try { s.removeItem(k); } catch (e) {} },
+  };
+  const walking = store.get(WALK, sessionStorage);
+  const asked = new URLSearchParams(location.search).get("tour") === "1";
+  const bar = document.querySelector(".tabbar");
+  // It starts by itself only on the main screens. On a wide screen the rail
+  // is on every page, the forms included, and nobody wants a tour over a
+  // half-written entry.
+  const MAIN = ["/housing", "/tickets", "/market", "/groups", "/chats", "/profile"];
+  if (walking === null) {
+    if (!bar || !MAIN.includes(location.pathname.replace(/\/+$/, ""))) return;
+    if (store.get("cm-tour-done") === "1" && !asked) return;
+  }
+
+  // Bea. Drawn here, in the colours of the app, no photo and no logo.
+  const BEA = (wave) => `
+  <svg class="bea" viewBox="0 0 160 190" aria-hidden="true">
+    <ellipse cx="80" cy="182" rx="44" ry="6" fill="#000" opacity=".08"/>
+    <path d="M44 74c-8 26 2 52 16 60h40c14-8 24-34 16-60z" fill="#3B2A22"/>
+    <path d="M30 190c0-36 22-56 50-56s50 20 50 56z" fill="#12998A"/>
+    <path d="M58 136c6 10 14 14 22 14s16-4 22-14" fill="none" stroke="#0B6F64" stroke-width="5" stroke-linecap="round"/>
+    <path d="M73 150v20M87 150v20" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M40 150c-4 16-4 28-2 40" stroke="#E5492F" stroke-width="7" stroke-linecap="round" fill="none"/>
+    <rect x="72" y="112" width="16" height="22" rx="7" fill="#E0A982"/>
+    <circle cx="80" cy="88" r="31" fill="#F2C29B"/>
+    <path d="M48 86c-2-26 16-40 34-38 20 1 32 16 30 38-6-12-16-18-30-18-14 0-26 6-34 18z" fill="#3B2A22"/>
+    <path d="M100 58c10-6 22-2 24 8-8-2-14 0-20 4z" fill="#3B2A22"/>
+    <circle cx="69" cy="91" r="9" fill="none" stroke="#2A2A33" stroke-width="2.6"/>
+    <circle cx="91" cy="91" r="9" fill="none" stroke="#2A2A33" stroke-width="2.6"/>
+    <path d="M78 91h4" stroke="#2A2A33" stroke-width="2.6"/>
+    <circle cx="69" cy="92" r="2.8" fill="#2A2A33"/><circle cx="91" cy="92" r="2.8" fill="#2A2A33"/>
+    <circle cx="62" cy="104" r="4" fill="#F28C78" opacity=".45"/><circle cx="98" cy="104" r="4" fill="#F28C78" opacity=".45"/>
+    <path d="M72 106c4 5 12 5 16 0" fill="none" stroke="#8A3B2A" stroke-width="2.6" stroke-linecap="round"/>
+    ${wave ? `<g class="bea-arm">
+      <path d="M118 150c10-10 16-26 18-44" stroke="#12998A" stroke-width="15" stroke-linecap="round" fill="none"/>
+      <circle cx="137" cy="100" r="9" fill="#F2C29B"/></g>`
+    : `<path d="M118 150c8 8 10 20 10 40" stroke="#12998A" stroke-width="15" stroke-linecap="round" fill="none"/>`}
+    <g transform="rotate(-10 52 168)"><rect x="38" y="150" width="26" height="40" rx="5" fill="#2A2A33"/>
+      <rect x="41" y="154" width="20" height="30" rx="3" fill="#9FE3D8"/></g>
+  </svg>`;
+  const BEA_FACE = BEA(false).replace('viewBox="0 0 160 190"', 'viewBox="40 46 80 80"').replace('class="bea"', 'class="bea-face"');
+
+  const ICON = {
+    housing: '<path d="M3.6 10.7 12 4.3l8.4 6.4V19a1.4 1.4 0 0 1-1.4 1.4h-3.6v-5.9h-6.8v5.9H5a1.4 1.4 0 0 1-1.4-1.4z"/>',
+    ticket: '<rect x="3" y="7" width="18" height="10" rx="2.4"/><path d="M14.6 7.6v1.8m0 2.7v1.8m0 2.7v.8"/>',
+    item: '<path d="M5.4 8h13.2l1 11.4a1.2 1.2 0 0 1-1.2 1.3H5.6a1.2 1.2 0 0 1-1.2-1.3z"/><path d="M9 8a3 3 0 0 1 6 0"/>',
+    group: '<circle cx="9.2" cy="8.4" r="3.1"/><path d="M3.4 19.6c0-2.9 2.6-5.2 5.8-5.2s5.8 2.3 5.8 5.2M16.1 6.2a2.8 2.8 0 0 1 0 5.6M17.6 19.6c0-2.1-.8-3.7-2.2-4.7"/>',
+    chats: '<path d="M20.2 11.6c0 3.5-3.7 6.4-8.2 6.4-.9 0-1.8-.1-2.7-.4L5.3 19.3l1.1-3A6.1 6.1 0 0 1 3.8 11.6c0-3.5 3.7-6.4 8.2-6.4s8.2 2.9 8.2 6.4z"/>',
+    me: '<circle cx="12" cy="8.6" r="3.8"/><path d="M4.6 20c0-3.9 3.3-6.6 7.4-6.6s7.4 2.7 7.4 6.6"/>',
+    find: '<circle cx="11" cy="11" r="6.6"/><path d="M16.2 16.2 20.5 20.5"/>',
+    done: '<circle cx="12" cy="12" r="8.6"/><path d="M8.4 12.3 11 14.8l4.6-5"/>',
+    shield: '<path d="M12 3.4 5 6.2v5.2c0 4.4 3 7.9 7 9.2 4-1.3 7-4.8 7-9.2V6.2z"/><path d="m9 12 2.2 2.2L15.4 10"/>',
+    pin: '<path d="M12 20.6s-6.4-5.6-6.4-10.8a6.4 6.4 0 0 1 12.8 0c0 5.2-6.4 10.8-6.4 10.8z"/><circle cx="12" cy="9.8" r="2.3"/>',
+    fair: '<path d="M12 4v16M5 8h14M7.6 8 4.8 14a3 3 0 0 0 5.6 0zM16.4 8l-2.8 6a3 3 0 0 0 5.6 0z"/>',
+  };
+  const svg = (k, s = 22) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
+
+  // ---------------------------------------------------------- part 1, the story
+  const CARDS = [
+    { cls: "onb-hello", html: `
+      <div class="onb-stage">${BEA(true)}<span class="onb-bubble">Olá! I'm Bea 👋</span></div>
+      <h2>Welcome to Campus Market</h2>
+      <p>I study Finance at Nova, and I'll show you around. This is where Nova
+         students find rooms, tickets, second-hand things and teammates, from each other.</p>
+      <div class="onb-swap">
+        <span class="onb-old"><b>40 WhatsApp groups</b><br><small>and it's gone in an hour</small></span>
+        <span class="onb-arrow">→</span>
+        <span class="onb-new">1 app<br><small>it stays until it's taken</small></span>
+      </div>` },
+    { cls: "onb-why", html: `
+      <div class="onb-stage onb-stage--small">${BEA(false)}<span class="onb-bubble onb-bubble--small">Why bother?</span></div>
+      <h2>Why Campus Market</h2>
+      <ul class="onb-why-list">
+        <li><span class="n" data-kind="housing">${svg("shield", 20)}</span><div><b>Only Nova students</b><span>Everyone signed up with a verified novasbe.pt address. No strangers, no fake landlords.</span></div></li>
+        <li><span class="n" data-kind="ticket">${svg("pin", 20)}</span><div><b>Nothing gets buried</b><span>Search and filter instead of scrolling back through chats.</span></div></li>
+        <li><span class="n" data-kind="item">${svg("fair", 20)}</span><div><b>Fair for everyone</b><span>You see how many students reached out before you, and a taken entry is closed for all.</span></div></li>
+      </ul>` },
+    { cls: "onb-inside", html: `
+      <div class="onb-stage onb-stage--small">${BEA(false)}<span class="onb-bubble onb-bubble--small">Pick a tab!</span></div>
+      <h2>Four tabs, four colours</h2>
+      <div class="onb-kinds">
+        <div data-kind="housing">${svg("housing")}<b>Housing</b><span>Rooms, studios and flats, linked to the real ad.</span></div>
+        <div data-kind="ticket">${svg("ticket")}<b>Tickets</b><span>Parties, concerts, games. Sorted by day.</span></div>
+        <div data-kind="item">${svg("item")}<b>Market</b><span>Bikes, desks, books, anything you sell.</span></div>
+        <div data-kind="group">${svg("group")}<b>Groups</b><span>A free spot in a project group for your course.</span></div>
+      </div>` },
+    { cls: "onb-how", html: `
+      <div class="onb-stage onb-stage--small">${BEA(false)}</div>
+      <h2>How it works</h2>
+      <ol class="onb-steps">
+        <li><span class="n" data-kind="housing">${svg("find", 20)}</span><div><b>Find it, or put it up</b><span>Search a tab, or tap + and offer something in a minute.</span></div></li>
+        <li><span class="n" data-kind="ticket">${svg("chats", 20)}</span><div><b>Message the student</b><span>Every entry shows who reached out before you:</span>
+          <span class="onb-queue"><i></i><i></i><i class="me"></i><em>You'd be the 3rd to reach out</em></span></div></li>
+        <li><span class="n" data-kind="group">${svg("done", 20)}</span><div><b>Deal done, entry closed</b><span>Everyone sees it's taken, nobody writes for nothing.</span></div></li>
+      </ol>` },
+  ];
+
+  // ---------------------------------------------------------- part 2, the walk
+  // el is a selector, or a function that returns the element(s) to light up.
+  const section = (name) => () => {
+    const head = [...document.querySelectorAll(".section")].find((s) => s.textContent.trim() === name);
+    if (!head) return null;
+    const next = head.nextElementSibling;
+    return next ? [head, next] : [head];
+  };
+  const CHAPTERS = {
+    housing: { label: "Housing", icon: "housing", page: "/housing" },
+    ticket: { label: "Tickets", icon: "ticket", page: "/tickets" },
+    item: { label: "Market", icon: "item", page: "/market" },
+    group: { label: "Groups", icon: "group", page: "/groups" },
+    chats: { label: "Chats", icon: "chats", page: "/chats" },
+    me: { label: "Profile", icon: "me", page: "/profile" },
+  };
+  const STEPS = [
+    { ch: "housing", el: ".tabbar", title: "Your home base",
+      text: "Housing, Tickets, Market, Groups and your Chats. Each tab has its own colour, so you always know where you are." },
+    { ch: "housing", el: ".search", title: "Search anything",
+      text: "A street, an area like Carcavelos, or just “balcony”. Search works the same way in every tab." },
+    { ch: "housing", el: ".hbar", title: "Filters that matter",
+      text: "Rent, area, bills included, minutes to campus, move-in date. Then sort by rent or by who's free first." },
+    { ch: "housing", el: ".bell", title: "Let the rooms come to you",
+      text: "Set your filters, then tap the bell. When a new room fits your search, your phone tells you." },
+    { ch: "housing", el: () => document.querySelector(".head-actions .plus:not(.bell)") || document.querySelector(".tab--rail"), title: "Renting out your room?",
+      text: "Tap +. Paste the Uniplaces or Idealista link, or a few screenshots of the ad, and the form fills itself in." },
+    { ch: "housing", el: ".card", title: "The full picture",
+      text: "Open a room: photos, rent plus bills worked out, a button to the original ad, and how many students reached out before you." },
+    { ch: "housing", el: ".dock", title: "Your chats, right beside you",
+      text: "On a big screen your chats stay open here. Read a room on the left and talk to the person letting it on the right." },
+
+    { ch: "ticket", el: ".chips", title: "Tickets for what you're into",
+      text: "Parties, concerts, sports and more. Tickets are sorted by day, so tonight is on top." },
+    { ch: "ticket", el: ".card", title: "Sold out? Not here.",
+      text: "Open a ticket and tap its bell: you hear when someone puts up another one for the same event." },
+    { ch: "ticket", el: () => document.querySelector(".head-actions .plus:not(.bell)") || document.querySelector(".tab--rail"), title: "Can't make it?",
+      text: "Sell your ticket in seconds: paste the Luma, DICE or Eventbrite link, or a screenshot, and it's filled in." },
+
+    { ch: "item", el: ".filters", title: "Second-hand, first class",
+      text: "Bikes, desks, books, a winter coat. Filter by category, price and condition." },
+    { ch: "item", el: ".card", title: "Like it? Heart it.",
+      text: "Open anything and tap the heart. Everything you saved waits for you on your profile." },
+
+    { ch: "group", el: ".segment", title: "Only your courses",
+      text: "Groups shows the project groups in the courses you take. Switch to All courses to look further." },
+    { ch: "group", el: () => document.querySelector(".card") || document.querySelector(".empty"), title: "Missing a teammate?",
+      text: "A group with a free spot posts it here. Message them and the spot is yours. The bell on a group tells you about new ones in that course." },
+
+    { ch: "chats", el: '.segment', title: "Buying and selling, apart",
+      text: "“You asked” is what you want. “Your entries” is who wrote about your things. They never get mixed up." },
+    { ch: "chats", el: () => document.querySelector(".ch-list") || document.querySelector(".empty"), title: "One chat per entry",
+      text: "Every chat is about one entry, so you always know who asked about what. Deal done? Archive it." },
+
+    { ch: "me", el: ".panel", title: "This is you",
+      text: "The tick means a verified Nova student. Everyone you talk to here has one too." },
+    { ch: "me", el: section("My entries"), title: "Your entries",
+      text: "Everything you put up. When it's gone, close it, and everybody sees it's taken." },
+    { ch: "me", el: section("Notifications"), title: "You decide what pings you",
+      text: "Saved searches, events and courses, all in one place. Turn any of them off when you like." },
+  ];
+  const ORDER = Object.keys(CHAPTERS);
+  const here = location.pathname.replace(/\/+$/, "") || "/";
+  const onPage = (n) => CHAPTERS[STEPS[n].ch].page === here;
+  const find = (n) => {
+    const el = STEPS[n].el;
+    let got = typeof el === "function" ? el() : document.querySelector(el);
+    if (!got) return null;
+    got = (Array.isArray(got) ? got : [got]).filter((e) => e && e.getClientRects().length);
+    return got.length ? got : null;
+  };
+
+  const root = document.createElement("div");
+  root.className = "onb";
+  root.setAttribute("role", "dialog");
+  root.setAttribute("aria-modal", "true");
+  root.setAttribute("aria-label", "Welcome tour");
+
+  function open() {
+    if (!root.isConnected) document.body.append(root);
+    document.documentElement.classList.add("onb-open");
+  }
+  function done() {
+    store.set("cm-tour-done", "1");
+    store.drop(WALK, sessionStorage);
+    root.remove();
+    document.documentElement.classList.remove("onb-open");
+    document.removeEventListener("keydown", keys);
+    window.removeEventListener("resize", place);
+    if (asked) {
+      const u = new URL(location.href); u.searchParams.delete("tour");
+      history.replaceState(null, "", u.pathname + u.search);
+    }
+  }
+
+  // ---- part 1
+  let c = 0, mode = "cards", s = 0, dir = 1;
+  function cards() {
+    open();
+    mode = "cards";
+    const last = c === CARDS.length - 1;
+    root.className = "onb";
+    root.innerHTML = `
+      <div class="onb-sheet">
+        <button type="button" class="onb-skip">Skip</button>
+        <div class="onb-track" style="--i:${c}">
+          ${CARDS.map((k, n) => `<section class="onb-card ${k.cls}" ${n === c ? "" : 'aria-hidden="true"'}>${k.html}</section>`).join("")}
+        </div>
+        <div class="onb-foot">
+          <span class="onb-dots">${CARDS.map((_, n) => `<i class="${n === c ? "on" : ""}"></i>`).join("")}</span>
+          ${c > 0 ? '<button type="button" class="onb-back">Back</button>' : ""}
+          <button type="button" class="onb-next">${last ? "Show me around · 2 min" : "Next"}</button>
+        </div>
+        ${last ? '<button type="button" class="onb-later">No thanks, I\'ll explore myself</button>' : ""}
+      </div>`;
+    root.querySelector(".onb-skip").onclick = done;
+    root.querySelector(".onb-next").onclick = () => (last ? walk(0, 1) : (c++, cards()));
+    const back = root.querySelector(".onb-back");
+    if (back) back.onclick = () => { c--; cards(); };
+    const later = root.querySelector(".onb-later");
+    if (later) later.onclick = done;
+    root.querySelector(".onb-next").focus();
+    swipe(root.querySelector(".onb-track"));
+  }
+
+  function swipe(el) {
+    let x0 = null;
+    el.addEventListener("touchstart", (e) => { x0 = e.touches[0].clientX; }, { passive: true });
+    el.addEventListener("touchend", (e) => {
+      if (x0 === null) return;
+      const dx = e.changedTouches[0].clientX - x0; x0 = null;
+      if (dx < -50 && c < CARDS.length - 1) { c++; cards(); }
+      if (dx > 50 && c > 0) { c--; cards(); }
+    });
+  }
+
+  // ---- part 2
+  // Go to step n, or the nearest one in direction d that can be shown. A step
+  // on another page means going there first; that page carries on.
+  function walk(n, d) {
+    dir = d;
+    while (n >= 0 && n < STEPS.length) {
+      if (!onPage(n)) return travel(n, d);
+      if (find(n)) { s = n; store.set(WALK, `${n}:${d}`, sessionStorage); return spot(); }
+      n += d;
+    }
+    return n < 0 ? (c = CARDS.length - 1, store.drop(WALK, sessionStorage), cards()) : finale();
+  }
+
+  function travel(n, d) {
+    store.set(WALK, `${n}:${d}`, sessionStorage);
+    const ch = CHAPTERS[STEPS[n].ch];
+    open();
+    mode = "travel";
+    root.className = "onb onb--travel";
+    root.innerHTML = `<div class="onb-go" data-kind="${STEPS[n].ch}">${svg(ch.icon, 26)}<span>${ch.label}</span></div>`;
+    setTimeout(() => location.assign(ch.page), 260);
+  }
+
+  function chapterBar(n) {
+    const at = ORDER.indexOf(STEPS[n].ch);
+    return `<div class="onb-chapters">${ORDER.map((k, i) =>
+      `<span class="${i < at ? "past" : i === at ? "now" : ""}" data-kind="${k}" title="${CHAPTERS[k].label}">${svg(CHAPTERS[k].icon, 14)}</span>`).join("")}</div>`;
+  }
+
+  function spot() {
+    open();
+    mode = "spots";
+    const t = STEPS[s];
+    const fresh = !root.classList.contains("onb--spots");
+    if (fresh) {
+      root.className = "onb onb--spots";
+      root.innerHTML = `<div class="onb-dim"></div><div class="onb-hole"></div><div class="onb-tip"></div>`;
+    }
+    const els = find(s);
+    els[0].scrollIntoView({ block: "center", behavior: "instant" });
+    root.dataset.kind = t.ch;
+    const tip = root.querySelector(".onb-tip");
+    tip.innerHTML = `
+      ${chapterBar(s)}
+      <div class="onb-tip-top">${BEA_FACE}<div><small class="onb-ch">${CHAPTERS[t.ch].label}</small><b>${t.title}</b><p>${t.text}</p></div></div>
+      <div class="onb-foot">
+        <button type="button" class="onb-back onb-end">End tour</button>
+        <button type="button" class="onb-back onb-prev" aria-label="Previous">←</button>
+        <button type="button" class="onb-next">Next</button>
+      </div>`;
+    tip.querySelector(".onb-next").onclick = () => walk(s + 1, 1);
+    tip.querySelector(".onb-prev").onclick = () => walk(s - 1, -1);
+    tip.querySelector(".onb-end").onclick = done;
+    // A bubble that was just made appears where it belongs; only a bubble
+    // already on screen glides to its next place.
+    if (fresh) tip.style.transition = "none";
+    place();
+    if (fresh) requestAnimationFrame(() => { tip.style.transition = ""; });
+    tip.querySelector(".onb-next").focus({ preventScroll: true });
+  }
+
+  function place() {
+    if (mode !== "spots") return;
+    const els = find(s);
+    if (!els) return;
+    const rs = els.map((e) => e.getBoundingClientRect());
+    const r = {
+      left: Math.min(...rs.map((q) => q.left)), top: Math.min(...rs.map((q) => q.top)),
+      right: Math.max(...rs.map((q) => q.right)), bottom: Math.max(...rs.map((q) => q.bottom)),
+    };
+    r.width = r.right - r.left; r.height = r.bottom - r.top;
+    const W = window.innerWidth, H = window.innerHeight, pad = 6;
+    const x = Math.max(r.left - pad, 4), y = Math.max(r.top - pad, 4);
+    const w = Math.min(r.width + pad * 2, W - x - 4), h = Math.min(r.height + pad * 2, H - y - 4);
+    const rad = Math.min(18, h / 2);
+    // The dark layer with a rounded hole cut out where the button is.
+    root.querySelector(".onb-dim").style.clipPath = `path(evenodd, "M0 0H${W}V${H}H0Z ` +
+      `M${x + rad} ${y}H${x + w - rad}A${rad} ${rad} 0 0 1 ${x + w} ${y + rad}V${y + h - rad}` +
+      `A${rad} ${rad} 0 0 1 ${x + w - rad} ${y + h}H${x + rad}A${rad} ${rad} 0 0 1 ${x} ${y + h - rad}` +
+      `V${y + rad}A${rad} ${rad} 0 0 1 ${x + rad} ${y}Z")`;
+    Object.assign(root.querySelector(".onb-hole").style, {
+      top: y + "px", left: x + "px", width: w + "px", height: h + "px", borderRadius: rad + "px",
+    });
+    const tip = root.querySelector(".onb-tip");
+    // Below the spot when there is room for the bubble, otherwise above it.
+    const room = H - (y + h) - 18;
+    const up = room < tip.offsetHeight + 12 && y > H - (y + h);
+    tip.classList.toggle("onb-tip--up", up);
+    tip.style.top = up ? "" : Math.min(y + h + 16, H - tip.offsetHeight - 12) + "px";
+    tip.style.bottom = up ? Math.max(H - y + 16, 12) + "px" : "";
+    // Sideways the bubble follows what it points at, so on a wide screen it
+    // does not sit in the middle while the button is in the rail on the left.
+    // On a phone it is as wide as the screen and simply stays put.
+    const cx = Math.min(Math.max(r.left + r.width / 2, 40), W - 40);
+    const tw = tip.offsetWidth;
+    const left = Math.min(Math.max(cx - tw / 2, 12), Math.max(W - tw - 12, 12));
+    tip.style.left = left + "px";
+    tip.style.setProperty("--arrow-x", Math.min(Math.max(cx - left, 22), tw - 22) + "px");
+  }
+
+  function finale() {
+    open();
+    mode = "end";
+    store.drop(WALK, sessionStorage);
+    store.set("cm-tour-done", "1");
+    root.className = "onb onb--end";
+    root.innerHTML = `
+      <div class="onb-sheet">
+        <div class="onb-confetti" aria-hidden="true">${"<i></i>".repeat(18)}</div>
+        <section class="onb-card onb-hello">
+          <div class="onb-stage">${BEA(true)}<span class="onb-bubble">You're all set! 🎉</span></div>
+          <h2>Go get it</h2>
+          <p>Your room, your ticket for Saturday, your last teammate: it's all one tap away.</p>
+          <p class="onb-small">Want to see this again? It's on your profile, under “Take the tour again”.</p>
+        </section>
+        <div class="onb-foot onb-foot--one">
+          <button type="button" class="onb-next">Start exploring</button>
+        </div>
+      </div>`;
+    root.querySelector(".onb-next").onclick = () => { done(); if (here !== "/housing") location.assign("/housing"); };
+    root.querySelector(".onb-next").focus();
+  }
+
+  function keys(e) {
+    if (e.key === "Escape") return done();
+    if (mode === "cards") {
+      if (e.key === "ArrowRight" && c < CARDS.length - 1) { c++; cards(); }
+      if (e.key === "ArrowLeft" && c > 0) { c--; cards(); }
+    } else if (mode === "spots") {
+      if (e.key === "ArrowRight") walk(s + 1, 1);
+      if (e.key === "ArrowLeft") walk(s - 1, -1);
+    }
+  }
+  document.addEventListener("keydown", keys);
+  window.addEventListener("resize", place);
+
+  if (walking !== null) {
+    const [n, d] = walking.split(":").map(Number);
+    if (Number.isInteger(n) && n >= 0 && n < STEPS.length && onPage(n)) return walk(n, d === -1 ? -1 : 1);
+    // Mid-walk on a page the walk was not heading to (the back button, a
+    // link): offer to carry on instead of pulling the student anywhere.
+    if (Number.isInteger(n) && n >= 0 && n < STEPS.length) {
+      const pill = document.createElement("div");
+      pill.className = "onb-resume";
+      pill.innerHTML = `${BEA_FACE}<button type="button" class="onb-resume-go">Continue the tour</button><button type="button" class="onb-resume-x" aria-label="End the tour">✕</button>`;
+      document.body.append(pill);
+      pill.querySelector(".onb-resume-go").onclick = () => { pill.remove(); travel(n, 1); };
+      pill.querySelector(".onb-resume-x").onclick = () => { pill.remove(); store.drop(WALK, sessionStorage); store.set("cm-tour-done", "1"); };
+      return;
+    }
+    store.drop(WALK, sessionStorage);
+  }
+  cards();
+})();
