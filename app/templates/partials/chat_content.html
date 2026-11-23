@@ -86,7 +86,10 @@
 
     {% endif %}
     <div data-chat-overview>
-    {% if has_sell and has_buy and not archived %}
+    {#- Always both sides, even when one of them is empty. It used to
+        appear only once you had chats on both, so until then there was
+        nothing on screen to say the other side existed at all. -#}
+    {% if not archived %}
       <div class="segment" style="margin: 12px 0">
         <a href="{{ chat_link(side="buy") }}" aria-current="{{ 'true' if side == 'buy' else 'false' }}">
           You asked{% if unread_buy %} <i class="seg-dot"></i>{% endif %}
