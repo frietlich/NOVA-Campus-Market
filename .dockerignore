@@ -1,0 +1,24 @@
+# Only app/ and requirements.txt go into the image. Everything else stays out,
+# above all .env and campus.db, which must never end up inside an image.
+.git
+.gitignore
+.gitattributes
+.claude
+.venv
+venv
+.env
+.env.*
+campus.db
+*.db
+__pycache__
+*.pyc
+.DS_Store
+app/static/uploads/*
+!app/static/uploads/.gitkeep
+docs
+tests
+tools
+Dockerfile
+compose.yaml
+.dockerignore
+README.md

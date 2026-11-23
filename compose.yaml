@@ -1,0 +1,25 @@
+# docker compose up --build      start it, http://127.0.0.1:8000
+# docker compose down            stop it, the data stays
+# docker compose down -v         stop it and throw the data away
+
+services:
+  web:
+    build: .
+    image: campus-market
+    # Only on the host's own 127.0.0.1. The https proxy on the same machine
+    # reaches it, the internet does not, which is what makes it safe for the
+    # container to trust the proxy's word about https.
+    ports:
+      - "127.0.0.1:${PORT:-8000}:8000"
+    # The same .env as without Docker, for the mail account and CAMPUS_SECRET.
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - campus-data:/data
+      - campus-uploads:/app/app/static/uploads
+    restart: unless-stopped
+
+volumes:
+  campus-data:
+  campus-uploads:

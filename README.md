@@ -3,16 +3,37 @@
 Housing, tickets, things for sale and free spots in group projects, for verified
 Nova students. A web app you can add to the home screen.
 
-What it is and what it is not is settled in `docs/one-pager.docx`. Who builds
-what is in `docs/tasks.docx`. Read both before you write code.
+**Live:** https://campus-market.clustercockpit.org
 
-## Run it
+Team project for Introduction to Programming, Nova SBE, fall 2026.
+
+## Team
+
+| Name                              | Student number |
+|-----------------------------------|----------------|
+| Frido Treibig                     | 78467          |
+| Mikkel Hagen                      | 83915          |
+| Julian Franz Christian Zährl      | 78758          |
+| Sofia Tesser                      | 71354          |
+| Emir Bacaksiz                     | 81120          |
+
+What it is and what it is not is settled in `docs/one-pager.docx`. Who builds
+what is in `docs/tasks.docx`.
+
+## Run it locally
 
 You need Python 3.12 or newer (3.12 is used in CI). From this folder, once:
 
     python3 -m venv .venv
     source .venv/bin/activate
-    pip install -r requirements.txt
+    pip install --require-hashes -r requirements.txt
+    cp .env.example .env
+    python -c "import secrets; print(secrets.token_hex(32))"
+
+Paste the printed line into `.env` after `CAMPUS_SECRET=` and set
+`CAMPUS_SECURITY_DEMO=1`. The app refuses to start without a secret of at
+least 32 characters. Then fill the database with the demo students and entries:
+
     python -m app.seed --wipe
 
 And every time you work:
@@ -23,27 +44,65 @@ And every time you work:
 Then open http://127.0.0.1:8000 in the browser.
 
 `python -m app.seed --wipe` wipes the database and writes the fake students and entries
-again. Run it whenever you want a clean start.
+again. Run it whenever you want a clean start, and never on the server.
+
+## Run the tests
+
+    source .venv/bin/activate
+    pip install -r requirements-test.txt
+    python -m pytest tests -q
+
+Every test runs on a temporary database with stand-ins for e-mail, Claude,
+push and the ticket and map sites, so nothing goes online and nothing touches
+`campus.db`. `docs/testing.md` lists what each test file covers. The same
+tests and a `pip-audit` of the dependencies run on GitHub for every push to
+main (`.github/workflows/verify.yml`):
+
+    python -m pip_audit -r requirements.txt
+
+## Run it in Docker
+
+This is how the live server runs it. With Docker you need no Python and no
+venv. From this folder:
+
+    docker compose up --build
+
+Then open http://127.0.0.1:8000. `PORT=8080 docker compose up` puts it on
+another port if 8000 is taken. The port is only opened on the machine itself,
+never to the network.
+
+The first start writes the fake students and entries. After that the database
+is left alone. It lives in a Docker volume together with the uploaded photos,
+so stopping, rebuilding and starting again keeps everything.
+
+    docker compose down                                     stop it, the data stays
+    docker compose down -v                                  stop it and throw the data away
+    docker compose run --rm web python -m app.seed --wipe   clean start with the demo data
+    docker compose logs -f web                              the log
+
+The container reads the same `.env` as everything else. Without a
+`CAMPUS_SECRET` it makes a random one on the first start and keeps it in the
+volume, so a restart logs nobody out. Set `CAMPUS_SEED=0` to start with an
+empty database instead of the demo. On a laptop, over plain http, also set
+`CAMPUS_SECURITY_DEMO=1`, or the browser will not keep the login cookie.
+
+The container has no `--reload`, so code changes need
+`docker compose up --build` again. For day to day work the venv is quicker.
 
 ## Logging in
 
-Two ways, and both work right now.
-
-The real one starts at `/start`. Create an account with a `novasbe.pt` address
+Everything starts at `/start`. Create an account with a `novasbe.pt` address
 and a password, tick the courses you are taking, confirm the 6-digit code, and
 you are in. The courses are not compulsory on the way in. Whoever leaves them
 blank lands in the app all the same, and Groups asks for them itself the first
 time it is opened. After that you sign in at `/login` with the address and the
 password. Forgotten passwords go through `/forgot`, which sends a fresh code.
 
-Production email verification requires a configured SMTP sender. For private
-local development, copy `.env.example` to `.env`, generate a random
-CAMPUS_SECRET of at least 32 characters, and set CAMPUS_SECURITY_DEMO=1.
-With demo mode enabled and no SMTP configured, verification codes appear in
-the terminal. This bypasses mailbox ownership checks and must never be enabled
-on a public server. With SMTP configured, codes are sent by email instead.
-All team members need to update their local .env; no credentials go into Git.
-See docs/security-review.md for installation, tests and deployment checks.
+On a server the code goes out by e-mail, which needs SMTP in `.env` (see
+below). On your own laptop, with `CAMPUS_SECURITY_DEMO=1` and no SMTP, the
+code is printed in the terminal that runs the server instead. That skips the
+check that you own the inbox, so it must never be switched on on a public
+server.
 
 There used to be a development login at `/dev` that let you be any student
 without a password. It is gone. Sign in the way everybody else does, with an
@@ -76,7 +135,13 @@ For a Gmail account:
 1. Turn on 2-step verification for that Google account.
 2. Create an app password at https://myaccount.google.com/apppasswords.
    Google shows 16 letters, that is what goes into `SMTP_PASSWORD`.
-3. Put the Gmail address into `SMTP_USER` and restart the server.
+3. Put the Gmail address into `SMTP_USER` and `MAIL_FROM` and restart the server.
+
+        SMTP_HOST=smtp.gmail.com
+        SMTP_PORT=465
+        SMTP_USER=the-address@gmail.com
+        SMTP_PASSWORD=the16letters
+        MAIL_FROM=the-address@gmail.com
 
 Never put the normal Gmail password in there, and never commit `.env`. Each
 of us who wants real e-mails keeps their own.
@@ -105,28 +170,46 @@ predictable by design. All of it lives in `db.new_code` and `db.check_code`.
     app/screenshots.py the ticket or housing form from screenshots, read by Claude
     app/push.py        push notifications, who gets what, and sending them
     app/mailer.py      sending the 6-digit code, and reading .env
-    app/categories.py  what a ticket can be for
-    app/schema.sql     the five tables
+    app/categories.py  the categories per tab and the condition of a thing for sale
+    app/housing.py     everything the Housing filters and form can ask about
+    app/maps.py        turning a link to a map into a street address
+    app/course_catalogue.py  the official course list, read from app/data/
+    app/schema.sql     the tables
     app/seed.py        the fake students and entries
     app/templates/     one file per screen, plus partials for the icons and the tab bar
     app/static/css/    one stylesheet for the whole app
     app/static/js/     the few bits of behaviour the pages need
     app/static/uploads/ photos people upload, not in git
-    docs/              the one pager and the task split
+    docs/              the one pager, the task split, testing.md and the security review
+    Dockerfile         the image; compose.yaml starts it, docker-entrypoint.sh
+                       seeds an empty database and makes a secret if none is set
+    tests/             the automated tests, one file per area
 
-## The nine tables
+## The tables
 
     users             a student, their programme, photo and hashed password,
                       whether the e-mail code was right, and the code itself
-                      with when it was sent and how often it was guessed wrong
+                      as a keyed digest, with when it was sent and how often
+                      it was guessed wrong
     courses           every course the school offers
     course_offerings  which programme a course belongs to, and how
     enrolments        which courses a student is taking
     listings          one entry, of type housing, ticket, item or group
     photos            the pictures of one entry
     saves             one student put a heart on one entry
+    views             who has opened an entry, so a view counts once
     conversations     one entry plus the one student who wrote about it
     messages          the lines inside a conversation
+    push_devices      the browsers a student switched notifications on in
+    notify_prefs      which kinds of notification a student wants
+    watched_searches  a saved search that rings for new entries
+    event_watches     the bell on one particular event
+    course_watches    the bell on the groups of one course
+    ai_reads          how many screenshots a student had read today
+    security_limits   login and form attempts, for the rate limits
+
+All of it is one SQLite file, `campus.db`, next to this README and not in git.
+Uploaded photos are files in `app/static/uploads/`, also not in git.
 
 Several students can write about the same entry. Each of them gets a separate
 conversation, and neither sees the other.
@@ -259,11 +342,14 @@ left.
     /verify                 the 6-digit code
     /login                  e-mail and password
     /forgot                 a new password, by code
+    /forgot/reset           the code and the new password
     /housing /tickets /market /groups
     /groups?scope=all       every course, not only yours
     /courses                pick the courses you are taking
     /profile/edit           name, programme and photo
     /profile/password       change your password
+    /profile/notifications  saved searches, watched events and the switches
+    /student/<id>           another student's profile
     /listing/<id>           one entry
     /new?kind=housing       put something up
     /chats                  every conversation you are in
@@ -298,11 +384,10 @@ of them changes nothing.
 
 Tested by hand in November 2026 against real event pages:
 
-    Luma, DICE, Xceed, BOL, Eventbrite   work
-    Shotgun                              blocks apps most of the time
-    Resident Advisor                     blocks apps
-    Fever, Fourvenues, Ticketline,       on the list, not checked with a
-    Blueticket                           real event page yet
+    Luma, DICE, Xceed, BOL, Eventbrite,  work, with a full address
+    Shotgun
+    Fever, Resident Advisor, Fourvenues, cannot be read, each for a reason
+    Ticketline, Blueticket               on their side; the form says so
 
 Only links to the sites in `PLATFORMS` are ever opened, and every redirect is
 checked against the same list, so a pasted link can never make our server open
@@ -374,15 +459,13 @@ Firefox show it on http://127.0.0.1:8000 already.
 
 ## Not now, but worth knowing
 
-Things we left out on purpose. If somebody has time at the end, this is the
-list, in the order that pays off most.
+Things we left out on purpose, in the order that would pay off most.
 
-A real map on the page instead of a link out, which needs a mapping library,
-an API key and a way to turn an address into coordinates. Tests, one file per
-area, which is the biggest single gap against the plan. Filters for Housing
-the way Market has them. Editing an entry you already put up. The mail
-provider, so the 6-digit code arrives by e-mail. Codes are never printed in production. Explicit private demo mode can print
-them when SMTP is absent; see the development setup above.
+A real map on the page instead of a link out, which needs a mapping library
+and an API key. A proper mail provider instead of a Gmail account, which
+sends a few hundred mails a day. Deleting an entry or a chat: an entry that
+carries chats is the other student's record too, so closing it is what we
+offer instead.
 
 ## Rules we agreed on
 
@@ -405,27 +488,48 @@ displayed verbatim. The catalogue is imported safely at app startup.
 
 Students can select predefined courses on **My courses** and at signup. They cannot
 create a course. Unsupported programmes have no predefined offerings yet.
-The existing seed command still **deletes the local database**, so do not run it on
-real or shared data. This branch does not change other contributors' code.
+The seed command **deletes the local database**, so do not run it on real or
+shared data.
 
-## Verification and security
+## Deployment
 
-See [Security review](docs/security-review.md) for the test commands, required
-environment settings and deployment checks.
+The live app runs at https://campus-market.clustercockpit.org, in the Docker
+container above, with Caddy in front for https. On the server:
 
+    git pull
+    docker compose up --build -d
 
-## HTTPS behind a hosting proxy
+The server keeps its own `.env`, never the one from a laptop:
 
-Use the public HTTPS hostname unchanged when forwarding requests. For a local
-reverse proxy on the same machine, run:
+    CAMPUS_SECRET=<its own 64 random characters, never changed afterwards>
+    CAMPUS_SECURITY_DEMO=0
+    SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, MAIL_FROM
+    VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT   (optional, notifications)
+    ANTHROPIC_API_KEY                                     (optional, screenshots)
 
-    uvicorn app.main:app --proxy-headers --forwarded-allow-ips=127.0.0.1
+`CAMPUS_SECRET` signs the login cookie and keys the stored e-mail codes, so
+nobody can pass themselves off as another student. Changing it signs
+everybody out; passwords and data stay.
 
-Replace that trusted IP with the actual proxy addresses required by your host.
-Do not trust arbitrary public clients. The proxy must set X-Forwarded-Proto to
-https and preserve Host. Otherwise the origin check rejects form submissions.
-Before release, test registration, login, listing forms and import requests at
-the public HTTPS address. Set CAMPUS_SECURITY_DEMO=0 and configure SMTP there.
+The proxy setting matters. Caddy talks https to the browser and plain http to
+the app. uvicorn runs with `--proxy-headers`, and the image sets
+`FORWARDED_ALLOW_IPS=*`, so it believes Caddy when Caddy says the visitor used
+https. Inside Docker Caddy never arrives from 127.0.0.1, and with uvicorn's
+default the app would think it is on http, the browser says https, and the
+origin check refuses every form with "Request origin refused". Trusting every
+sender is safe only because `compose.yaml` publishes the port on the host's
+127.0.0.1 alone, so Caddy is the only thing that can reach it.
+
+Without Docker, the same thing is:
+
+    pip install --require-hashes -r requirements.txt
+    uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips=127.0.0.1
+
+The database and the photos live in the Docker volumes `campus-data` and
+`campus-uploads` (without Docker, `campus.db` and `app/static/uploads/`).
+Neither is in git, so a `git pull` and a rebuild never touch them. New columns
+are added by the app itself on start. Never seed a database that holds real
+data. See [Security review](docs/security-review.md) for the full checklist.
 
 ## Bachelor course catalogue (2026/27)
 

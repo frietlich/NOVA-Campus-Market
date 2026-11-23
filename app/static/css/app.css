@@ -4018,3 +4018,11 @@ html.onb-open, html.onb-open body { overflow: hidden; }
     width: 100%; max-width: 360px; align-self: center;
   }
 }
+
+/* On a phone, a gate that opens with the Back row (Log in) starts that row
+   at the top, the way Create an account does. The 56 pixels above it were
+   meant for the logo on pages that have no such row, and stacked on top of
+   it they pushed the whole login a hundred pixels down. */
+@media (max-width: 899px) {
+  .gate:has(> .sheet-head:first-child) { padding-top: 0; }
+}
