@@ -30,7 +30,10 @@ def test_upload_auth_cannot_be_bypassed_by_path_normalization(world, prefix):
         if "UPLOADS" not in prefix and "%5c" not in prefix:
             response = world[1][0].get(prefix + path.name)
             assert response.status_code == 200
-            assert response.headers["cache-control"] == "no-store"
+            # Out of every shared cache on the way, which is what this test
+            # is about, but not out of the reader's own browser: no-store
+            # fetched every thumbnail again on every list.
+            assert response.headers["cache-control"] == "private, max-age=86400"
     finally:
         path.unlink(missing_ok=True)
 
@@ -199,3 +202,28 @@ def test_forgot_delivery_failure_stays_generic(world, monkeypatch):
                            headers=ORIGIN, follow_redirects=False)
     assert response.status_code == 303
     assert "If" in client.get(response.headers["location"]).text
+
+
+def test_a_photo_is_private_but_not_forbidden_to_the_browser(world):
+    """The two halves of the header, each for its own reason.
+
+    private keeps a student's photo out of any cache between us and them.
+    Leaving no-store off lets their own browser keep it, which is the
+    difference between a list of thumbnails that appears and one that
+    loads again every time.
+    """
+    path = Path(main.HERE) / "static" / "uploads" / ("qa-" + uuid4().hex + ".png")
+    path.parent.mkdir(exist_ok=True)
+    Image.new("RGB", (2, 2)).save(path)
+    try:
+        header = world[1][0].get("/static/uploads/" + path.name).headers["cache-control"]
+        assert "private" in header
+        assert "no-store" not in header
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_a_page_is_still_never_kept(world):
+    """Pages carry live state and must not come back out of any store."""
+    for path in ("/housing", "/profile", "/chats"):
+        assert world[1][0].get(path).headers["cache-control"] == "no-store"

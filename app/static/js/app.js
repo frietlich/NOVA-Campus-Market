@@ -732,10 +732,18 @@
   const form = box.closest("form");
   const start = status.textContent.replace(/\s+/g, " ").trim();
 
+  // Two notes, so a message has to pick one. What the link did belongs
+  // under the link, what a screenshot did belongs under the screenshot
+  // button. They shared one line at the foot until now, which is why
+  // pressing Fill in on an empty field wiped the note that explains what
+  // a screenshot is. The link note only exists on a ticket.
+  const linkNote = document.getElementById("link-status");
+  let note = status;
+
   const say = (text, how) => {
-    status.textContent = text;
-    status.classList.toggle("is-ok", how === "ok");
-    status.classList.toggle("is-bad", how === "bad");
+    note.textContent = text;
+    note.classList.toggle("is-ok", how === "ok");
+    note.classList.toggle("is-bad", how === "bad");
   };
 
   const REASONS = {
@@ -841,6 +849,7 @@
 
   if (shot) {
     shot.addEventListener("change", async () => {
+      note = status;
       const files = [...shot.files];
       if (!files.length) return;
       if (files.length > most) { say(REASONS.many, "bad"); shot.value = ""; return; }
@@ -864,6 +873,7 @@
 
   if (!input) return;
   const run = async () => {
+    note = linkNote || status;
     const url = input.value.trim();
     if (!url) { say("Paste the link to the event first.", "bad"); input.focus(); return; }
     go.disabled = true;
@@ -879,11 +889,32 @@
     }
   };
 
+  // Dead until there is a link worth sending, the rule the housing form
+  // already follows. The check that watches the field works out whether it
+  // knows the site and writes the answer into data-state, so watching that
+  // attribute is both the simplest way to ask and the only one that does
+  // not depend on which of the two listeners the browser runs first.
+  const field = input.closest(".linkfield");
+  if (field) {
+    const sync = () => {
+      go.disabled = field.dataset.state !== "ok" || field.dataset.shut === "1";
+    };
+    new MutationObserver(sync).observe(field,
+      { attributes: true, attributeFilter: ["data-state", "data-shut"] });
+    sync();
+  }
+
   go.addEventListener("click", run);
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); run(); }
   });
-  input.addEventListener("input", () => { if (!input.value) say(start); });
+  // Emptying the field puts the note back. Where there is a link note the
+  // check that watches the field has already done it, with its own words.
+  input.addEventListener("input", () => {
+    if (input.value || linkNote) return;
+    note = status;
+    say(start);
+  });
 })();
 
 // Push notifications. The browser is only asked after a tap, never on its
@@ -1154,7 +1185,11 @@
     || document.querySelector(".linkfield-status");
   if (!status) return;
   const platforms = JSON.parse(box.dataset.platforms || "[]");
+  const blocking = JSON.parse(box.dataset.blocking || "[]");
   const names = box.dataset.names || "";
+  // "housing" used to be written into the message here, which the ticket
+  // form then said about a ticket link.
+  const what = box.dataset.what || "site";
   const hint = status.innerHTML;
 
   function recognise(text) {
@@ -1169,7 +1204,8 @@
     for (const [domain, name] of platforms) {
       if (host === domain || host.endsWith("." + domain)) {
         url.protocol = "https:"; url.port = ""; url.hash = "";
-        return { name, href: url.toString() };
+        return { name, href: url.toString(),
+                 shut: blocking.includes(domain) };
       }
     }
     return null;
@@ -1180,6 +1216,7 @@
     status.textContent = "";
     if (!text) {
       box.dataset.state = "";
+      delete box.dataset.shut;
       status.innerHTML = hint;
       field.setCustomValidity("");
       return;
@@ -1187,6 +1224,10 @@
     const found = recognise(text);
     if (found) {
       box.dataset.state = "ok";
+      // A good link, and the form will keep it. Whether anything can be
+      // read off it is a separate question, and the answer rides along so
+      // the Fill in button can ask it without working it out again.
+      if (found.shut) { box.dataset.shut = "1"; } else { delete box.dataset.shut; }
       field.setCustomValidity("");
       const b = document.createElement("b");
       b.textContent = "✓ " + found.name + " link.";
@@ -1194,9 +1235,21 @@
       open.href = found.href; open.target = "_blank"; open.rel = "noopener noreferrer";
       open.textContent = "Open it to check ↗";
       status.append(b, " Students get a button to it. ", open);
+      // Some of the sites we recognise shut apps out altogether. The link
+      // is still worth keeping, so the button stays alive and says what to
+      // expect instead of going dead with no reason given.
+      if (found.shut) {
+        const warn = document.createElement("span");
+        warn.className = "linkfield-shut";
+        warn.textContent = found.name + " does not let apps read it, so there"
+          + " is nothing to fill in from. Type it in, and the link still goes"
+          + " on your entry.";
+        status.append(" ", warn);
+      }
     } else {
       box.dataset.state = "bad";
-      const msg = "That is not a link from a housing site we know. Use " + names + ".";
+      delete box.dataset.shut;
+      const msg = "That is not a link from a " + what + " we know. Use " + names + ".";
       field.setCustomValidity(msg);
       status.textContent = msg;
     }
@@ -1427,7 +1480,6 @@
   }
 
   function report(data) {
-    sayingBlocked = false;
     const where = data.site ? " from " + data.site : "";
     if (data.ok) {
       const done = fill(data.fields || {});
@@ -1436,8 +1488,15 @@
         return;
       }
     }
-    if (data.reason === "blocked" || data.reason === "unreachable") {
-      say((data.site || "That site") + " does not let apps read its adverts. Fill in the form yourself, the link still goes on your entry.", "warn");
+    // The line under the field has already warned that a site like this
+    // may give nothing. This one says what actually came back, which is a
+    // different thing, so it must not repeat the warning word for word.
+    if (data.reason === "blocked") {
+      say("Nothing came back from " + (data.site || "that site")
+          + ". Fill the form in yourself.", "warn");
+    } else if (data.reason === "unreachable") {
+      say((data.site || "That site") + " did not answer. Check the link, or"
+          + " fill the form in yourself.", "warn");
     } else if (data.reason === "limit") {
       say("You have filled in from links a lot in the last hour. Try again later, or fill in the form yourself.", "warn");
     } else if (data.reason === "site") {
@@ -1449,30 +1508,14 @@
 
   // Idealista and Imovirtual refuse apps, so their links never go to the
   // server: the button says so and the paste box opens instead.
-  const blocking = JSON.parse(linkBox.dataset.blocking || "[]");
-  let sayingBlocked = false;
-  function blockedSite() {
-    try {
-      const v = link.value.trim();
-      const host = new URL(v.includes("://") ? v : "https://" + v).hostname.toLowerCase();
-      return blocking.find((d) => host === d || host.endsWith("." + d)) || null;
-    } catch (e) { return null; }
-  }
+  // Alive for anything we recognise, the sites that shut apps out
+  // included. Idealista used to grey it out, which left somebody holding
+  // a link and a dead button. Pressing it there comes back empty within a
+  // moment, nothing is fetched and no daily allowance is spent, and the
+  // line under the field has already said to expect as much. A button you
+  // can press and learn from beats one that only sits there.
   function syncButton() {
-    const ok = linkBox.dataset.state === "ok";
-    const blocked = ok && blockedSite();
-    go.disabled = !ok || Boolean(blocked);
-    // The button keeps its one word. Why it is greyed out belongs in the
-    // line under the field, where everything else is explained, not in a
-    // button that would grow to a sentence and break the row.
-    if (blocked) {
-      say("That site does not let apps read its adverts. Fill the form in"
-          + " yourself, the link still goes on your entry.", "warn");
-      sayingBlocked = true;
-    } else if (sayingBlocked) {
-      result.hidden = true;
-      sayingBlocked = false;
-    }
+    go.disabled = linkBox.dataset.state !== "ok" || linkBox.dataset.shut === "1";
   }
   link.addEventListener("input", syncButton);
   syncButton();
