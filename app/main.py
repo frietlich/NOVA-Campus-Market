@@ -1401,6 +1401,28 @@ def reset(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = Fo
 
 # --------------------------------------------------------------- the four tabs
 
+def housing_rows(q, hs):
+    """The places a cleaned housing search finds.
+
+    One function for the list and for the live count on the panel button,
+    so the number on the button can never differ from the list it opens.
+    """
+    return db.listings_of_type(
+        "housing", q or "", category=hs["kind"], sort=hs["sort"] or None,
+        min_price=hs["low"], max_price=hs["high"], price_inclusive=True,
+        free_from=hs["movein"] or None, area=hs["area"],
+        max_minutes=hs["minutes"], max_months=hs["months"],
+        bills_included=hs["bills"], features=hs["features"],
+        max_mates=hs["mates_max"], min_mates=hs["mates_min"])
+
+
+def places_label(n):
+    return f"Show {n} {'place' if n == 1 else 'places'}"
+
+
+templates.env.globals["places_label"] = places_label
+
+
 def tab_page(request, kind, q, scope="mine", cat="", day="", sort="",
              price="", cond="", hs=None):
     me = me_or_none(request)
@@ -1416,13 +1438,7 @@ def tab_page(request, kind, q, scope="mine", cat="", day="", sort="",
     if hs is not None:
         # Housing arrives already cleaned, because its panel asks about ten
         # things and the cleaning of those lives in one place.
-        rows = db.listings_of_type(
-            kind, q or "", category=hs["kind"], sort=hs["sort"] or None,
-            min_price=hs["low"], max_price=hs["high"], price_inclusive=True,
-            free_from=hs["movein"] or None, area=hs["area"],
-            max_minutes=hs["minutes"], max_months=hs["months"],
-            bills_included=hs["bills"], features=hs["features"],
-            max_mates=hs["mates_max"], min_mates=hs["mates_min"])
+        rows = housing_rows(q, hs)
         cat, sort = hs["kind"] or "", hs["sort"]
         price = cond = ""
     else:
@@ -1497,6 +1513,28 @@ def housing_tab(request: Request, q: str = "", cat: str = "", sort: str = "",
     hs = housing_search(cat, sort, rent, rmin, rmax, mins, minsx, stay, area,
                         movein, mates, has)
     return tab_page(request, "housing", q, hs=hs)
+
+
+@app.get("/housing/count")
+def housing_count(request: Request, q: str = "", cat: str = "", sort: str = "",
+                  rent: str = "", rmin: str = "", rmax: str = "", mins: str = "",
+                  minsx: str = "", stay: str = "", area: str = "",
+                  movein: str = "", mates: str = "",
+                  has: List[str] = Query(default=[])):
+    """How many places the panel as it stands would show.
+
+    The button at the foot of the filter panel used to say the number of
+    the list behind it, so it read "Show 9 places" while the picks made
+    above it would show six. The panel asks this after every change; it
+    takes the same fields as the page and goes through the same search.
+    """
+    if me_or_none(request) is None:
+        return JSONResponse({"error": "Sign in required"}, status_code=401)
+    hs = housing_search(cat, sort, rent, rmin, rmax, mins, minsx, stay, area,
+                        movein, mates, has)
+    n = len(housing_rows(q, hs))
+    return JSONResponse({"count": n, "label": places_label(n)},
+                        headers={"Cache-Control": "no-store"})
 
 
 @app.get("/tickets")

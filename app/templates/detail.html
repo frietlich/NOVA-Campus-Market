@@ -173,7 +173,7 @@
     {% set d = event_badge(listing.event_date) %}
     <div class="ticket-head">
       <div class="ticket-top">
-        <a class="ticket-back" href="{{ back }}" aria-label="Back">{{ icon.back() }}</a>
+        <a class="ticket-back" href="{{ back }}" data-back-same aria-label="Back">{{ icon.back() }}</a>
         {% if listing.owner_id != me.id %}
           <div class="ticket-acts">
             {{ watch_button(listing, watching_event) }}
@@ -233,7 +233,7 @@
        the gaps you see the board itself. #}
     <div class="board">
       <div class="ticket-top">
-        <a class="ticket-back" href="{{ back }}" aria-label="Back">{{ icon.back() }}</a>
+        <a class="ticket-back" href="{{ back }}" data-back-same aria-label="Back">{{ icon.back() }}</a>
         {% if listing.owner_id != me.id %}
           <div class="ticket-acts">
             {{ watch_course_button(listing, watching_course) }}
@@ -290,7 +290,7 @@
       {% else %}
         {{ art.cover(listing.type, listing.id) }}
       {% endif %}
-      <a class="back" href="{{ back }}" aria-label="Back">{{ icon.back() }}</a>
+      <a class="back" href="{{ back }}" data-back-same aria-label="Back">{{ icon.back() }}</a>
       {% if listing.owner_id != me.id %}{{ save_button(listing, saved, 'hero') }}{% endif %}
       {% if photos | length > 1 %}
         <div class="gallery-dots" aria-hidden="true">

@@ -325,16 +325,33 @@
   });
 })();
 
-// The chat list comes back fresh, and at the height you left it.
+// A list comes back fresh, and at the height you left it.
 //
 // Two things fight here. A list has to be current, because a chat you have
 // just read must not come back still marked unread, and that is why no page
 // in this app may be kept by the browser. But a browser that keeps nothing
 // also stops putting you back where you were, so the list writes its own
 // place down before you leave.
+//
+// It began on the chat list. Every list works the same way now: scroll to
+// the kettle at the foot of Market, open it, go back, and you are at the
+// kettle again instead of at the top. Forms and a single chat are left out,
+// a form starts at its top and a chat at its newest message.
 (function keepPlace() {
-  if (!location.pathname.startsWith("/chats")) return;
-  const key = "place:" + location.pathname + location.search;
+  const LISTS = /^\/(housing|tickets|market|groups|chats|profile|student\/\d+)\/?$/;
+  if (!LISTS.test(location.pathname)) return;
+  // Which chat is open beside the list (on a wide screen it is ?chat= and
+  // the chat column's own ?dock_ settings) does not make it another list,
+  // nor does the ?done= of a confirmation. Leaving those out, opening a chat
+  // on the Chats page no longer throws the list back to its top.
+  const same = (address) => {
+    const url = new URL(address, location.href);
+    for (const name of [...url.searchParams.keys()]) {
+      if (name === "chat" || name === "done" || name.startsWith("dock_")) url.searchParams.delete(name);
+    }
+    return url.pathname + (url.searchParams.toString() ? "?" + url.searchParams : "");
+  };
+  const key = "place:" + same(location.href);
   const flag = key + ":back";
 
   const put = (name, value) => {
@@ -381,6 +398,16 @@
       return;
     }
   }
+  // The same list again also counts: a chat opened beside it, or a form on
+  // the page that comes back to it, like Light and Dark on the profile.
+  if (!back && document.referrer) {
+    try {
+      const before = new URL(document.referrer);
+      back = before.origin === location.origin && same(before.href) === same(location.href);
+    } catch (err) {
+      back = false;
+    }
+  }
   if (!back) return;
 
   const y = parseInt(take(key), 10);
@@ -416,6 +443,33 @@
   if (from.origin !== location.origin) return;
   if (from.pathname === location.pathname) return;
   arrows.forEach((arrow) => {
+    arrow.addEventListener("click", (event) => {
+      event.preventDefault();
+      history.back();
+    });
+  });
+})();
+
+// The arrow on an entry and on your profile points at a fixed list, the tab
+// you came from. Followed as a link it loaded that list afresh, at the top,
+// however far down you had scrolled to find the entry. When the page before
+// is exactly that list it goes back through the browser instead, and the
+// list comes back at the height you left it (see keepPlace). Only then: the
+// page before can also be the form you just published from, and going back
+// there would be wrong, so any other way in keeps the plain link.
+(function backToSameList() {
+  if (!document.referrer) return;
+  let from;
+  try {
+    from = new URL(document.referrer);
+  } catch (err) {
+    return;
+  }
+  if (from.origin !== location.origin) return;
+  document.querySelectorAll("[data-back-same]").forEach((arrow) => {
+    const to = new URL(arrow.href, location.href);
+    // The same list, filtered or not: going back returns to it as it was.
+    if (to.pathname !== from.pathname) return;
     arrow.addEventListener("click", (event) => {
       event.preventDefault();
       history.back();
@@ -2334,3 +2388,54 @@
     form.querySelectorAll('button[type="submit"]').forEach((b) => { b.disabled = false; });
   });
 })();
+
+// The button at the foot of the Housing filter panel says how many places
+// the picks above it would show, and keeps saying it while they change. It
+// asks the server, which runs the very search the list runs, so the number
+// is never a guess. Answers can come back out of order when somebody taps
+// quickly, so only the answer to the latest question is written; a request
+// that fails leaves the button as it was rather than showing a wrong count.
+(function housingCount() {
+  const form = document.querySelector("form.hsearch");
+  const button = form && form.querySelector("[data-live-count]");
+  if (!button) return;
+  let asked = 0;
+  let wait;
+
+  async function count() {
+    const mine = ++asked;
+    const query = new URLSearchParams(new FormData(form));
+    // Empty fields say nothing; leaving them out keeps the request short.
+    for (const [key, value] of [...query]) if (!value) query.delete(key);
+    try {
+      const answer = await fetch("/housing/count?" + query, { cache: "no-store" });
+      if (!answer.ok) return;
+      const data = await answer.json();
+      if (mine !== asked) return;      // a newer question is on its way
+      button.textContent = data.label;
+    } catch (err) {
+      /* No connection: the button keeps its last true number. */
+    }
+  }
+
+  const soon = () => { clearTimeout(wait); wait = setTimeout(count, 180); };
+  const panel = form.querySelector(".hpanel") || form;
+  panel.addEventListener("change", soon);
+  // Typed amounts count as they are typed, not only when the box is left.
+  panel.addEventListener("input", (event) => {
+    if (event.target.matches('input[type="text"], input[type="number"], input:not([type])')) soon();
+  });
+})();
+
+// No page swap while the welcome tour is walking. On a wide screen pages
+// change with a view transition that keeps the rail standing, and the
+// browser paints a kept element above everything else while it swaps. The
+// tour darkens the page with a layer of its own, so for a moment the rail,
+// with your name and photo, shone bright through the dark on every step. A
+// skipped transition is a plain page load, which the tour was built for.
+window.addEventListener("pageswap", (event) => {
+  if (!event.viewTransition) return;
+  let walking = document.documentElement.classList.contains("onb-open");
+  try { walking = walking || sessionStorage.getItem("cm-tour-walk") !== null; } catch (err) {}
+  if (walking) event.viewTransition.skipTransition();
+});
