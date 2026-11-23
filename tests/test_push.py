@@ -48,7 +48,7 @@ class PushTests(unittest.TestCase):
         prefs = db.prefs_of(self.buyer)
         self.assertEqual({area: p["on"] for area, p in prefs.items()},
                          {"all": True, "messages": True, "ticket": True,
-                          "housing": True, "item": True})
+                          "housing": True, "item": True, "group": True})
 
     def test_the_main_switch_silences_everything_but_the_test(self):
         self.save(self.buyer, "ticket", "")
@@ -229,12 +229,16 @@ class PageTests(unittest.TestCase):
         self.addCleanup(env.stop)
         from fastapi.testclient import TestClient
         from app import main
-        self.client = TestClient(main.app)
+        self.client = TestClient(main.app, headers={"origin": "http://testserver"})
         self.client.__enter__()
-        self.user = db.create_user("44444@novasbe.pt", "Page P.")
+        from app import passwords
+        self.user = db.create_user("44444@novasbe.pt", "Page P.", "finance",
+                                   passwords.hash_password("TestPassword1!"))
         with db.connect() as conn:
             conn.execute("UPDATE users SET verified = 1 WHERE id = ?", (self.user,))
-        self.client.post("/dev", data={"user_id": self.user})
+        conn.close()
+        self.client.post("/login", data={"email": "44444@novasbe.pt",
+                                         "password": "TestPassword1!"})
 
     def tearDown(self):
         self.client.__exit__(None, None, None)
@@ -271,12 +275,12 @@ class PageTests(unittest.TestCase):
         prefs = db.prefs_of(self.user)
         self.assertEqual({area: p["on"] for area, p in prefs.items()},
                          {"all": True, "messages": False, "ticket": False,
-                          "housing": True, "item": True})
+                          "housing": True, "item": True, "group": False})
         page = self.client.get("/profile/notifications").text
         self.assertIn('value="housing" checked', page)
 
     def test_a_device_is_saved_and_checked(self):
-        good = {"endpoint": "https://push.example/abc", "keys": {"p256dh": "k", "auth": "a"}}
+        good = {"endpoint": "https://fcm.googleapis.com/fcm/send/abc", "keys": {"p256dh": "k", "auth": "a"}}
         self.assertEqual(self.client.post("/push/device", json=good).status_code, 200)
         self.assertEqual(len(db.devices_of(self.user)), 1)
         bad = dict(good, endpoint="http://127.0.0.1/steal")
@@ -287,16 +291,56 @@ class PageTests(unittest.TestCase):
         listing_id = db.create_listing(seller, "ticket", "Brunch Electronik", price=40,
                                        event_date="2030-06-07", event_time="14:00",
                                        place="Tapada da Ajuda")
-        self.assertIn("Notify me about more tickets",
+        # The bell moved up beside the heart, so what it says is now its
+        # label rather than a line of text on the page.
+        self.assertIn("Tell me about more tickets for this event",
                       self.client.get(f"/listing/{listing_id}").text)
         self.client.post("/notify/event", data={"listing_id": listing_id, "on": "1"})
-        self.assertIn("You are watching this event",
-                      self.client.get(f"/listing/{listing_id}").text)
+        on = self.client.get(f"/listing/{listing_id}").text
+        self.assertIn("Stop hearing about this event", on)
+        self.assertIn("watch--on", on)
         settings = self.client.get("/profile/notifications").text
         self.assertIn("Brunch Electronik", settings)
         watch_id = db.events_watched(self.user)[0]["id"]
         self.client.post("/notify/event/remove", data={"watch_id": watch_id})
         self.assertEqual(db.events_watched(self.user), [])
+
+    def test_the_bell_on_a_group_watches_the_course(self):
+        """The same bell on a group, keyed on the course rather than a day.
+
+        Somebody needing a team hears about the next group for that course,
+        whatever its owner calls the entry, which is the whole point of
+        hanging it on the course and not on the title.
+        """
+        owner = db.create_user("66666@novasbe.pt", "Owner O.")
+        course_id = db.connect().execute("SELECT id FROM courses LIMIT 1").fetchone()["id"]
+        listing_id = db.create_listing(owner, "group", "Final project, panel data",
+                                       course_id=course_id, group_size=4,
+                                       hand_in="2030-06-07")
+        self.assertIn("Tell me about more groups for this course",
+                      self.client.get(f"/listing/{listing_id}").text)
+
+        self.client.post("/notify/course", data={"listing_id": listing_id, "on": "1"})
+        on = self.client.get(f"/listing/{listing_id}").text
+        self.assertIn("Stop hearing about this course", on)
+        self.assertIn("watch--on", on)
+        self.assertEqual(db.course_watchers(course_id), [self.user])
+
+        # A second group for the same course, called something else, still
+        # reaches the same person.
+        other = db.create_listing(owner, "group", "Econometrics, need two",
+                                  course_id=course_id, group_size=3,
+                                  hand_in="2030-06-08")
+        self.assertIn(self.user, db.course_watchers(db.get_listing(other)["course_id"]))
+
+        # And the course itself is in the settings, by name, to switch off.
+        watched = db.courses_watched(self.user)
+        self.assertEqual(len(watched), 1)
+        self.assertIn(watched[0]["name"], self.client.get("/profile/notifications").text)
+
+        watch_id = watched[0]["id"]
+        self.client.post("/notify/course/remove", data={"watch_id": watch_id})
+        self.assertEqual(db.courses_watched(self.user), [])
 
     def test_the_service_worker_is_served_from_the_top(self):
         answer = self.client.get("/sw.js")

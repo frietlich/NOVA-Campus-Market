@@ -73,7 +73,9 @@ class ReadTests(unittest.TestCase):
             "title": "Bright room in a 3-bed flat", "category": "shared_flat",
             "place": "carcavelos", "address": "Rua de Lisboa 12, Carcavelos",
             "price": 550, "bills_included": "0", "bills_estimate": 40,
-            "deposit_months": "2", "available_from": "2027-01-15",
+            # Two months of 550. The form holds the deposit as one sum, so
+            # an advert that counts in months is worked out against the rent.
+            "deposit": 1100, "available_from": "2027-01-15",
             "months_min": "5", "flatmates": "2",
             "features": ["furnished", "wifi"],
             "description": "Furnished room, 10 minutes walk to the beach."})
@@ -81,6 +83,29 @@ class ReadTests(unittest.TestCase):
         self.assertEqual([c["type"] for c in content], ["image", "image", "text"])
         self.assertIn("these 2 screenshots", content[-1]["text"])
         self.assertIn("phone numbers", client.asked["system"])
+
+    def test_a_deposit_given_as_a_sum_is_taken_as_it_stands(self):
+        """Most adverts name the sum. Then nothing has to be worked out."""
+        advert = dict(FLAT, deposit="900", deposit_months="")
+        result, _ = self.read_with("housing", advert, [png()])
+        self.assertEqual(result["fields"]["deposit"], 900)
+
+    def test_a_sum_in_the_advert_beats_the_number_of_months(self):
+        """They can disagree. What the advert says outright wins."""
+        advert = dict(FLAT, deposit="900", deposit_months="2")
+        result, _ = self.read_with("housing", advert, [png()])
+        self.assertEqual(result["fields"]["deposit"], 900)
+
+    def test_no_deposit_at_all_clears_the_field(self):
+        advert = dict(FLAT, deposit="", deposit_months="0")
+        result, _ = self.read_with("housing", advert, [png()])
+        self.assertEqual(result["fields"]["deposit"], "")
+
+    def test_months_without_a_rent_leaves_the_deposit_alone(self):
+        """Multiplying by a rent we do not have would invent a number."""
+        advert = dict(FLAT, price="", deposit="", deposit_months="2")
+        result, _ = self.read_with("housing", advert, [png()])
+        self.assertNotIn("deposit", result["fields"])
 
     def test_what_is_sent_to_claude(self):
         _, client = self.read_with("ticket", TICKET)

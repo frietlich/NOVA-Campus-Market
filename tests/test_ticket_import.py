@@ -63,9 +63,43 @@ class ReadingTests(unittest.TestCase):
         self.assertEqual(found, {
             "title": "Dinis Mota", "event_date": "2026-12-09", "event_time": "21:30",
             "place": "Casa Capitão",
-            "address": "Rua Do Grilo 119, 1950-142 Lisbon, Portugal",
+            # The country comes off the end, the form never asks for it.
+            "address": "Rua Do Grilo 119, 1950-142 Lisbon",
             "price": 11, "category": "concert",
         })
+
+    def test_the_coordinates_come_through_for_the_caller(self):
+        """Luma's shape: the venue's name in the street field, plus a point."""
+        event = dict(DICE_LIKE, location={
+            "@type": "Place", "name": "Damas",
+            "address": {"streetAddress": "Damas", "addressLocality": "Lisboa"},
+            "geo": {"latitude": 38.7164888, "longitude": -9.129402}})
+        found = t.parse_event_page(page_with(event))
+        self.assertEqual(found["place"], "Damas")
+        self.assertNotIn("address", found)
+        self.assertEqual(found["_point"], (38.7164888, -9.129402))
+
+    def test_a_name_in_the_address_is_left_out(self):
+        """A page that writes the venue, or the event, where the street goes.
+
+        The venue still comes through as the venue. The address box stays
+        empty so it asks to be filled, rather than quietly holding a line
+        that would send somebody to the wrong place.
+        """
+        event = dict(DICE_LIKE, location={"@type": "Place", "name": "Casa Capitão",
+                                          "address": "World Read Lisboa"})
+        found = t.parse_event_page(page_with(event))
+        self.assertEqual(found["place"], "Casa Capitão")
+        self.assertNotIn("address", found)
+
+    def test_an_address_without_a_number_but_with_a_post_code_stays(self):
+        event = dict(DICE_LIKE, location={
+            "@type": "Place", "name": "Casa Capitão",
+            "address": {"streetAddress": "Praça do Comércio",
+                        "postalCode": "1100-148", "addressLocality": "Lisbon"}})
+        # The post code and the town are one thing, not two items in a list.
+        self.assertEqual(t.parse_event_page(page_with(event))["address"],
+                         "Praça do Comércio, 1100-148 Lisbon")
 
     def test_summer_time_is_lisbon_time(self):
         event = dict(DICE_LIKE, startDate="2026-07-04T21:00:00Z")
@@ -98,11 +132,42 @@ class ReadingTests(unittest.TestCase):
         self.assertNotIn("price", t.parse_event_page(page_with(event)))
 
 
+class LookupTests(unittest.TestCase):
+    """The point a page carries, turned into a street by the maps lookup."""
+
+    LUMA = {"@context": "https://schema.org", "@type": "Event",
+            "name": "Freequencies", "startDate": "2026-11-25T17:00:00+00:00",
+            "location": {"@type": "Place", "name": "Damas",
+                         "address": {"streetAddress": "Damas",
+                                     "addressLocality": "Lisboa"},
+                         "geo": {"latitude": 38.7164888,
+                                 "longitude": -9.129402}}}
+
+    def run_with(self, looked_up):
+        with mock.patch.object(t, "fetch", return_value=(200, page_with(self.LUMA))), \
+             mock.patch.object(t.maps, "address_at", return_value=looked_up) as asked:
+            answer = t.autofill("https://luma.com/logos-gcp2")
+        return answer, asked
+
+    def test_the_street_is_looked_up_and_the_point_does_not_leak(self):
+        answer, asked = self.run_with("Rua da Voz do Operário 60, 1100-395 Lisboa")
+        asked.assert_called_once_with(38.7164888, -9.129402)
+        self.assertEqual(answer["fields"]["address"],
+                         "Rua da Voz do Operário 60, 1100-395 Lisboa")
+        self.assertNotIn("_point", answer["fields"])
+
+    def test_a_lookup_that_finds_nothing_leaves_the_box_empty(self):
+        answer, _ = self.run_with(None)
+        self.assertNotIn("address", answer["fields"])
+        self.assertNotIn("_point", answer["fields"])
+        self.assertEqual(answer["fields"]["place"], "Damas")
+
+
 class PageTests(unittest.TestCase):
     def test_the_form_fills_only_for_someone_logged_in(self):
         from fastapi.testclient import TestClient
         from app import main
-        with TestClient(main.app) as client:
+        with TestClient(main.app, headers={"origin": "http://testserver"}) as client:
             answer = client.post("/new/ticket-autofill", data={"url": "dice.fm/x"})
         self.assertEqual(answer.status_code, 401)
 

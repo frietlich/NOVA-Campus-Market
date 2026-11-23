@@ -26,9 +26,12 @@
 
 // A chat opens at the newest message, not at the oldest.
 (function thread() {
-  const thread = document.getElementById("thread");
-  if (!thread) return;
-  window.scrollTo(0, document.body.scrollHeight);
+  document.querySelectorAll('#thread, [data-dock-thread]').forEach((thread) => {
+    thread.scrollTop = thread.scrollHeight;
+    if (thread.id === 'thread' && matchMedia('(max-width: 899px)').matches) {
+      window.scrollTo(0, document.body.scrollHeight);
+    }
+  });
 })();
 
 // The new entry sheet shows what you picked, so you see it before you publish.
@@ -153,7 +156,6 @@
   const SHELF = "folds";
 
   const blocks = Array.from(document.querySelectorAll(".ch-block[data-key]"));
-  if (!blocks.length) return;
   const boxOf = (block) => block.querySelector("input[type=checkbox]");
 
   const nearby = (where) => {
@@ -169,7 +171,7 @@
 
   const store = () => {
     const now = {};
-    blocks.forEach((block) => {
+    document.querySelectorAll('.ch-block[data-key]').forEach((block) => {
       const box = boxOf(block);
       if (box) now[block.dataset.key] = box.checked;
     });
@@ -201,9 +203,8 @@
     }
   }
 
-  blocks.forEach((block) => {
-    const box = boxOf(block);
-    if (box) box.addEventListener("change", store);
+  document.addEventListener('change', (event) => {
+    if (event.target.closest('.ch-block[data-key]')) store();
   });
   window.addEventListener("pagehide", store);
 })();
@@ -731,10 +732,18 @@
   const form = box.closest("form");
   const start = status.textContent.replace(/\s+/g, " ").trim();
 
+  // Two notes, so a message has to pick one. What the link did belongs
+  // under the link, what a screenshot did belongs under the screenshot
+  // button. They shared one line at the foot until now, which is why
+  // pressing Fill in on an empty field wiped the note that explains what
+  // a screenshot is. The link note only exists on a ticket.
+  const linkNote = document.getElementById("link-status");
+  let note = status;
+
   const say = (text, how) => {
-    status.textContent = text;
-    status.classList.toggle("is-ok", how === "ok");
-    status.classList.toggle("is-bad", how === "bad");
+    note.textContent = text;
+    note.classList.toggle("is-ok", how === "ok");
+    note.classList.toggle("is-bad", how === "bad");
   };
 
   const REASONS = {
@@ -840,6 +849,7 @@
 
   if (shot) {
     shot.addEventListener("change", async () => {
+      note = status;
       const files = [...shot.files];
       if (!files.length) return;
       if (files.length > most) { say(REASONS.many, "bad"); shot.value = ""; return; }
@@ -863,6 +873,7 @@
 
   if (!input) return;
   const run = async () => {
+    note = linkNote || status;
     const url = input.value.trim();
     if (!url) { say("Paste the link to the event first.", "bad"); input.focus(); return; }
     go.disabled = true;
@@ -878,11 +889,32 @@
     }
   };
 
+  // Dead until there is a link worth sending, the rule the housing form
+  // already follows. The check that watches the field works out whether it
+  // knows the site and writes the answer into data-state, so watching that
+  // attribute is both the simplest way to ask and the only one that does
+  // not depend on which of the two listeners the browser runs first.
+  const field = input.closest(".linkfield");
+  if (field) {
+    const sync = () => {
+      go.disabled = field.dataset.state !== "ok" || field.dataset.shut === "1";
+    };
+    new MutationObserver(sync).observe(field,
+      { attributes: true, attributeFilter: ["data-state", "data-shut"] });
+    sync();
+  }
+
   go.addEventListener("click", run);
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); run(); }
   });
-  input.addEventListener("input", () => { if (!input.value) say(start); });
+  // Emptying the field puts the note back. Where there is a link note the
+  // check that watches the field has already done it, with its own words.
+  input.addEventListener("input", () => {
+    if (input.value || linkNote) return;
+    note = status;
+    say(start);
+  });
 })();
 
 // Push notifications. The browser is only asked after a tap, never on its
@@ -966,21 +998,25 @@
   const ios = document.getElementById("push-ios");
 
   const showOn = () => {
-    status.textContent = "Notifications are on for this device.";
+    status.textContent = "On for this device.";
     on.hidden = true;
     test.hidden = false;
   };
   if (iphone && !standalone) ios.hidden = false;
   if (!supported) {
     on.hidden = true;
-    if (!iphone) status.textContent = "This browser cannot show notifications.";
+    if (!iphone) status.textContent = "This browser cannot do notifications.";
   } else if (Notification.permission === "granted") {
     navigator.serviceWorker.getRegistration("/")
       .then((registration) => registration && registration.pushManager.getSubscription())
       .then((subscription) => { if (subscription) showOn(); })
       .catch(() => {});
   } else if (Notification.permission === "denied") {
-    status.textContent = "Notifications are blocked for this site in your browser settings.";
+    // No second chance. A browser that has been told no never asks again,
+    // so the button below could only ever do nothing. It goes, and the
+    // line says where the answer can be changed.
+    on.hidden = true;
+    status.textContent = "Blocked for this site in your browser settings.";
   }
 
   on.addEventListener("click", async () => {
@@ -988,8 +1024,10 @@
     try {
       const result = await enable();
       if (result === "on") showOn();
-      else if (result === "denied") status.textContent = "Notifications are blocked for this site in your browser settings.";
-      else status.textContent = "This browser cannot show notifications.";
+      else if (result === "denied") {
+        on.hidden = true;
+        status.textContent = "Blocked for this site in your browser settings.";
+      } else status.textContent = "This browser cannot do notifications.";
     } catch (e) {
       status.textContent = "That did not work. Try again in a moment.";
     } finally {
@@ -1008,4 +1046,1143 @@
       test.disabled = false;
     }
   });
+})();
+
+// A maps link dropped into the address box.
+//
+// People do not type a street, they copy the place out of maps, and the
+// address box takes the link rather than refusing a line that is plainly
+// not an address.
+//
+// A link only sometimes spells the address out. Google writes whatever was
+// searched for after /place/, so searching an address gives the address but
+// tapping a bar gives "K Urban Beach Club", and the short link a phone makes
+// when you press Share carries nothing at all. Those two go to the server,
+// which can follow a short link and look a coordinate up. Reading it here
+// first means a link that already says the address costs nobody a request.
+(function mapsLinks() {
+  const boxes = document.querySelectorAll("input#address");
+  if (!boxes.length) return;
+
+  const PIN = /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/;
+  const HAS_NUMBER = /\d/;
+  const WHY = {
+    not_maps: "That is a link, but not to Google or Apple maps.",
+    off_list: "That link leads off maps. Copy the address instead.",
+    unreachable: "Maps did not answer. Try again in a moment.",
+    no_point: "There is no place in that link. Open it in maps and copy "
+            + "the address line under the name.",
+    nothing_there: "Nothing with a street name at that spot. Type the "
+                 + "address instead.",
+    login: "Sign in again to use this.",
+  };
+
+  function mapsHost(url) {
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    return host === "maps.apple.com"
+        // Apple's own short domain, a top level domain of its own rather
+        // than anything under apple.com. This is what an iPhone shares.
+        || host === "maps.apple"
+        || host === "maps.google.com"
+        || host === "maps.app.goo.gl"
+        || host === "goo.gl"
+        || /(^|\.)google\.[a-z]{2,3}(\.[a-z]{2})?$/.test(host);
+  }
+
+  function addressIn(url) {
+    // What sits after /place/ is whatever was searched for, so it is only
+    // an address when it carries a number. A name is the very thing this
+    // is meant to keep out of the box.
+    const place = url.pathname.match(/\/maps\/place\/([^/]+)/);
+    if (place) {
+      const found = decodeURIComponent(place[1].replace(/\+/g, " ")).trim();
+      if (found && !found.startsWith("@") && !PIN.test(found) && HAS_NUMBER.test(found)) {
+        return found;
+      }
+    }
+    for (const key of ["address", "q", "daddr", "destination"]) {
+      const value = (url.searchParams.get(key) || "").trim();
+      if (value && !PIN.test(value) && HAS_NUMBER.test(value)) return value;
+    }
+    return null;
+  }
+
+  boxes.forEach((box) => {
+    const note = box.parentNode.querySelector("[data-address-note]");
+    const wasSaying = note ? note.textContent : "";
+    let back;
+    const say = (words, keep) => {
+      if (!note) return;
+      clearTimeout(back);
+      note.textContent = words || wasSaying;
+      if (words && !keep) back = setTimeout(() => { note.textContent = wasSaying; }, 7000);
+    };
+    const put = (address) => {
+      box.value = address.slice(0, box.maxLength > 0 ? box.maxLength : 120);
+      box.classList.add("is-filled");
+      box.addEventListener("input", () => box.classList.remove("is-filled"),
+                           { once: true });
+      say("");
+    };
+
+    let asking = false;
+    const read = async () => {
+      const text = box.value.trim();
+      // Not a link at all, so this is somebody typing. Anything the box
+      // complained about a moment ago is about a line that is gone.
+      if (!/^https?:\/\//i.test(text)) {
+        say("");
+        return;
+      }
+      let url;
+      try {
+        url = new URL(text);
+      } catch (err) {
+        return;
+      }
+      if (!mapsHost(url)) {
+        say(WHY.not_maps);
+        return;
+      }
+      const here = addressIn(url);
+      if (here) {
+        put(here);
+        return;
+      }
+      if (asking) return;
+      asking = true;
+      say("Looking that up…", true);
+      try {
+        const body = new FormData();
+        body.append("url", text);
+        const res = await fetch("/new/address-from-link", { method: "POST", body });
+        const data = await res.json();
+        if (data.ok) put(data.address);
+        else say(WHY[data.reason] || WHY.nothing_there);
+      } catch (err) {
+        say("That did not work. Try again in a moment.");
+      } finally {
+        asking = false;
+      }
+    };
+
+    // After the paste, so the box already holds the link.
+    box.addEventListener("paste", () => setTimeout(read, 0));
+    box.addEventListener("change", read);
+  });
+})();
+
+// The housing link on the new entry form. While you type it says which site
+// it recognised, offers to open it so you can check it is the right place,
+// and stops the form from going off with a link we would refuse anyway.
+(function housingLink() {
+  const box = document.querySelector(".linkfield");
+  if (!box) return;
+  const field = box.querySelector("input");
+  // On a room the line sits inside the field's box; on a ticket it is the
+  // shared status line further down, under the screenshot button.
+  const status = box.querySelector(".linkfield-status")
+    || document.querySelector(".linkfield-status");
+  if (!status) return;
+  const platforms = JSON.parse(box.dataset.platforms || "[]");
+  const blocking = JSON.parse(box.dataset.blocking || "[]");
+  const names = box.dataset.names || "";
+  // "housing" used to be written into the message here, which the ticket
+  // form then said about a ticket link.
+  const what = box.dataset.what || "site";
+  const hint = status.innerHTML;
+
+  function recognise(text) {
+    text = text.trim();
+    if (!text || /\s/.test(text)) return null;
+    let url;
+    try { url = new URL(text.includes("://") ? text : "https://" + text); }
+    catch (e) { return null; }
+    if (!/^https?:$/.test(url.protocol) || url.username || url.password) return null;
+    if (url.port && url.port !== "443" && url.port !== "80") return null;
+    const host = url.hostname.toLowerCase().replace(/\.$/, "");
+    for (const [domain, name] of platforms) {
+      if (host === domain || host.endsWith("." + domain)) {
+        url.protocol = "https:"; url.port = ""; url.hash = "";
+        return { name, href: url.toString(),
+                 shut: blocking.includes(domain) };
+      }
+    }
+    return null;
+  }
+
+  function update() {
+    const text = field.value.trim();
+    status.textContent = "";
+    if (!text) {
+      box.dataset.state = "";
+      delete box.dataset.shut;
+      status.innerHTML = hint;
+      field.setCustomValidity("");
+      return;
+    }
+    const found = recognise(text);
+    if (found) {
+      box.dataset.state = "ok";
+      // A good link, and the form will keep it. Whether anything can be
+      // read off it is a separate question, and the answer rides along so
+      // the Fill in button can ask it without working it out again.
+      if (found.shut) { box.dataset.shut = "1"; } else { delete box.dataset.shut; }
+      field.setCustomValidity("");
+      const b = document.createElement("b");
+      b.textContent = "✓ " + found.name + " link.";
+      const open = document.createElement("a");
+      open.href = found.href; open.target = "_blank"; open.rel = "noopener noreferrer";
+      open.textContent = "Open it to check ↗";
+      status.append(b, " Students get a button to it. ", open);
+      // Some of the sites we recognise shut apps out altogether. The link
+      // is still worth keeping, so the button stays alive and says what to
+      // expect instead of going dead with no reason given.
+      if (found.shut) {
+        const warn = document.createElement("span");
+        warn.className = "linkfield-shut";
+        warn.textContent = found.name + " does not let apps read it, so there"
+          + " is nothing to fill in from. Type it in, and the link still goes"
+          + " on your entry.";
+        status.append(" ", warn);
+      }
+    } else {
+      box.dataset.state = "bad";
+      delete box.dataset.shut;
+      const msg = "That is not a link from a " + what + " we know. Use " + names + ".";
+      field.setCustomValidity(msg);
+      status.textContent = msg;
+    }
+  }
+
+  field.addEventListener("input", update);
+  field.addEventListener("paste", () => setTimeout(update, 0));
+  update();
+})();
+
+// The photo gallery on an entry: the counter, the dots and the arrows follow
+// whichever photo is in view, however it got there.
+(function gallery() {
+  const strip = document.querySelector("[data-gallery]");
+  if (!strip) return;
+  const hero = strip.closest(".hero");
+  const dots = Array.from(hero.querySelectorAll(".gallery-dots span"));
+  const prev = hero.querySelector(".gallery-nav--prev");
+  const next = hero.querySelector(".gallery-nav--next");
+  const total = strip.children.length;
+
+  // Where the strip is, and where it is on its way to. Two presses in a row
+  // have to count twice, and reading the scroll position would still give
+  // the old photo while the first one is gliding over.
+  let want = 0, settle = null;
+  function current() { return Math.round(strip.scrollLeft / strip.clientWidth); }
+  function go(i) {
+    want = Math.max(0, Math.min(total - 1, i));
+    strip.scrollTo({ left: want * strip.clientWidth });
+  }
+  function show() {
+    const i = current();
+    dots.forEach((d, n) => d.classList.toggle("on", n === i));
+    if (prev) prev.hidden = i === 0;
+    if (next) next.hidden = i === total - 1;
+  }
+
+  strip.addEventListener("scroll", () => {
+    window.requestAnimationFrame(show);
+    // Once it has come to rest, wherever it rested is what we wanted.
+    clearTimeout(settle);
+    settle = setTimeout(() => { want = current(); }, 120);
+  }, { passive: true });
+  if (prev) prev.addEventListener("click", () => go(want - 1));
+  if (next) next.addEventListener("click", () => go(want + 1));
+  strip.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight") { e.preventDefault(); go(want + 1); }
+    if (e.key === "ArrowLeft") { e.preventDefault(); go(want - 1); }
+  });
+  show();
+
+  // ---- the photo, full screen
+  //
+  // A cropped thumbnail is no way to judge a room, so tapping a photo puts
+  // it on the whole screen, whole, and you move through the others there
+  // the same way. Closing it puts you back on the photo you ended on, not
+  // the one you started from, because that is the one you were looking at.
+  const ARROW = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
+    + '<path d="M14.5 5.5 8 12l6.5 6.5" stroke="currentColor" stroke-width="2"'
+    + ' stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const CROSS = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
+    + '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11" stroke="currentColor" stroke-width="2"'
+    + ' stroke-linecap="round"/></svg>';
+
+  const shots = Array.from(strip.querySelectorAll(".gallery-shot"));
+  const sources = shots.map((b) => b.querySelector("img").src);
+  let big = null, bigStrip = null, bigDots = [], bigPrev = null, bigNext = null, cameFrom = null;
+
+  let bigWant = 0, bigSettle = null;
+  function bigAt() { return Math.round(bigStrip.scrollLeft / bigStrip.clientWidth); }
+  function bigGo(i, smooth = true) {
+    bigWant = Math.max(0, Math.min(total - 1, i));
+    bigStrip.scrollTo({ left: bigWant * bigStrip.clientWidth, behavior: smooth ? "smooth" : "instant" });
+  }
+  function bigShow() {
+    const i = bigAt();
+    bigDots.forEach((d, n) => d.classList.toggle("on", n === i));
+    if (bigPrev) bigPrev.hidden = i === 0;
+    if (bigNext) bigNext.hidden = i === total - 1;
+  }
+
+  function build() {
+    big = document.createElement("div");
+    big.className = "lightbox";
+    big.setAttribute("role", "dialog");
+    big.setAttribute("aria-modal", "true");
+    big.setAttribute("aria-label", "Photos");
+    const many = total > 1;
+    big.innerHTML =
+      '<button class="lightbox-shut" type="button" aria-label="Close">' + CROSS + "</button>"
+      + '<div class="lightbox-strip">'
+      + sources.map((src, n) =>
+          '<div class="lightbox-slide"><img src="' + src + '" alt="Photo ' + (n + 1)
+          + " of " + total + '" draggable="false"></div>').join("")
+      + "</div>"
+      + (many ? '<div class="lightbox-dots" aria-hidden="true">'
+          + sources.map(() => "<span></span>").join("") + "</div>" : "")
+      + (many ? '<button class="lightbox-nav lightbox-nav--prev" type="button" aria-label="Previous photo">'
+          + ARROW + "</button>"
+          + '<button class="lightbox-nav lightbox-nav--next" type="button" aria-label="Next photo">'
+          + ARROW + "</button>" : "");
+    document.body.append(big);
+
+    bigStrip = big.querySelector(".lightbox-strip");
+    bigDots = Array.from(big.querySelectorAll(".lightbox-dots span"));
+    bigPrev = big.querySelector(".lightbox-nav--prev");
+    bigNext = big.querySelector(".lightbox-nav--next");
+
+    bigStrip.addEventListener("scroll", () => {
+      window.requestAnimationFrame(bigShow);
+      clearTimeout(bigSettle);
+      bigSettle = setTimeout(() => { bigWant = bigAt(); }, 120);
+    }, { passive: true });
+    if (bigPrev) bigPrev.addEventListener("click", () => bigGo(bigWant - 1));
+    if (bigNext) bigNext.addEventListener("click", () => bigGo(bigWant + 1));
+    big.querySelector(".lightbox-shut").addEventListener("click", shut);
+    // A tap beside the photo closes it, the way every photo viewer does.
+    big.addEventListener("click", (e) => { if (e.target === big || e.target === bigStrip) shut(); });
+  }
+
+  function keys(e) {
+    if (e.key === "Escape") { e.preventDefault(); shut(); }
+    if (e.key === "ArrowRight") { e.preventDefault(); bigGo(bigWant + 1); }
+    if (e.key === "ArrowLeft") { e.preventDefault(); bigGo(bigWant - 1); }
+  }
+
+  function open(i, from) {
+    if (!big) build();
+    cameFrom = from || null;
+    big.classList.add("is-open");
+    document.documentElement.classList.add("lightbox-open");
+    bigGo(i, false);
+    bigWant = i;
+    bigShow();
+    document.addEventListener("keydown", keys);
+    big.querySelector(".lightbox-shut").focus();
+  }
+
+  function shut() {
+    const i = bigWant;
+    big.classList.remove("is-open");
+    document.documentElement.classList.remove("lightbox-open");
+    document.removeEventListener("keydown", keys);
+    // Back to the photo you were on, on the page behind.
+    go(i);
+    (cameFrom || shots[i] || shots[0]).focus({ preventScroll: true });
+  }
+
+  shots.forEach((b, n) => b.addEventListener("click", () => open(n, b)));
+})();
+
+// Autofill on the housing form: from the link, or from the pasted advert.
+// Whatever is found goes into the fields and lights up briefly, so the
+// student sees what changed and checks it before publishing.
+(function autofill() {
+  const box = document.querySelector(".autofill");
+  if (!box) return;
+  const link = document.getElementById("external_url");
+  const go = document.getElementById("autofill-go");
+
+  const result = document.getElementById("autofill-result");
+  const linkBox = box.querySelector(".linkfield");
+
+  const NAMES = {
+    title: "title", category: "kind of place", place: "area", price: "rent",
+    bills_included: "bills", available_from: "move-in date",
+    months_min: "minimum stay", address: "address", description: "description",
+    features: "what the flat has",
+  };
+  const IDS = { bills_included: "bills" };
+
+  function say(message, kind) {
+    result.hidden = false;
+    result.className = "note autofill-status autofill-result"
+      + (kind ? " autofill-result--" + kind : "");
+    result.textContent = message;
+  }
+
+  function mark(el) {
+    if (!el) return;
+    el.classList.remove("filled");
+    void el.offsetWidth;            // restart the animation
+    el.classList.add("filled");
+  }
+
+  function fill(fields) {
+    const done = [];
+    for (const [key, value] of Object.entries(fields)) {
+      if (key === "features") {
+        const boxes = Array.from(document.querySelectorAll('input[name="features"]'));
+        let any = false;
+        boxes.forEach((b) => {
+          if (value.includes(b.value) && !b.checked) {
+            b.checked = true; b.dispatchEvent(new Event("change", { bubbles: true }));
+            mark(b.closest(".opt")); any = true;
+          }
+        });
+        if (any) done.push(NAMES.features);
+        continue;
+      }
+      const el = document.getElementById(IDS[key] || key);
+      if (!el) continue;
+      if (key === "description" && el.value.trim()) continue;  // never overwrite their words
+      if (el.tagName === "SELECT" && !Array.from(el.options).some((o) => o.value === String(value))) continue;
+      el.value = value;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+      mark(el.closest(".prefixed") || el);
+      if (NAMES[key]) done.push(NAMES[key]);
+    }
+    return done;
+  }
+
+  async function ask(body, button) {
+    const label = button.textContent;
+    button.disabled = true;
+    button.textContent = "Reading…";
+    try {
+      const res = await fetch("/new/autofill", { method: "POST", body });
+      return await res.json();
+    } catch (e) {
+      return { ok: false, reason: "unreachable" };
+    } finally {
+      button.textContent = label;
+      button.disabled = false;
+      syncButton();
+    }
+  }
+
+  function report(data) {
+    const where = data.site ? " from " + data.site : "";
+    if (data.ok) {
+      const done = fill(data.fields || {});
+      if (done.length) {
+        say("Filled in" + where + ": " + done.join(", ") + ". Check it below and add what is missing.", "ok");
+        return;
+      }
+    }
+    // The line under the field has already warned that a site like this
+    // may give nothing. This one says what actually came back, which is a
+    // different thing, so it must not repeat the warning word for word.
+    if (data.reason === "blocked") {
+      say("Nothing came back from " + (data.site || "that site")
+          + ". Fill the form in yourself.", "warn");
+    } else if (data.reason === "unreachable") {
+      say((data.site || "That site") + " did not answer. Check the link, or"
+          + " fill the form in yourself.", "warn");
+    } else if (data.reason === "limit") {
+      say("You have filled in from links a lot in the last hour. Try again later, or fill in the form yourself.", "warn");
+    } else if (data.reason === "site") {
+      say("That link is not from a housing site we know.", "warn");
+    } else {
+      say("We could not find details in there. Fill in the form yourself, the link still goes on the entry.", "warn");
+    }
+  }
+
+  // Idealista and Imovirtual refuse apps, so their links never go to the
+  // server: the button says so and the paste box opens instead.
+  // Alive for anything we recognise, the sites that shut apps out
+  // included. Idealista used to grey it out, which left somebody holding
+  // a link and a dead button. Pressing it there comes back empty within a
+  // moment, nothing is fetched and no daily allowance is spent, and the
+  // line under the field has already said to expect as much. A button you
+  // can press and learn from beats one that only sits there.
+  function syncButton() {
+    go.disabled = linkBox.dataset.state !== "ok" || linkBox.dataset.shut === "1";
+  }
+  link.addEventListener("input", syncButton);
+  syncButton();
+
+  go.addEventListener("click", async () => {
+    const body = new FormData();
+    body.append("url", link.value);
+    report(await ask(body, go));
+  });
+
+})();
+
+// Where a new chat should open. On a wide screen the chats have a column of
+// their own beside the entry, and opening the chat there keeps the entry on
+// screen, which is the whole point of the wide layout. The form carries an
+// empty box; filling it in is how the server is told the column is there.
+// A phone never fills it in and keeps going to the chat page.
+(function chatBeside() {
+  const boxes = document.querySelectorAll("[data-beside]");
+  if (!boxes.length) return;
+  const mark = () => {
+    const dock = document.querySelector(".dock");
+    const open = Boolean(dock && dock.offsetParent !== null);
+    boxes.forEach((box) => { box.value = open ? "1" : ""; });
+  };
+  mark();
+  window.addEventListener("resize", mark);
+})();
+
+// Only refresh the visible message area, leaving typed text and the page alone.
+(function liveChat() {
+  document.querySelectorAll('[data-live-chat]').forEach((thread) => {
+    let previous = null;
+    let stopped = false;
+    async function refresh() {
+      if (stopped) return;
+      try {
+        if (!document.hidden && thread.offsetParent !== null) {
+          const response = await fetch('/chat/' + thread.dataset.liveChat + '/messages', { cache: 'no-store' });
+          if (response.status === 403) { stopped = true; return; }
+          if (response.ok) {
+            const data = await response.json();
+            const fingerprint = JSON.stringify(data.messages);
+            if (fingerprint !== previous) {
+              const nearEnd = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 80;
+              // HTML is rendered by our escaped Jinja template, never built from raw message text.
+              thread.innerHTML = data.html;
+              if (nearEnd) thread.scrollTop = thread.scrollHeight;
+              previous = fingerprint;
+            }
+            // A read receipt acknowledges only the messages actually displayed.
+            if (data.has_unread && !document.hidden && thread.offsetParent !== null) {
+              await fetch('/chat/' + thread.dataset.liveChat + '/read', {
+                method: 'POST',
+                body: new URLSearchParams({through: String(data.messages[data.messages.length - 1].id)})
+              });
+            }
+          }
+        }
+      } catch (_) { /* A temporary connection failure retries next time. */ }
+      setTimeout(refresh, 3000);
+    }
+    setTimeout(refresh, 3000);
+  });
+})();
+
+// Refresh chat lists and unread dots without touching a form or typed message.
+(function liveChatOverview() {
+  const nav = document.querySelector('nav a.tab[href="/chats"]');
+  if (!nav) return;
+  let dockVersion = null;
+  let overviewVersion = null;
+  let stopped = false;
+  async function refresh() {
+    if (stopped) return;
+    try {
+      if (!document.hidden) {
+        const here = new URL(location.href);
+        here.searchParams.delete('chat');
+        const response = await fetch('/chats/updates?' + new URLSearchParams({page_url: here.pathname + here.search}), {cache:'no-store'});
+        if (response.status === 403) { stopped = true; return; }
+        if (response.ok) {
+          const data = await response.json();
+          let dot = nav.querySelector('.pip');
+          if (data.unread && !dot) {
+            dot = document.createElement('span'); dot.className = 'pip'; dot.setAttribute('aria-hidden','true'); nav.appendChild(dot);
+          } else if (!data.unread && dot) { dot.remove(); }
+          nav.title = data.unread ? data.unread + ' unread messages' : 'Chats';
+          const panel = document.querySelector('[data-desktop-chat-overview]');
+          const panelOverview = panel?.querySelector('[data-chat-overview]');
+          if (panelOverview && panel.getClientRects().length && data.version !== dockVersion
+              && !panelOverview.contains(document.activeElement)) {
+            const next = new DOMParser().parseFromString(data.overview_html, 'text/html')
+              .querySelector('[data-chat-overview]');
+            if (next) {
+              const top = panel.scrollTop;
+              const folds = new Map([...panelOverview.querySelectorAll('input[type="checkbox"][id]')]
+                .map(e => [e.id, e.checked]));
+              next.querySelectorAll('input[type="checkbox"][id]').forEach(e => {
+                if (folds.has(e.id)) e.checked = folds.get(e.id);
+              });
+              panelOverview.replaceChildren(...next.childNodes);
+              panel.scrollTop = top;
+              dockVersion = data.version;
+            }
+          }
+          const list = document.querySelector('[data-live-chat-list]');
+          if (list && list.getClientRects().length && data.version !== dockVersion && !list.contains(document.activeElement)) {
+            const scroller = list.querySelector('.dock-list');
+            const top = scroller ? scroller.scrollTop : 0;
+            list.innerHTML = data.dock_html;
+            if (list.querySelector('.dock-list')) list.querySelector('.dock-list').scrollTop = top;
+            dockVersion = data.version;
+          }
+          const overview = document.querySelector('.shell-main [data-chat-overview]');
+          const editingOverview = () => overview && overview.contains(document.activeElement)
+            && !document.activeElement.matches('input[type="checkbox"]');
+          if (overview && data.version !== overviewVersion && !editingOverview()) {
+            const page = await fetch(location.pathname + location.search, {cache:'no-store',headers:{'Purpose':'prefetch'}});
+            if (page.ok && new URL(page.url).pathname === '/chats') {
+              const next = new DOMParser().parseFromString(await page.text(), 'text/html').querySelector('[data-chat-overview]');
+              if (next && !editingOverview()) {
+                const focusedId = overview.contains(document.activeElement) ? document.activeElement.id : '';
+                const folds = new Map([...overview.querySelectorAll('input[type="checkbox"][id]')].map(e=>[e.id,e.checked]));
+                next.querySelectorAll('input[type="checkbox"][id]').forEach(e=>{if(folds.has(e.id))e.checked=folds.get(e.id);});
+                overview.replaceChildren(...next.childNodes);
+                if (focusedId) document.getElementById(focusedId)?.focus({preventScroll:true});
+                overviewVersion = data.version;
+              }
+            }
+          }
+        }
+      }
+    } catch (_) { /* Retry after a temporary connection failure. */ }
+    setTimeout(refresh, 4000);
+  }
+  setTimeout(refresh, 1000);
+})();
+
+// On the Chats page of a wide screen a chat opens in the pane beside the
+// list instead of on a page of its own. The address carries it as ?chat=<id>,
+// which the server reads, so a reload or a sent message keeps it open.
+// Listening on the document, because the list is redrawn as messages come in.
+(function chatPane() {
+  const pane = document.querySelector(".ch-pane");
+  if (!pane) return;
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest('a[href^="/chat/"]');
+    if (!link || pane.offsetParent === null) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+    const id = (link.getAttribute("href").match(/^\/chat\/(\d+)/) || [])[1];
+    if (!id) return;
+    event.preventDefault();
+    const url = new URL(location.href);
+    url.searchParams.set("chat", id);
+    location.assign(url.pathname + url.search);
+  });
+  const box = pane.querySelector("#pane-body");
+  if (box) box.focus({ preventScroll: true });
+})();
+
+// ------------------------------------------------------------------ the tour
+//
+// Two parts. First the story: four cards you swipe through, where Bea, a
+// (made-up) Nova student, says why the app exists and how it works. Then, if
+// you want, a walk through the whole app: she takes you from Housing to
+// Tickets, Market, Groups, Chats and your profile, and points at the real
+// buttons on each page.
+//
+// The walk goes from page to page, so where you are in it is kept in
+// sessionStorage ("cm-tour-walk") and every page picks it up again. A step
+// whose button is not on the page (no bell when notifications are off, no
+// entries in an empty tab) is simply left out.
+//
+// Shown once per account, the first time a new student reaches one of the
+// main screens. The server says which in data-tour on the body, because a
+// second laptop does not make somebody new to the app and the browser's own
+// store cannot tell one account from the next. "Take the tour again" on the
+// profile, or ?tour=1 in the address, plays it again whenever you like.
+// Skippable everywhere, Esc closes it.
+(function tour() {
+  const WALK = "cm-tour-walk";
+  const store = {
+    get(k, s = localStorage) { try { return s.getItem(k); } catch (e) { return null; } },
+    set(k, v, s = localStorage) { try { s.setItem(k, v); } catch (e) {} },
+    drop(k, s = localStorage) { try { s.removeItem(k); } catch (e) {} },
+  };
+
+  // Finished or skipped, it is the same answer: this student has had it.
+  // Written on the account, so it holds on every machine they sign in on.
+  // The body is marked straight away as well, so nothing later on this page
+  // tries to start it a second time while the request is still going.
+  function markSeen() {
+    if (document.body.dataset.tour === "done") return;
+    document.body.dataset.tour = "done";
+    try { fetch("/tour/seen", { method: "POST" }).catch(() => {}); } catch (e) {}
+  }
+
+  const walking = store.get(WALK, sessionStorage);
+  const asked = new URLSearchParams(location.search).get("tour") === "1";
+  const bar = document.querySelector(".tabbar");
+  // It starts by itself only on the main screens. On a wide screen the rail
+  // is on every page, the forms included, and nobody wants a tour over a
+  // half-written entry.
+  const MAIN = ["/housing", "/tickets", "/market", "/groups", "/chats", "/profile"];
+  if (walking === null) {
+    if (!bar || !MAIN.includes(location.pathname.replace(/\/+$/, ""))) return;
+    if (document.body.dataset.tour !== "new" && !asked) return;
+  }
+
+  // Bea. Drawn here, in the colours of the app, no photo and no logo.
+  const BEA = (wave) => `
+  <svg class="bea" viewBox="0 0 160 190" aria-hidden="true">
+    <ellipse cx="80" cy="182" rx="44" ry="6" fill="#000" opacity=".08"/>
+    <path d="M44 74c-8 26 2 52 16 60h40c14-8 24-34 16-60z" fill="#3B2A22"/>
+    <path d="M30 190c0-36 22-56 50-56s50 20 50 56z" fill="#12998A"/>
+    <path d="M58 136c6 10 14 14 22 14s16-4 22-14" fill="none" stroke="#0B6F64" stroke-width="5" stroke-linecap="round"/>
+    <path d="M73 150v20M87 150v20" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M40 150c-4 16-4 28-2 40" stroke="#E5492F" stroke-width="7" stroke-linecap="round" fill="none"/>
+    <rect x="72" y="112" width="16" height="22" rx="7" fill="#E0A982"/>
+    <circle cx="80" cy="88" r="31" fill="#F2C29B"/>
+    <path d="M48 86c-2-26 16-40 34-38 20 1 32 16 30 38-6-12-16-18-30-18-14 0-26 6-34 18z" fill="#3B2A22"/>
+    <path d="M100 58c10-6 22-2 24 8-8-2-14 0-20 4z" fill="#3B2A22"/>
+    <circle cx="69" cy="91" r="9" fill="none" stroke="#2A2A33" stroke-width="2.6"/>
+    <circle cx="91" cy="91" r="9" fill="none" stroke="#2A2A33" stroke-width="2.6"/>
+    <path d="M78 91h4" stroke="#2A2A33" stroke-width="2.6"/>
+    <circle cx="69" cy="92" r="2.8" fill="#2A2A33"/><circle cx="91" cy="92" r="2.8" fill="#2A2A33"/>
+    <circle cx="62" cy="104" r="4" fill="#F28C78" opacity=".45"/><circle cx="98" cy="104" r="4" fill="#F28C78" opacity=".45"/>
+    <path d="M72 106c4 5 12 5 16 0" fill="none" stroke="#8A3B2A" stroke-width="2.6" stroke-linecap="round"/>
+    ${wave ? `<g class="bea-arm">
+      <path d="M118 150c10-10 16-26 18-44" stroke="#12998A" stroke-width="15" stroke-linecap="round" fill="none"/>
+      <circle cx="137" cy="100" r="9" fill="#F2C29B"/></g>`
+    : `<path d="M118 150c8 8 10 20 10 40" stroke="#12998A" stroke-width="15" stroke-linecap="round" fill="none"/>`}
+    <g transform="rotate(-10 52 168)"><rect x="38" y="150" width="26" height="40" rx="5" fill="#2A2A33"/>
+      <rect x="41" y="154" width="20" height="30" rx="3" fill="#9FE3D8"/></g>
+  </svg>`;
+  const BEA_FACE = BEA(false).replace('viewBox="0 0 160 190"', 'viewBox="40 46 80 80"').replace('class="bea"', 'class="bea-face"');
+
+  const ICON = {
+    housing: '<path d="M3.6 10.7 12 4.3l8.4 6.4V19a1.4 1.4 0 0 1-1.4 1.4h-3.6v-5.9h-6.8v5.9H5a1.4 1.4 0 0 1-1.4-1.4z"/>',
+    ticket: '<rect x="3" y="7" width="18" height="10" rx="2.4"/><path d="M14.6 7.6v1.8m0 2.7v1.8m0 2.7v.8"/>',
+    item: '<path d="M5.4 8h13.2l1 11.4a1.2 1.2 0 0 1-1.2 1.3H5.6a1.2 1.2 0 0 1-1.2-1.3z"/><path d="M9 8a3 3 0 0 1 6 0"/>',
+    group: '<circle cx="9.2" cy="8.4" r="3.1"/><path d="M3.4 19.6c0-2.9 2.6-5.2 5.8-5.2s5.8 2.3 5.8 5.2M16.1 6.2a2.8 2.8 0 0 1 0 5.6M17.6 19.6c0-2.1-.8-3.7-2.2-4.7"/>',
+    chats: '<path d="M20.2 11.6c0 3.5-3.7 6.4-8.2 6.4-.9 0-1.8-.1-2.7-.4L5.3 19.3l1.1-3A6.1 6.1 0 0 1 3.8 11.6c0-3.5 3.7-6.4 8.2-6.4s8.2 2.9 8.2 6.4z"/>',
+    me: '<circle cx="12" cy="8.6" r="3.8"/><path d="M4.6 20c0-3.9 3.3-6.6 7.4-6.6s7.4 2.7 7.4 6.6"/>',
+    find: '<circle cx="11" cy="11" r="6.6"/><path d="M16.2 16.2 20.5 20.5"/>',
+    done: '<circle cx="12" cy="12" r="8.6"/><path d="M8.4 12.3 11 14.8l4.6-5"/>',
+    shield: '<path d="M12 3.4 5 6.2v5.2c0 4.4 3 7.9 7 9.2 4-1.3 7-4.8 7-9.2V6.2z"/><path d="m9 12 2.2 2.2L15.4 10"/>',
+    pin: '<path d="M12 20.6s-6.4-5.6-6.4-10.8a6.4 6.4 0 0 1 12.8 0c0 5.2-6.4 10.8-6.4 10.8z"/><circle cx="12" cy="9.8" r="2.3"/>',
+    fair: '<path d="M12 4v16M5 8h14M7.6 8 4.8 14a3 3 0 0 0 5.6 0zM16.4 8l-2.8 6a3 3 0 0 0 5.6 0z"/>',
+  };
+  const svg = (k, s = 22) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
+
+  // ---------------------------------------------------------- part 1, the story
+  const CARDS = [
+    { cls: "onb-hello", html: `
+      <div class="onb-stage">${BEA(true)}<span class="onb-bubble">Olá! I'm Bea 👋</span></div>
+      <h2>Welcome to Campus Market</h2>
+      <p>I study Finance at Nova, and I'll show you around. This is where Nova
+         students find rooms, tickets, second-hand things and teammates, from each other.</p>
+      <div class="onb-swap">
+        <span class="onb-old"><b>40 WhatsApp groups</b><br><small>and it's gone in an hour</small></span>
+        <span class="onb-arrow">→</span>
+        <span class="onb-new">1 app<br><small>it stays until it's taken</small></span>
+      </div>` },
+    { cls: "onb-why", html: `
+      <div class="onb-stage onb-stage--small">${BEA(false)}<span class="onb-bubble onb-bubble--small">Why bother?</span></div>
+      <h2>Why Campus Market</h2>
+      <ul class="onb-why-list">
+        <li><span class="n" data-kind="housing">${svg("shield", 20)}</span><div><b>Only Nova students</b><span>Everyone signed up with a verified novasbe.pt address. No strangers, no fake landlords.</span></div></li>
+        <li><span class="n" data-kind="ticket">${svg("pin", 20)}</span><div><b>Nothing gets buried</b><span>Search and filter instead of scrolling back through chats.</span></div></li>
+        <li><span class="n" data-kind="item">${svg("fair", 20)}</span><div><b>Fair for everyone</b><span>You see how many students reached out before you, and a taken entry is closed for all.</span></div></li>
+      </ul>` },
+    { cls: "onb-inside", html: `
+      <div class="onb-stage onb-stage--small">${BEA(false)}<span class="onb-bubble onb-bubble--small">Pick a tab!</span></div>
+      <h2>Four tabs, four colours</h2>
+      <div class="onb-kinds">
+        <div data-kind="housing">${svg("housing")}<b>Housing</b><span>Rooms, studios and flats, linked to the real ad.</span></div>
+        <div data-kind="ticket">${svg("ticket")}<b>Tickets</b><span>Parties, concerts, games. Sorted by day.</span></div>
+        <div data-kind="item">${svg("item")}<b>Market</b><span>Bikes, desks, books, anything you sell.</span></div>
+        <div data-kind="group">${svg("group")}<b>Groups</b><span>A free spot in a project group for your course.</span></div>
+      </div>` },
+    { cls: "onb-how", html: `
+      <div class="onb-stage onb-stage--small">${BEA(false)}</div>
+      <h2>How it works</h2>
+      <ol class="onb-steps">
+        <li><span class="n" data-kind="housing">${svg("find", 20)}</span><div><b>Find it, or put it up</b><span>Search a tab, or tap + and offer something in a minute.</span></div></li>
+        <li><span class="n" data-kind="ticket">${svg("chats", 20)}</span><div><b>Message the student</b><span>Every entry shows who reached out before you:</span>
+          <span class="onb-queue"><i></i><i></i><i class="me"></i><em>You'd be the 3rd to reach out</em></span></div></li>
+        <li><span class="n" data-kind="group">${svg("done", 20)}</span><div><b>Deal done, entry closed</b><span>Everyone sees it's taken, nobody writes for nothing.</span></div></li>
+      </ol>` },
+  ];
+
+  // ---------------------------------------------------------- part 2, the walk
+  // el is a selector, or a function that returns the element(s) to light up.
+  const section = (name) => () => {
+    const head = [...document.querySelectorAll(".section")].find((s) => s.textContent.trim() === name);
+    if (!head) return null;
+    const next = head.nextElementSibling;
+    return next ? [head, next] : [head];
+  };
+  // The first of several places that is actually on screen. The + in the
+  // head is hidden on a laptop, where New entry in the sidebar does its job.
+  const shown = (...sels) => () => {
+    for (const sel of sels) {
+      const e = [...document.querySelectorAll(sel)].find((x) => x.getClientRects().length);
+      if (e) return e;
+    }
+    return null;
+  };
+  // The inbox: the column on the right on a laptop, the Chats tab on a phone.
+  const inbox = (sel, all) => () => {
+    const dock = document.querySelector(".dock");
+    const root = dock && dock.getClientRects().length ? dock : document.querySelector(".screen");
+    if (!root) return null;
+    const found = [...root.querySelectorAll(sel)].filter((e) => e.getClientRects().length);
+    if (!found.length) return null;
+    return all ? found : found[0];
+  };
+  const CHAPTERS = {
+    housing: { label: "Housing", icon: "housing", page: "/housing" },
+    ticket: { label: "Tickets", icon: "ticket", page: "/tickets" },
+    item: { label: "Market", icon: "item", page: "/market" },
+    group: { label: "Groups", icon: "group", page: "/groups" },
+    chats: { label: "Chats", icon: "chats", page: "/chats" },
+    me: { label: "Profile", icon: "me", page: "/profile" },
+  };
+  const STEPS = [
+    { ch: "housing", el: ".tabbar", title: "Your home base",
+      text: "Housing, Tickets, Market, Groups and your Chats. Each tab has its own colour, so you always know where you are.",
+      wide: { text: "Housing, Tickets, Market and Groups, each in its own colour. New entry and your profile sit right below. Your chats live on the right." } },
+    { ch: "housing", el: ".search", title: "Search anything",
+      text: "A street, an area like Carcavelos, or just “balcony”. Search works the same way in every tab." },
+    { ch: "housing", el: ".hbar", title: "Filters that matter",
+      text: "Rent, area, bills included, minutes to campus, move-in date. Then sort by rent or by who's free first." },
+    { ch: "housing", el: ".bell", title: "Let the rooms come to you",
+      text: "Set your filters, then tap the bell. When a new room fits your search, your phone tells you.",
+      wide: { text: "Set your filters, then click the bell. When a new room fits your search, you get a notification." } },
+    { ch: "housing", el: shown(".head-actions .plus:not(.bell)", ".tab--rail"), title: "Renting out your room?",
+      text: "Tap +. Paste the Uniplaces or Idealista link, or a few screenshots of the ad, and the form fills itself in.",
+      wide: { text: "Click New entry. Paste the Uniplaces or Idealista link, or a few screenshots of the ad, and the form fills itself in." } },
+    { ch: "housing", el: ".card", title: "The full picture",
+      text: "Open a room: photos, rent plus bills worked out, a button to the original ad, and how many students reached out before you." },
+
+    { ch: "ticket", el: ".chips", title: "Tickets for what you're into",
+      text: "Parties, concerts, sports and more. Tickets are sorted by day, so tonight is on top." },
+    { ch: "ticket", el: ".card", title: "Sold out? Not here.",
+      text: "Open a ticket and tap its bell: you hear when someone puts up another one for the same event." },
+    { ch: "ticket", el: shown(".head-actions .plus:not(.bell)", ".tab--rail"), title: "Can't make it?",
+      text: "Sell your ticket in seconds: paste the Luma, DICE or Eventbrite link, or a screenshot, and it's filled in.",
+      wide: { text: "Click New entry and sell your ticket in seconds: paste the Luma, DICE or Eventbrite link, or a screenshot, and it's filled in." } },
+
+    { ch: "item", el: ".filters", title: "Second-hand, first class",
+      text: "Bikes, desks, books, a winter coat. Filter by category, price and condition." },
+    { ch: "item", el: ".card", title: "Like it? Heart it.",
+      text: "Open anything and tap the heart. Everything you saved waits for you on your profile." },
+
+    { ch: "group", el: ".segment", title: "Only your courses",
+      text: "Groups shows the project groups in the courses you take. Switch to All courses to look further." },
+    { ch: "group", el: () => document.querySelector(".card") || document.querySelector(".empty"), title: "Missing a teammate?",
+      text: "A group with a free spot posts it here. Message them and the spot is yours. The bell on a group tells you about new ones in that course." },
+
+    // Chats, top to bottom: the search, the two sides, the kinds, the list.
+    // On a phone that is the Chats tab. On a laptop there is no Chats page:
+    // the same inbox is the column on the right of every page, so the walk
+    // stays where it is and points there.
+    { ch: "chats", el: inbox(".search"), title: "Find any chat",
+      text: "Type a name, an entry or a word from a message, and the right chat is on top." },
+    { ch: "chats", el: inbox(".segment"), title: "Buying and selling, apart",
+      text: "“You asked” is what you want. “Your entries” is who wrote about your things. They never get mixed up." },
+    { ch: "chats", el: inbox(".chips .chip", true), title: "One kind at a time",
+      text: "Show only your Housing, Market or Groups chats, or All of them." },
+    { ch: "chats", el: () => inbox(".ch-list")() || inbox(".empty")(), title: "One chat per entry",
+      text: "Every chat is about one entry, so you always know who asked about what. Deal done? Archive it.",
+      wide: { text: "Every chat is about one entry, so you always know who asked about what. Click one and it opens right here, so you can read a room and talk to its owner at the same time." } },
+
+    { ch: "me", el: ".panel", title: "This is you",
+      text: "The tick means a verified Nova student. Everyone you talk to here has one too." },
+    { ch: "me", el: section("My entries"), title: "Your entries",
+      text: "Everything you put up. When it's gone, close it, and everybody sees it's taken." },
+    { ch: "me", el: section("Notifications"), title: "You decide what pings you",
+      text: "Saved searches, events and courses, all in one place. Turn any of them off when you like." },
+  ];
+  const ORDER = Object.keys(CHAPTERS);
+  const here = location.pathname.replace(/\/+$/, "") || "/";
+  if (window.matchMedia("(min-width: 900px)").matches) {
+    STEPS.forEach((st) => { if (st.wide) Object.assign(st, st.wide); });
+    CHAPTERS.chats.page = CHAPTERS.group.page;
+  }
+  const onPage = (n) => CHAPTERS[STEPS[n].ch].page === here;
+  const find = (n) => {
+    const el = STEPS[n].el;
+    let got = typeof el === "function" ? el() : document.querySelector(el);
+    if (!got) return null;
+    got = (Array.isArray(got) ? got : [got]).filter((e) => e && e.getClientRects().length);
+    // Something nearly as wide as the window is not a thing to point at.
+    got = got.filter((e) => e.getBoundingClientRect().width < window.innerWidth * 0.95);
+    return got.length ? got : null;
+  };
+
+  const root = document.createElement("div");
+  root.className = "onb";
+  root.setAttribute("role", "dialog");
+  root.setAttribute("aria-modal", "true");
+  root.setAttribute("aria-label", "Welcome tour");
+
+  function open() {
+    if (!root.isConnected) document.body.append(root);
+    document.documentElement.classList.add("onb-open");
+  }
+  function done() {
+    markSeen();
+    store.drop(WALK, sessionStorage);
+    root.remove();
+    document.documentElement.classList.remove("onb-open");
+    document.removeEventListener("keydown", keys);
+    window.removeEventListener("resize", place);
+    if (asked) {
+      const u = new URL(location.href); u.searchParams.delete("tour");
+      history.replaceState(null, "", u.pathname + u.search);
+    }
+  }
+
+  // ---- part 1
+  let c = 0, mode = "cards", s = 0, dir = 1;
+  // The sheet is built once and afterwards only told which card it is on.
+  //
+  // It used to be written out again on every Next, which cost two things.
+  // The track carries the slide (transform on --i), and a transition needs
+  // the same element to still be there to slide from, so a fresh one simply
+  // appeared at the new place: the cards jumped instead of moving. And the
+  // sheet's own rise animation, 14 pixels up out of nothing, started over
+  // with each new sheet, which is the flicker on every tap.
+  function buildCards() {
+    root.innerHTML = `
+      <div class="onb-sheet">
+        <button type="button" class="onb-skip">Skip</button>
+        <div class="onb-track">
+          ${CARDS.map((k) => `<section class="onb-card ${k.cls}">${k.html}</section>`).join("")}
+        </div>
+        <div class="onb-foot">
+          <span class="onb-dots">${CARDS.map(() => "<i></i>").join("")}</span>
+          <button type="button" class="onb-back">Back</button>
+          <button type="button" class="onb-next">Next</button>
+        </div>
+        <button type="button" class="onb-later">No thanks, I'll explore myself</button>
+      </div>`;
+    root.querySelector(".onb-skip").onclick = done;
+    root.querySelector(".onb-later").onclick = done;
+    root.querySelector(".onb-back").onclick = () => { if (c > 0) { c--; cards(); } };
+    root.querySelector(".onb-next").onclick = () => {
+      if (c === CARDS.length - 1) return walk(0, 1);
+      c++;
+      cards();
+    };
+    swipe(root.querySelector(".onb-track"));
+  }
+
+  function cards() {
+    open();
+    mode = "cards";
+    root.className = "onb";
+    // Gone after the walk took the page over, so it is put back; that is the
+    // one time the sheet is meant to rise into view again.
+    if (!root.querySelector(".onb-sheet")) buildCards();
+    const last = c === CARDS.length - 1;
+    root.querySelector(".onb-track").style.setProperty("--i", c);
+    root.querySelectorAll(".onb-card").forEach((card, n) => {
+      if (n === c) card.removeAttribute("aria-hidden");
+      else card.setAttribute("aria-hidden", "true");
+    });
+    root.querySelectorAll(".onb-dots i").forEach((dot, n) => dot.classList.toggle("on", n === c));
+    // Held in place rather than taken away, so the row under the cards
+    // stands still: Back arriving on the second card used to shove Next
+    // sideways, and the quiet way out arriving on the last one lifted the
+    // whole row. Both were part of the jump.
+    root.querySelector(".onb-back").classList.toggle("onb-ghost", c === 0);
+    root.querySelector(".onb-later").classList.toggle("onb-ghost", !last);
+    const next = root.querySelector(".onb-next");
+    next.textContent = last ? "Show me around · 2 min" : "Next";
+    // Only when it is not already the button in hand, so tapping Next does
+    // not move the focus ring off and back on under the finger.
+    if (document.activeElement !== next) next.focus();
+  }
+
+  function swipe(el) {
+    let x0 = null;
+    el.addEventListener("touchstart", (e) => { x0 = e.touches[0].clientX; }, { passive: true });
+    el.addEventListener("touchend", (e) => {
+      if (x0 === null) return;
+      const dx = e.changedTouches[0].clientX - x0; x0 = null;
+      if (dx < -50 && c < CARDS.length - 1) { c++; cards(); }
+      if (dx > 50 && c > 0) { c--; cards(); }
+    });
+  }
+
+  // ---- part 2
+  // Go to step n, or the nearest one in direction d that can be shown. A step
+  // on another page means going there first; that page carries on.
+  function walk(n, d) {
+    dir = d;
+    while (n >= 0 && n < STEPS.length) {
+      if (!onPage(n)) return travel(n, d);
+      if (find(n)) { s = n; store.set(WALK, `${n}:${d}`, sessionStorage); return spot(); }
+      n += d;
+    }
+    return n < 0 ? (c = CARDS.length - 1, store.drop(WALK, sessionStorage), cards()) : finale();
+  }
+
+  function travel(n, d) {
+    store.set(WALK, `${n}:${d}`, sessionStorage);
+    const ch = CHAPTERS[STEPS[n].ch];
+    open();
+    mode = "travel";
+    root.className = "onb onb--travel";
+    root.innerHTML = `<div class="onb-go" data-kind="${STEPS[n].ch}">${svg(ch.icon, 26)}<span>${ch.label}</span></div>`;
+    setTimeout(() => location.assign(ch.page), 260);
+  }
+
+  function chapterBar(n) {
+    const at = ORDER.indexOf(STEPS[n].ch);
+    return `<div class="onb-chapters">${ORDER.map((k, i) =>
+      `<span class="${i < at ? "past" : i === at ? "now" : ""}" data-kind="${k}" title="${CHAPTERS[k].label}">${svg(CHAPTERS[k].icon, 14)}</span>`).join("")}</div>`;
+  }
+
+  function spot() {
+    open();
+    mode = "spots";
+    const t = STEPS[s];
+    const fresh = !root.classList.contains("onb--spots");
+    if (fresh) {
+      root.className = "onb onb--spots";
+      root.innerHTML = `<div class="onb-dim"></div><div class="onb-hole"></div><div class="onb-tip"></div>`;
+    }
+    const els = find(s);
+    // Scroll only when the thing is not already on screen. The chat column
+    // on a laptop stays put, so moving the page under it only jolts.
+    // Everything that lights up must be clear of the tab bar at the foot of
+    // a phone, not just its first line.
+    const rects = els.map((e) => e.getBoundingClientRect());
+    const topY = Math.min(...rects.map((r) => r.top));
+    const botY = Math.max(...rects.map((r) => r.bottom));
+    const foot = bar && bar.getBoundingClientRect().top > window.innerHeight / 2
+      ? bar.getBoundingClientRect().top : window.innerHeight;
+    const inView = topY >= 0 && botY <= foot - 8;
+    if (!inView && !els[0].closest(".dock")) els[0].scrollIntoView({ block: "center", behavior: "instant" });
+    root.dataset.kind = t.ch;
+    const tip = root.querySelector(".onb-tip");
+    tip.innerHTML = `
+      ${chapterBar(s)}
+      <div class="onb-tip-top">${BEA_FACE}<div><small class="onb-ch">${CHAPTERS[t.ch].label}</small><b>${t.title}</b><p>${t.text}</p></div></div>
+      <div class="onb-foot">
+        <button type="button" class="onb-back onb-end">End tour</button>
+        <button type="button" class="onb-back onb-prev" aria-label="Previous">←</button>
+        <button type="button" class="onb-next">Next</button>
+      </div>`;
+    tip.querySelector(".onb-next").onclick = () => walk(s + 1, 1);
+    tip.querySelector(".onb-prev").onclick = () => walk(s - 1, -1);
+    tip.querySelector(".onb-end").onclick = done;
+    // A bubble that was just made appears where it belongs; only a bubble
+    // already on screen glides to its next place.
+    if (fresh) tip.style.transition = "none";
+    place();
+    if (fresh) requestAnimationFrame(() => { tip.style.transition = ""; });
+    tip.querySelector(".onb-next").focus({ preventScroll: true });
+  }
+
+  function place() {
+    if (mode !== "spots") return;
+    const els = find(s);
+    if (!els) return;
+    const rs = els.map((e) => e.getBoundingClientRect());
+    const r = {
+      left: Math.min(...rs.map((q) => q.left)), top: Math.min(...rs.map((q) => q.top)),
+      right: Math.max(...rs.map((q) => q.right)), bottom: Math.max(...rs.map((q) => q.bottom)),
+    };
+    r.width = r.right - r.left; r.height = r.bottom - r.top;
+    const W = window.innerWidth, H = window.innerHeight, pad = 6;
+    const x = Math.max(r.left - pad, 4), y = Math.max(r.top - pad, 4);
+    const w = Math.min(r.width + pad * 2, W - x - 4), h = Math.min(r.height + pad * 2, H - y - 4);
+    const rad = Math.min(18, h / 2);
+    // The dark layer with a rounded hole cut out where the button is.
+    root.querySelector(".onb-dim").style.clipPath = `path(evenodd, "M0 0H${W}V${H}H0Z ` +
+      `M${x + rad} ${y}H${x + w - rad}A${rad} ${rad} 0 0 1 ${x + w} ${y + rad}V${y + h - rad}` +
+      `A${rad} ${rad} 0 0 1 ${x + w - rad} ${y + h}H${x + rad}A${rad} ${rad} 0 0 1 ${x} ${y + h - rad}` +
+      `V${y + rad}A${rad} ${rad} 0 0 1 ${x + rad} ${y}Z")`;
+    Object.assign(root.querySelector(".onb-hole").style, {
+      top: y + "px", left: x + "px", width: w + "px", height: h + "px", borderRadius: rad + "px",
+    });
+    const tip = root.querySelector(".onb-tip");
+    // Below the spot when there is room for the bubble, otherwise above it.
+    const room = H - (y + h) - 18;
+    const up = room < tip.offsetHeight + 12 && y > H - (y + h);
+    tip.classList.toggle("onb-tip--up", up);
+    tip.style.top = up ? "" : Math.min(y + h + 16, H - tip.offsetHeight - 12) + "px";
+    tip.style.bottom = up ? Math.max(H - y + 16, 12) + "px" : "";
+    // Sideways the bubble follows what it points at, so on a wide screen it
+    // does not sit in the middle while the button is in the rail on the left.
+    // On a phone it is as wide as the screen and simply stays put.
+    const cx = Math.min(Math.max(r.left + r.width / 2, 40), W - 40);
+    const tw = tip.offsetWidth;
+    const left = Math.min(Math.max(cx - tw / 2, 12), Math.max(W - tw - 12, 12));
+    tip.style.left = left + "px";
+    tip.style.setProperty("--arrow-x", Math.min(Math.max(cx - left, 22), tw - 22) + "px");
+    // A safety net: whatever a browser measured, the bubble must end up on
+    // screen, or there is no Next and no End tour to press. If it did not,
+    // it goes to the bottom middle, without its arrow.
+    const b = tip.getBoundingClientRect();
+    const lost = !b.width || b.top < 0 || b.bottom > H || b.left < 0 || b.right > W;
+    tip.classList.toggle("onb-tip--free", lost);
+    if (lost) {
+      tip.style.top = ""; tip.style.bottom = "16px";
+      tip.style.left = Math.max((W - tw) / 2, 12) + "px";
+    }
+  }
+
+  function finale() {
+    open();
+    mode = "end";
+    store.drop(WALK, sessionStorage);
+    markSeen();
+    root.className = "onb onb--end";
+    root.innerHTML = `
+      <div class="onb-sheet">
+        <div class="onb-confetti" aria-hidden="true">${"<i></i>".repeat(18)}</div>
+        <section class="onb-card onb-hello">
+          <div class="onb-stage">${BEA(true)}<span class="onb-bubble">You're all set! 🎉</span></div>
+          <h2>Go get it</h2>
+          <p>Your room, your ticket for Saturday, your last teammate: it's all one tap away.</p>
+          <p class="onb-small">Want to see this again? It's on your profile, under “Take the tour again”.</p>
+        </section>
+        <div class="onb-foot onb-foot--one">
+          <button type="button" class="onb-next">Start exploring</button>
+        </div>
+      </div>`;
+    root.querySelector(".onb-next").onclick = () => { done(); if (here !== "/housing") location.assign("/housing"); };
+    root.querySelector(".onb-next").focus();
+  }
+
+  function keys(e) {
+    if (e.key === "Escape") return done();
+    if (mode === "cards") {
+      if (e.key === "ArrowRight" && c < CARDS.length - 1) { c++; cards(); }
+      if (e.key === "ArrowLeft" && c > 0) { c--; cards(); }
+    } else if (mode === "spots") {
+      if (e.key === "ArrowRight") walk(s + 1, 1);
+      if (e.key === "ArrowLeft") walk(s - 1, -1);
+    }
+  }
+  document.addEventListener("keydown", keys);
+  window.addEventListener("resize", place);
+
+  if (walking !== null) {
+    const [n, d] = walking.split(":").map(Number);
+    if (Number.isInteger(n) && n >= 0 && n < STEPS.length && onPage(n)) return walk(n, d === -1 ? -1 : 1);
+    // Mid-walk on a page the walk was not heading to (the back button, a
+    // link): offer to carry on instead of pulling the student anywhere.
+    if (Number.isInteger(n) && n >= 0 && n < STEPS.length) {
+      const pill = document.createElement("div");
+      pill.className = "onb-resume";
+      pill.innerHTML = `${BEA_FACE}<button type="button" class="onb-resume-go">Continue the tour</button><button type="button" class="onb-resume-x" aria-label="End the tour">✕</button>`;
+      document.body.append(pill);
+      pill.querySelector(".onb-resume-go").onclick = () => { pill.remove(); travel(n, 1); };
+      pill.querySelector(".onb-resume-x").onclick = () => { pill.remove(); store.drop(WALK, sessionStorage); markSeen(); };
+      return;
+    }
+    store.drop(WALK, sessionStorage);
+  }
+  cards();
 })();

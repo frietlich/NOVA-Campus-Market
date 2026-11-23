@@ -9,18 +9,18 @@ import os
 import re
 import unicodedata
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import List
 from urllib.parse import quote, urlencode, urlparse
 
-from fastapi import BackgroundTasks, FastAPI, Form, Query, Request, UploadFile, File
+from fastapi import BackgroundTasks, FastAPI, Form, Query, Request, UploadFile, File, HTTPException
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import (categories, db, housing, mailer, passwords, programmes, push,
+from . import (categories, db, housing, mailer, maps, passwords, programmes, push,
                screenshots, ticket_import)
 
 # .env first, so CAMPUS_SECRET and the mail account can live in it.
@@ -28,7 +28,10 @@ mailer.load_env()
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 UPLOADS = os.path.join(HERE, "static", "uploads")
-SECRET = os.environ.get("CAMPUS_SECRET") or "change-me-before-you-deploy"
+LOCAL_DEMO = os.environ.get("CAMPUS_SECURITY_DEMO") == "1"
+SECRET = os.environ.get("CAMPUS_SECRET", "")
+if len(SECRET) < 32:
+    raise RuntimeError("Set CAMPUS_SECRET to at least 32 random characters.")
 
 # The four tabs. Everything about a tab is in this one list.
 TABS = [
@@ -71,7 +74,7 @@ FRESH_DAYS = 7
 FRESH_MAX = 10
 
 app = FastAPI(title="Campus Market")
-app.add_middleware(SessionMiddleware, secret_key=SECRET, max_age=60 * 60 * 24 * 30)
+
 app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
 
 templates = Jinja2Templates(directory=os.path.join(HERE, "templates"))
@@ -163,7 +166,7 @@ def day_label(iso_date):
     if not iso_date:
         return "NO DATE"
     d = datetime.strptime(iso_date, "%Y-%m-%d").date()
-    today = datetime.now().astimezone().date()
+    today = date.fromisoformat(db.active_day())
     if d == today:
         return "Today"
     if (d - today).days == 1:
@@ -201,7 +204,7 @@ def days_left(iso_date):
     if not iso_date:
         return ""
     d = datetime.strptime(iso_date, "%Y-%m-%d").date()
-    gap = (d - datetime.now().astimezone().date()).days
+    gap = (d - date.fromisoformat(db.active_day())).days
     if gap < 0:
         return "overdue"
     if gap == 0:
@@ -271,10 +274,24 @@ templates.env.globals["SORT_OPTIONS"] = SORT_OPTIONS
 templates.env.globals["SORT_SHORT"] = SORT_SHORT
 templates.env.globals["PRICE_BANDS"] = PRICE_BANDS
 templates.env.globals["HOUSING"] = housing
+templates.env.globals["TICKETS"] = ticket_import
 templates.env.globals["SCREENSHOTS_ON"] = screenshots.is_set_up
 templates.env.globals["SCREENSHOTS_MAX"] = screenshots.MAX_IMAGES
 templates.env.globals["PUSH_ON"] = push.is_set_up
 templates.env.globals["PUSH_KEY"] = push.public_key
+
+
+def ordinal(n):
+    """1st, 2nd, 3rd, 4th, and 11th, 12th, 13th the English way."""
+    n = int(n)
+    if 10 <= n % 100 <= 20:
+        end = "th"
+    else:
+        end = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{end}"
+
+
+templates.env.filters["ordinal"] = ordinal
 templates.env.globals["PRICE_SHORT"] = {key: name for key, name, _, _ in PRICE_BANDS}
 
 
@@ -334,9 +351,41 @@ ADDRESS_MAX = 120
 TICKET_MAX = 50
 
 
+# A Portuguese post code, 1200-109. Every address in the country has one
+# and it is what turns a street name into somewhere you can actually be
+# sent. The ticket addresses in the app all carried one from the start, the
+# housing ones never did, because the example under the box only showed a
+# street and people wrote what the example showed.
+POST_CODE = re.compile(r"\b\d{4}-\d{3}\b")
+
+
+def address_problem(text):
+    """What is wrong with an address, or None when it will do.
+
+    Deliberately loose about everything except the post code. People write
+    Rua, R., Avenida and Av., with and without a floor, and a form that
+    argues with all of that is a form nobody finishes. The post code is the
+    one part that is either there or not.
+    """
+    text = (text or "").strip()
+    if not text:
+        return "empty"
+    if len(text) > ADDRESS_MAX:
+        return f"An address can be at most {ADDRESS_MAX} characters."
+    if not POST_CODE.search(text):
+        return ("That needs the full address, with the post code, "
+                "like Cais da Viscondessa, 1200-109 Lisboa.")
+    return None
+
+
 def today_iso():
-    """Today where the school is, for a date box that cannot go backwards."""
-    return datetime.now().astimezone().date().isoformat()
+    """Today where the school is, for a date box that cannot go backwards.
+
+    The day turns over at six in the morning, not at midnight, see
+    db.active_day. So at two in the morning you can still put up a ticket
+    for the party you are standing outside of.
+    """
+    return db.active_day()
 
 # What a price may be. The shape is what stops a word, a minus sign or
 # 1e9 from ever reaching float(), which used to take the whole page down.
@@ -416,7 +465,7 @@ def by_course(rows):
             blocks.append(block)
         block["rows"].append(row)
 
-    today = datetime.now().astimezone().date().isoformat()
+    today = db.active_day()
     def gone(row):
         return bool(row["hand_in"]) and row["hand_in"] < today
 
@@ -429,11 +478,21 @@ def by_course(rows):
     return blocks
 
 
-def month_label(iso_date):
-    """Free from January, the heading over a block of places."""
+def month_label(iso_date, today=None):
+    """Free from January, the heading over a block of places.
+
+    A date that has already come means the place is free today, so it says
+    so instead of naming a month that is over. A month in another year
+    carries the year: in November, "January" alone could be either one.
+    """
     if not iso_date:
         return "Date not given"
+    today = today or today_iso()
+    if iso_date <= today:
+        return "Free now"
     d = datetime.strptime(iso_date, "%Y-%m-%d")
+    if iso_date[:4] != today[:4]:
+        return f"Free from {d:%B %Y}"
     return f"Free from {d:%B}"
 
 
@@ -764,6 +823,78 @@ async def bad_address(request: Request, error: RequestValidationError):
 TAB_PAGES = ("listings.html", "chats.html")
 PLACES = TAB_PAGES + ("profile.html",)
 
+# The screens that carry the bar at the foot of a phone. Exactly the four
+# that drew it themselves before the nav moved into the shell, and no more:
+# a form or an entry is a place you came to from one of these and leaves by
+# its own arrow, so a bar underneath it would offer a second way out that
+# throws away what you were doing. On a wide screen the rail is on every
+# screen regardless, which is the point of a rail.
+FOOT_BAR = PLACES + ("missing.html",)
+
+# ------------------------------------------------------------- the wide view
+
+# On a wide screen the chats stand in a column of their own, open the whole
+# time, so you can read an entry and answer about it without leaving either.
+# The column is not drawn on the two screens that are already the chats, nor
+# while signed out, and never on a phone, where the stylesheet hides it.
+DOCK_OFF = ("chats.html", "chat.html")
+DOCK_CHATS = 12
+
+
+def dock_for(request, me, template):
+    """What the chat column shows: the list, and the thread if one is open.
+
+    Which thread is open is written in the address as ?chat=<id>, so it
+    survives a reload, a sent message and the back button without a line of
+    script. Anything we are not allowed to see simply does not open.
+    """
+    if me is None or template in DOCK_OFF:
+        return {"dock": False}
+
+    values = {"dock": True,
+              "dock_chats": db.conversations_of(me["id"])[:DOCK_CHATS],
+              "dock_open": None, "dock_with": None, "dock_messages": [],
+              "dock_overview_html": dock_overview(request, me)}
+
+    asked = (request.query_params.get("chat") or "").strip()
+    if safe_id(asked) is not None:
+        conv = db.get_conversation(int(asked))
+        if db.can_see_conversation(conv, me["id"]):
+            other_id = (conv["starter_id"] if conv["owner_id"] == me["id"]
+                        else conv["owner_id"])
+            # Rendering a dock does not mean it is visible (especially on phones).
+            values["dock_open"] = conv
+            values["dock_with"] = db.get_user(other_id)
+            values["dock_messages"] = db.messages_of(conv["id"])
+            values["dock_archived"] = bool(conv["archived_owner"] if conv["owner_id"] == me["id"]
+                                            else conv["archived_starter"])
+            values["here_with_chat"] = here(request, chat=conv["id"])
+    return values
+
+
+def chat_pane(request, me):
+    """The conversation shown beside the list on the Chats page, wide screens.
+
+    The same rules as the column on every other page: the thread is named
+    in the address as ?chat=<id>, and one you are not part of never opens.
+    The phone never shows it; there a chat is still a page of its own.
+    """
+    values = dock_for(request, me, "chats-pane")
+    return {"pane_on": True,
+            "pane_open": values.get("dock_open"),
+            "pane_with": values.get("dock_with"),
+            "pane_messages": values.get("dock_messages") or [],
+            "pane_back": values.get("here_with_chat")}
+
+
+def here(request, chat=None):
+    """This page's own address, with the chat column's state written into it."""
+    parts = {k: v for k, v in request.query_params.items() if k != "chat"}
+    if chat is not None:
+        parts["chat"] = str(chat)
+    tail = urlencode(parts)
+    return request.url.path + ("?" + tail if tail else "")
+
 
 def page(request, template, **values):
     """Render a template with the things every page needs.
@@ -786,7 +917,15 @@ def page(request, template, **values):
     # Signed out there is nobody to ask, so the page follows the phone.
     values.setdefault("theme", (me["theme"] or "") if me else "")
     values.setdefault("unread", db.unread_total(me["id"]) if me else 0)
+    # The welcome tour starts by itself once per account, not once per
+    # browser. Signed out there is nobody to welcome, so it stays shut.
+    values.setdefault("tour_seen", bool(me["tour_seen"]) if me else True)
     values.setdefault("active", "")
+    values.setdefault("foot_bar", template in FOOT_BAR)
+    for key, value in dock_for(request, me, template).items():
+        values.setdefault(key, value)
+    values.setdefault("here", here(request))
+    values.setdefault("auth_page", template.removesuffix(".html") if me is None else "")
     if template in PLACES:
         where = request.url.path
         if request.url.query:
@@ -815,7 +954,11 @@ def speculative(request):
 
 def me_or_none(request):
     user_id = request.session.get("user_id")
-    return db.get_user(user_id) if user_id else None
+    user = db.get_user(user_id) if user_id else None
+    if (user and user["verified"] and db.is_nova_email(user["email"])
+            and request.session.get("session_version", 0) == user["session_version"]):
+        return user
+    return None
 
 
 def waiting_or_none(request, key):
@@ -838,6 +981,17 @@ def go(path):
     return RedirectResponse(path, status_code=303)
 
 
+def safe_id(value):
+    value = str(value)
+    return int(value) if value.isascii() and value.isdigit() and len(value) <= 18 else None
+
+
+def sign_in(request, user_id):
+    request.session.clear()
+    request.session["user_id"] = user_id
+    request.session["session_version"] = db.get_user(user_id)["session_version"]
+
+
 def ours(path):
     """A page of this app, or nothing.
 
@@ -848,7 +1002,8 @@ def ours(path):
     how a browser reads //somewhere.else as another site.
     """
     path = (path or "").strip()
-    if not path.startswith("/") or path.startswith("//"):
+    if (not path.startswith("/") or path.startswith("//") or "\\" in path
+            or any(ord(c) < 32 for c in path)):
         return ""
     return path
 
@@ -884,9 +1039,18 @@ def send_code(user, why):
     """
     age = db.code_age(user["id"])
     if age is not None and age < RESEND_SECONDS:
+        return "" if user["code_purpose"] == why else "Wait one minute before requesting a different code."
+    if not mailer.is_set_up() and not LOCAL_DEMO:
+        return "Email delivery is not configured. Please contact the app team."
+    try:
+        code = db.new_code(user["id"], why)
+    except ValueError as error:
+        return str(error)
+    if LOCAL_DEMO and not mailer.is_set_up():
+        print(f"LOCAL DEMO ONLY: {why} code for {user['email']}: {code}", flush=True)
         return ""
-    code = db.new_code(user["id"])
     if not mailer.send_code(user["email"], code, why):
+        db.cancel_code(user["id"], code, why)
         return "We could not send the e-mail. Try again in a minute."
     return ""
 
@@ -942,7 +1106,7 @@ async def join(request: Request,
     # The ticked courses. They come as a list, so they are read from the form
     # itself rather than as one named argument.
     body = await request.form()
-    picked = [v for v in body.getlist("course_id") if str(v).isdigit()]
+    picked = [safe_id(v) for v in body.getlist("course_id") if safe_id(v) is not None]
 
     def fail(message):
         return join_page(request, form, message, picked)
@@ -972,11 +1136,16 @@ async def join(request: Request,
         return fail(wrong)
 
     if photo is not None and photo.filename and not is_picture(photo):
-        return fail("That file is not a picture. Use a jpg, png or heic.")
+        return fail("Upload a valid JPEG, PNG or WebP image.")
 
     existing = db.get_user_by_email(email)
     if existing is not None and existing["verified"]:
         return fail("That address already has an account. Log in instead.")
+
+    try:
+        saved = await save_image(photo)
+    except HTTPException as error:
+        return fail(str(error.detail))
 
     hashed = passwords.hash_password(password)
     if existing is None:
@@ -988,11 +1157,10 @@ async def join(request: Request,
         db.update_profile(user_id, name, chosen, cems, None)
         db.set_password(user_id, hashed)
 
-    saved = await save_image(photo)
     if saved:
         db.update_profile(user_id, name, chosen, cems, saved)
 
-    db.set_enrolments(user_id, set(map(int, picked)) & db.valid_course_ids(chosen))
+    db.set_enrolments(user_id, set(picked) & db.valid_course_ids(chosen))
 
     request.session["pending_id"] = user_id
     problem = send_code(db.get_user(user_id), "join")
@@ -1015,16 +1183,17 @@ def verify(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = F
         return go("/start")
     user_id = pending["id"]
     code = "".join([d1, d2, d3, d4, d5, d6]).strip()
-    result = db.check_code(user_id, code)
+    result = db.check_code(user_id, code, "join")
     if result != "ok":
         return page(request, "verify.html", pending=pending,
                     error=CODE_ERRORS[result])
-    request.session.pop("pending_id", None)
-    request.session["user_id"] = user_id
+    request.session.clear()
+    sign_in(request, user_id)
     # Straight in. Whoever left the courses blank is not stopped for them
     # here. Groups says so itself the first time it is opened, and the
-    # profile has the list whenever they want it.
-    return go("/housing")
+    # profile has the list whenever they want it. A new account starts
+    # with the tour, whatever this browser remembers from somebody else.
+    return go("/housing?tour=1")
 
 
 @app.post("/verify/resend")
@@ -1051,6 +1220,16 @@ def login_form(request: Request):
 
 @app.post("/login")
 def login(request: Request, email: str = Form(""), password: str = Form("")):
+    from hashlib import sha256
+    account = email.strip().lower()[:254]
+    key = sha256(f"login:{account}".encode()).hexdigest()
+    if not db.take_security_attempt(key, limit=20):
+        response = page(request, "login.html", email=email,
+                        error="Too many attempts. Please wait ten minutes.")
+        response.status_code = 429
+        return response
+    if not db.is_nova_email(email) or not 1 <= len(password) <= 128:
+        return page(request, "login.html", email=email, error="That e-mail and password do not go together.")
     user = db.get_user_by_email(email)
 
     # The same answer whether the address is unknown or the password is wrong,
@@ -1061,11 +1240,11 @@ def login(request: Request, email: str = Form(""), password: str = Form("")):
 
     if not user["verified"]:
         request.session["pending_id"] = user["id"]
-        problem = send_code(user, "login")
+        problem = send_code(user, "join")
         return go(verify_url(problem))
 
     request.session.clear()
-    request.session["user_id"] = user["id"]
+    sign_in(request, user["id"])
     return go("/housing")
 
 
@@ -1082,85 +1261,77 @@ def forgot_form(request: Request):
     return page(request, "forgot.html")
 
 
-@app.post("/forgot")
-def forgot(request: Request, email: str = Form("")):
-    email = email.strip().lower()
+def deliver_reset_code(email):
+    """Delivery runs after the generic response; account existence stays private."""
     user = db.get_user_by_email(email)
-    if user is None:
-        # Again the same answer either way, so this page tells nobody which
-        # addresses exist. The code simply never arrives.
-        return page(request, "forgot.html", email=email,
-                    error="If that address has an account, the code is on its way.")
-    problem = send_code(user, "reset")
-    if problem:
-        return page(request, "forgot.html", email=email, error=problem)
-    request.session["reset_id"] = user["id"]
+    if user:
+        problem = send_code(user, "reset")
+        if problem and not problem.startswith("Wait"):
+            import logging
+            logging.getLogger(__name__).warning("Password reset delivery unavailable")
+
+
+def reset_email(request):
+    return request.session.get("reset_email", "")
+
+
+@app.post("/forgot")
+def forgot(request: Request, background: BackgroundTasks, email: str = Form("")):
+    email = email.strip().lower()[:254]
+    request.session.pop("reset_id", None)
+    request.session["reset_email"] = email
+    background.add_task(deliver_reset_code, email)
     return go("/forgot/reset")
 
 
 @app.get("/forgot/reset")
 def reset_form(request: Request, error: str = "", sent: int = 0):
-    user = waiting_or_none(request, "reset_id")
-    if user is None:
+    email = reset_email(request)
+    if not email:
         return go("/forgot")
-    return page(request, "reset.html", pending=user, error=error, sent=sent)
+    return page(request, "reset.html", pending={"email": email}, error=error, sent=sent)
 
 
 @app.post("/forgot/reset/resend")
-def reset_resend(request: Request):
-    """Another code for somebody already on the page, without sending them
-    back to the form that asks for an address they have just given."""
-    user = waiting_or_none(request, "reset_id")
-    if user is None:
+def reset_resend(request: Request, background: BackgroundTasks):
+    email = reset_email(request)
+    if not email:
         return go("/forgot")
-    age = db.code_age(user["id"])
-    if age is not None and age < RESEND_SECONDS:
-        wait = int(RESEND_SECONDS - age) + 1
-        return go(reset_url(f"Wait {wait} seconds, then ask again."))
-    problem = send_code(user, "reset")
-    return go(reset_url(problem) if problem else reset_url(sent=True))
+    background.add_task(deliver_reset_code, email)
+    return go(reset_url(sent=True))
 
 
 @app.post("/forgot/reset")
 def reset(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = Form(""),
           d4: str = Form(""), d5: str = Form(""), d6: str = Form(""),
           password: str = Form(""), password2: str = Form("")):
-    user = waiting_or_none(request, "reset_id")
-    if user is None:
+    email = reset_email(request)
+    if not email:
         return go("/forgot")
-    user_id = user["id"]
 
     def fail(message):
-        return page(request, "reset.html", pending=user, error=message)
+        return page(request, "reset.html", pending={"email": email}, error=message)
 
     if password != password2:
         return fail("The two passwords are not the same.")
     wrong = passwords.problem(password)
     if wrong:
         return fail(wrong)
-    result = db.check_code(user_id, "".join([d1, d2, d3, d4, d5, d6]).strip())
-    if result != "ok":
-        return fail(CODE_ERRORS[result])
-
-    db.set_password(user_id, passwords.hash_password(password))
-    request.session.pop("reset_id", None)
-    request.session["user_id"] = user_id
+    user = db.get_user_by_email(email)
+    code = "".join([d1, d2, d3, d4, d5, d6]).strip()
+    if user is None or db.check_code(user["id"], code, "reset") != "ok":
+        return fail("That code is invalid or expired. Wait a minute and request a new one.")
+    db.set_password(user["id"], passwords.hash_password(password))
+    sign_in(request, user["id"])
     return go("/housing")
 
 
-# ---------------------------------------------------------------------- dev
-
-@app.get("/dev")
-def dev_form(request: Request):
-    """Development login. Delete this page once the real one works."""
-    return page(request, "dev.html", users=db.all_users())
-
-
-@app.post("/dev")
-def dev_login(request: Request, user_id: int = Form(...)):
-    request.session.clear()
-    request.session["user_id"] = user_id
-    return go("/housing")
+# There used to be a development login at /dev here: a page that listed
+# every account and signed you in as whichever one you picked, with no
+# password. It was the right tool while the real door was being built and
+# the wrong thing to leave in an app students put their chats in, because
+# nothing stood in front of it. It is gone. Sign in with an address and a
+# password like everybody else, and a code by e-mail confirms a new account.
 
 
 # --------------------------------------------------------------- the four tabs
@@ -1249,7 +1420,7 @@ def tab_page(request, kind, q, scope="mine", cat="", day="", sort="",
                 link=link_maker(tab["path"], params),
                 watching=(kind in SEARCH_KEYS and db.is_watching_search(
                     me["id"], kind, search_of(kind, request.query_params))),
-                here=str(request.url.path) + (f"?{request.url.query}" if request.url.query else ""))
+                here=here(request))
 
 
 @app.get("/housing")
@@ -1301,8 +1472,8 @@ async def courses_save(request: Request):
     if me is None:
         return go("/start")
     form = await request.form()
-    picked = [v for v in form.getlist("course_id") if str(v).isdigit()]
-    db.set_enrolments(me["id"], set(map(int, picked)) & db.valid_course_ids(me["programme"]))
+    picked = [safe_id(v) for v in form.getlist("course_id") if safe_id(v) is not None]
+    db.set_enrolments(me["id"], set(picked) & db.valid_course_ids(me["programme"]))
     back = ours(form.get("back")) or "/profile"
     return go(back if str(back).startswith("/") else "/profile")
 
@@ -1322,13 +1493,18 @@ def listing_detail(request: Request, listing_id: int, back: str = ""):
         row = db.get_listing(listing_id)
     watching = (row["type"] == "ticket" and bool(row["event_date"])
                 and db.is_watching_event(me["id"], event_key(row)))
+    on_course = (row["type"] == "group" and bool(row["course_id"])
+                 and db.is_watching_course(me["id"], row["course_id"]))
+    queue = db.interest_in(listing_id)
     return page(request, "detail.html", listing=row, photos=db.photos_of(listing_id),
                 tab=BY_KIND[row["type"]], me=me,
                 back=ours(back) or request.session.get("last_place")
                      or BY_KIND[row["type"]]["path"],
                 tabs=tear_tabs(row) if row["type"] == "group" else [],
                 saved=db.is_saved(me["id"], listing_id),
-                saves=db.save_count(listing_id), watching_event=watching)
+                saves=db.save_count(listing_id), watching_event=watching,
+                watching_course=on_course,
+                queue=queue, my_place=db.place_in_queue(queue, me["id"]))
 
 
 @app.post("/listing/{listing_id}/close")
@@ -1367,7 +1543,7 @@ def listing_save(request: Request, listing_id: int):
 
 
 @app.post("/listing/{listing_id}/chat")
-def listing_chat(request: Request, listing_id: int):
+def listing_chat(request: Request, listing_id: int, beside: str = Form("")):
     me = me_or_none(request)
     if me is None:
         return go("/start")
@@ -1375,7 +1551,14 @@ def listing_chat(request: Request, listing_id: int):
     if row is None or row["owner_id"] == me["id"]:
         return go(f"/listing/{listing_id}")
     conv_id = db.open_conversation(listing_id, me["id"])
-    return go(f"/chat/{conv_id}")
+    # Wide enough for the chat column, and the chat opens in it: the entry
+    # stays on screen and you write about it while looking at it. Otherwise
+    # the chat page, with the way back pointing at the entry you wrote from,
+    # because writing about a room and landing in a list of chats loses the
+    # room you were looking at.
+    if beside == "1":
+        return go(f"/listing/{listing_id}?chat={conv_id}")
+    return go(f"/chat/{conv_id}?back=/listing/{listing_id}")
 
 
 # --------------------------------------------------------------- putting up
@@ -1443,9 +1626,27 @@ def new_ticket_autofill(request: Request, url: str = Form("")):
     Only links to the sites in ticket_import.PLATFORMS are ever fetched. The
     seller sees the filled form and checks it before anything is published.
     """
+    me = me_or_none(request)
+    if me is None:
+        return JSONResponse({"ok": False, "reason": "login"}, status_code=401)
+    if not db.take_security_attempt(f"ticket-import:{me['id']}", limit=30):
+        return JSONResponse({"ok": False, "reason": "limit"}, status_code=429)
+    return JSONResponse(ticket_import.autofill(url))
+
+
+@app.post("/new/address-from-link")
+def new_address_from_link(request: Request, url: str = Form("")):
+    """A maps link turned into a street address. Answers in JSON.
+
+    The page reads a link that spells the address out by itself. This is
+    for the two kinds that do not: a link to a place, which carries its
+    name and a pair of coordinates, and the short one a phone makes when
+    you press Share, which carries nothing at all until it is followed.
+    Only the hosts in maps.HOSTS are ever fetched.
+    """
     if me_or_none(request) is None:
         return JSONResponse({"ok": False, "reason": "login"}, status_code=401)
-    return JSONResponse(ticket_import.autofill(url))
+    return JSONResponse(maps.address_from_link(url))
 
 
 @app.post("/new/screenshot")
@@ -1468,6 +1669,46 @@ def new_from_screenshots(request: Request, kind: str = Form(""),
         return JSONResponse({"ok": False, "reason": "limit"})
     pictures = [f.file.read(screenshots.MAX_UPLOAD + 1) for f in files]
     return JSONResponse(screenshots.read(kind, pictures))
+
+
+@app.post("/new/autofill")
+def new_autofill(request: Request, url: str = Form(""), text: str = Form("")):
+    """Fill the housing form from an advert, by its link or by its pasted text.
+
+    Answers in JSON: the fields we could read, and how. With a link the
+    server fetches the page itself; sites that block robots (Idealista does)
+    get an honest "blocked", and the page then offers the paste instead.
+    Only links to the sites in housing.PLATFORMS are ever fetched.
+    """
+    if me_or_none(request) is None:
+        return JSONResponse({"ok": False, "reason": "login"}, status_code=401)
+
+    if text.strip():
+        fields = housing.parse_listing_text(text[:60000])
+        # The first real line of a copied advert is almost always its headline.
+        first = next((l.strip() for l in text.splitlines() if len(l.strip()) > 8), "")
+        if first and len(first) <= 120 and "€" not in first:
+            fields["title"] = housing._clean_title(first)
+        return JSONResponse({"ok": bool(fields), "how": "text", "fields": fields})
+
+    link = housing.clean_listing_url(url)
+    if not link:
+        return JSONResponse({"ok": False, "reason": "site"})
+    site = housing.platform_of(link)["name"]
+    if housing.blocks_apps(link):
+        # No point asking: these sites refuse every app. Straight to the paste box.
+        return JSONResponse({"ok": False, "reason": "blocked", "site": site})
+    if not housing.may_fetch(me_or_none(request)["id"]):
+        return JSONResponse({"ok": False, "reason": "limit", "site": site})
+    try:
+        status, page = housing.fetch_listing(link)
+    except Exception:
+        return JSONResponse({"ok": False, "reason": "unreachable", "site": site})
+    if housing.looks_blocked(status, page):
+        return JSONResponse({"ok": False, "reason": "blocked", "site": site})
+    fields = housing.parse_listing_page(page)
+    return JSONResponse({"ok": bool(fields), "how": "link", "site": site,
+                         "fields": fields, "reason": "" if fields else "empty"})
 
 
 @app.post("/new")
@@ -1495,6 +1736,7 @@ async def new_listing(request: Request,
                       minutes_campus: str = Form(""),
                       flatmates: str = Form(""),
                       features: List[str] = Form(default=[]),
+                      external_url: str = Form(""),
                       description: str = Form(""),
                       photos: List[UploadFile] = File(default=[]),
                       edit_id: str = Form(""),
@@ -1509,7 +1751,7 @@ async def new_listing(request: Request,
     # holds it. Without this a long entry is lost to one wrong field, and
     # changing an entry would be worse still, since the loss is the entry.
     typed = {
-        "title": title, "description": description, "price": price,
+        "title": title, "description": description, "price": price, "external_url": external_url,
         "info": info, "category": category, "condition": condition,
         "event_date": event_date, "event_time": event_time, "place": place,
         "address": address, "quantity": quantity, "course_id": course_id,
@@ -1524,7 +1766,7 @@ async def new_listing(request: Request,
     # Changing an entry goes through the same form and the same checks. Only
     # the owner, and the kind cannot be swapped, because it comes from the
     # entry and not from the request.
-    changing = db.get_listing(int(edit_id)) if edit_id.strip().isdigit() else None
+    changing = db.get_listing(int(edit_id)) if edit_id.isascii() and edit_id.isdigit() and len(edit_id) <= 18 else None
     if changing is not None and changing["owner_id"] != me["id"]:
         changing = None
     if edit_id.strip() and changing is None:
@@ -1539,6 +1781,10 @@ async def new_listing(request: Request,
         return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
                     my_courses=mine, v=typed, error=message, back=ours(back),
                     edit_id=changing["id"] if changing else None)
+
+    for number in (quantity, course_id, group_size, months_min, minutes_campus, flatmates):
+        if number.strip() and (not number.isascii() or not number.isdigit() or len(number) > 9):
+            return oops("Enter whole numbers in the number fields.")
 
     if len(title.strip()) > TITLE_MAX:
         return oops(f"A title can be at most {TITLE_MAX} characters.")
@@ -1573,8 +1819,11 @@ async def new_listing(request: Request,
             return oops("Say from when the place is free.")
         if not place.strip():
             return oops("Pick the area the place is in.")
-        if not address.strip():
+        wrong = address_problem(address)
+        if wrong == "empty":
             return oops("A place needs its address.")
+        if wrong:
+            return oops(wrong)
 
         rent, wrong = clean_price(price)
         if wrong:
@@ -1608,6 +1857,23 @@ async def new_listing(request: Request,
         if not flatmates.strip().isdigit() or int(flatmates) > FLATMATES_MAX:
             return oops(f"Say how many flatmates there are, 0 to {FLATMATES_MAX}.")
 
+    # The link to the same thing somewhere else. A room has housing sites, a
+    # ticket has ticket sites, and both are checked against their own list,
+    # so nothing we have not vetted ever becomes a button on an entry.
+    sites = {"housing": (housing.clean_listing_url, housing.PLATFORM_NAMES, "housing"),
+             "ticket": (ticket_import.clean_url, ticket_import.PLATFORM_NAMES, "ticket")}
+    link = None
+    if kind in sites:
+        clean, names, what = sites[kind]
+        link = clean(external_url)
+        if external_url.strip() and not link:
+            # Through oops, like every other refusal here, so the form comes
+            # back with everything the student typed still in it. Writing the
+            # page by hand here left out the typed values and turned a bad
+            # link into a crash.
+            return oops(f"That link is not from a {what} site we know. "
+                        "Use one from " + ", ".join(names) + ".")
+
     if kind == "group" and not hand_in.strip():
         return oops("A group entry needs the date the group has to be together.")
 
@@ -1621,7 +1887,7 @@ async def new_listing(request: Request,
         if free < 1 or free >= size:
             return oops(f"With a group of {size} you can offer at most "
                               f"{size - 1} spots, because one of them is yours.")
-        if hand_in.strip() < datetime.now().astimezone().date().isoformat():
+        if hand_in.strip() < today_iso():
             return oops("That date has passed. Pick the last day somebody "
                               "can still join.")
 
@@ -1632,19 +1898,20 @@ async def new_listing(request: Request,
         # and the venue together are what decide that two tickets are to
         # the same event. Leave one out and a ticket stands on its own
         # beside the party it belongs to.
-        if not event_time.strip():
-            return oops("A ticket needs the time the event starts.")
+        if not re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", event_time.strip()):
+            return oops("Enter a valid start time (HH:MM).")
         # Both of these are compulsory because both are read by somebody
         # else. The venue with the day is what puts two tickets to the same
         # party in one bundle, and the address is what opens in maps.
         if not place.strip():
             return oops("A ticket needs the name of the venue.")
-        if not address.strip():
+        wrong = address_problem(address)
+        if wrong == "empty":
             return oops("A ticket needs the address of the venue.")
+        if wrong:
+            return oops(wrong)
         if len(place.strip()) > PLACE_MAX:
             return oops(f"A venue name can be at most {PLACE_MAX} characters.")
-        if len(address.strip()) > ADDRESS_MAX:
-            return oops(f"An address can be at most {ADDRESS_MAX} characters.")
         # The day of the event still counts, a party is sold until the door,
         # but yesterday is nothing anybody can buy any more.
         if event_date.strip() < today_iso():
@@ -1655,6 +1922,27 @@ async def new_listing(request: Request,
         many = int(quantity) if quantity.strip().isdigit() else 0
         if many < 1 or many > TICKET_MAX:
             return oops(f"Say how many tickets you have, 1 to {TICKET_MAX}.")
+
+    for entered_date in (event_date, hand_in, available_from):
+        if entered_date.strip():
+            try:
+                datetime.strptime(entered_date.strip(), "%Y-%m-%d")
+            except ValueError:
+                return oops("Enter a valid date in YYYY-MM-DD format.")
+    # Validate photos before changing the database. Remove earlier files if a later photo fails.
+    image_names = []
+    uploads = [photo for photo in (photos or []) if photo and photo.filename] if kind != "ticket" else []
+    if len(uploads) > 10:
+        return oops("Upload at most ten photos.")
+    try:
+        for upload in uploads:
+            image_names.append(await save_image(upload))
+    except HTTPException as error:
+        for name in image_names:
+            os.remove(os.path.join(UPLOADS, name))
+        response = oops(str(error.detail))
+        response.status_code = 400
+        return response
 
     fields = dict(
         title=title.strip(),
@@ -1692,6 +1980,7 @@ async def new_listing(request: Request,
         flatmates=(int(flatmates) if kind == "housing"
                    and flatmates.strip().isdigit() else None),
         features=housing.clean_features(features) if kind == "housing" else None,
+        external_url=link,
     )
 
     if changing is not None:
@@ -1700,19 +1989,9 @@ async def new_listing(request: Request,
     else:
         listing_id = db.create_listing(owner_id=me["id"], kind=kind, **fields)
 
-    # Pictures added while changing an entry go after the ones already there.
     position = len(db.photos_of(listing_id)) if changing is not None else 0
-    for upload in (photos or []) if kind != "ticket" else []:
-        if not upload or not upload.filename:
-            continue
-        ext = os.path.splitext(upload.filename)[1].lower()
-        if ext not in (".jpg", ".jpeg", ".png", ".webp", ".heic"):
-            continue
-        name = f"{uuid.uuid4().hex}{ext}"
-        with open(os.path.join(UPLOADS, name), "wb") as out:
-            out.write(await upload.read())
+    for position, name in enumerate(image_names, start=position):
         db.add_photo(listing_id, name, position)
-        position += 1
 
     # Everyone watching this tab hears about a new entry, after the page has
     # answered. A change to an entry that is already up rings nobody.
@@ -1723,12 +2002,12 @@ async def new_listing(request: Request,
     # one is now the form itself and an arrow pointing there is a trap.
     done = "saved" if changing is not None else "published"
     where = f"/listing/{listing_id}?done={done}"
-    if changing is not None and back.startswith("/") and not back.startswith("//"):
+    if changing is not None and ours(back):
         where += "&back=" + quote(back)
     return go(where)
 
 
-PICTURE_TYPES = (".jpg", ".jpeg", ".png", ".webp", ".heic")
+PICTURE_TYPES = (".jpg", ".jpeg", ".png", ".webp")
 
 
 def is_picture(upload):
@@ -1739,14 +2018,25 @@ def is_picture(upload):
 
 
 async def save_image(upload):
-    """Write one uploaded picture to the uploads folder. Gives back its name."""
-    if not is_picture(upload):
+    from io import BytesIO
+    from PIL import Image, ImageOps, UnidentifiedImageError
+    from fastapi import HTTPException
+    if not upload or not upload.filename:
         return None
-    ext = os.path.splitext(upload.filename)[1].lower()
-    name = f"{uuid.uuid4().hex}{ext}"
-    with open(os.path.join(UPLOADS, name), "wb") as out:
-        out.write(await upload.read())
-    return name
+    data = await upload.read(5_000_001)
+    if len(data) > 5_000_000:
+        raise HTTPException(400, "Images must be under 5 MB.")
+    try:
+        with Image.open(BytesIO(data), formats=["JPEG", "PNG", "WEBP"]) as picture:
+            if picture.width * picture.height > 20_000_000:
+                raise HTTPException(400, "Image dimensions are too large.")
+            picture = ImageOps.exif_transpose(picture).convert("RGB")
+            picture.thumbnail((1400, 1400))
+            name = uuid.uuid4().hex + ".jpg"
+            picture.save(os.path.join(UPLOADS, name), "JPEG", quality=85)
+            return name
+    except (OSError, UnidentifiedImageError, Image.DecompressionBombError):
+        raise HTTPException(400, "Upload a valid JPEG, PNG or WebP image.") from None
 
 
 # -------------------------------------------------------------------- chats
@@ -1897,12 +2187,31 @@ def matches(row, words):
     return all(word in hay for word in words)
 
 
-@app.get("/chats")
-def chats(request: Request, side: str = "", kind: str = "", bundle: str = "",
-          q: str = "", archived: int = 0):
+@app.get("/chats/updates")
+def chat_updates(request: Request, page_url: str = ""):
+    """Read-only updates for this student's overview and notification dots."""
     me = me_or_none(request)
     if me is None:
-        return go("/start")
+        return JSONResponse({"error": "Sign in required"}, status_code=403)
+    import hashlib
+    conversations = db.conversations_of(me["id"])
+    version = hashlib.sha256(json.dumps([dict(c) for c in conversations],
+                                        sort_keys=True, default=str).encode()).hexdigest()
+    html = templates.env.get_template("partials/chat_list.html").render(
+        dock_chats=conversations[:DOCK_CHATS], here=ours(page_url) or "/housing")
+    safe_page = ours(page_url) or "/housing"
+    from urllib.parse import urlsplit
+    target = urlsplit(safe_page)
+    panel_scope = dict(request.scope, path=target.path,
+                       query_string=target.query.encode("utf-8"))
+    panel_request = Request(panel_scope)
+    overview = dock_overview(panel_request, me, overview_only=True)
+    return JSONResponse({"version": version, "unread": db.unread_total(me["id"]),
+                         "dock_html": html, "overview_html": overview})
+
+
+def chat_overview_values(request, me, side="", kind="", bundle="", q="", archived=0):
+    """One set of chat rules for the phone page and desktop panel."""
     everything = db.conversations_of(me["id"])
     # What somebody put away is kept out of the list and counted at its
     # foot. The archive is one screen with nothing on it but the chats, so
@@ -1918,7 +2227,8 @@ def chats(request: Request, side: str = "", kind: str = "", bundle: str = "",
 
     # Which side you were on is remembered, so opening a chat and coming
     # back does not quietly put you on the other one.
-    if side not in ("sell", "buy"):
+    asked_for = side in ("sell", "buy")
+    if not asked_for:
         side = request.session.get("chats_side", "buy")
     side = "sell" if side == "sell" else "buy"
     here = mine if side == "sell" else theirs
@@ -1928,8 +2238,11 @@ def chats(request: Request, side: str = "", kind: str = "", bundle: str = "",
     # A side whose chats are all archived is not empty though, it has the way
     # in to them at its foot, and sliding off it would hide them for good.
     # The archive itself is left alone, because you asked for one side of it.
+    # Only when nobody asked for this side. Both sides are on screen now, so
+    # an empty one is a thing you can walk into on purpose, and being bounced
+    # straight back out of it would make the switch look broken.
     bare = not here and not (away_mine if side == "sell" else away_theirs)
-    if not archived and bare and (theirs if side == "sell" else mine):
+    if not asked_for and not archived and bare and (theirs if side == "sell" else mine):
         side = "buy" if side == "sell" else "sell"
         here = mine if side == "sell" else theirs
     request.session["chats_side"] = side
@@ -1976,7 +2289,7 @@ def chats(request: Request, side: str = "", kind: str = "", bundle: str = "",
     # The switch counts the archive as well. A side with nothing but
     # archived chats still has to be one you can press, or the only way
     # back to them would be to type the address.
-    return page(request, "chats.html", blocks=blocks, chats=chats_flat,
+    return dict(blocks=blocks, chats=chats_flat,
                 side=side, kind=kind, bundle=bundle, q=q,
                 kinds=kinds, bundles=bundles, archived=archived,
                 kept=kept_n, kept_unread=sum(r["unread"] for r in kept),
@@ -1989,8 +2302,50 @@ def chats(request: Request, side: str = "", kind: str = "", bundle: str = "",
                 active="chats", me=me)
 
 
+def chat_navigation(request, embedded=False):
+    """Keep listing filters separate from chat filters in the right panel."""
+    keep = {k: v for k, v in request.query_params.items()
+            if k != "chat" and not k.startswith("dock_")} if embedded else {}
+    def link(**params):
+        values = dict(keep)
+        values.update({("dock_" + k if embedded else k): str(v)
+                       for k, v in params.items() if v != ""})
+        path = request.url.path if embedded else "/chats"
+        return path + ("?" + urlencode(values) if values else "")
+    return dict(embedded=embedded, overview_only=False, chat_keep=keep,
+                chat_action=request.url.path if embedded else "/chats",
+                chat_link=link,
+                conversation_link=(lambda conv_id: here(request, chat=conv_id)) if embedded
+                                  else (lambda conv_id: f"/chat/{conv_id}"),
+                chat_archive_link=(lambda path: path + "?" + urlencode({"back": here(request)}))
+                                  if embedded else (lambda path: path))
+
+
+def dock_overview(request, me, overview_only=False):
+    fields = {key: request.query_params.get("dock_" + key, "")
+              for key in ("side", "kind", "bundle", "q")}
+    fields["archived"] = request.query_params.get("dock_archived") == "1"
+    values = chat_overview_values(request, me, **fields)
+    values.update(chat_navigation(request, embedded=True))
+    values.update(overview_only=overview_only, pane_open=None)
+    return templates.env.get_template("partials/chat_content.html").render(**values)
+
+
+@app.get("/chats")
+def chats(request: Request, side: str = "", kind: str = "", bundle: str = "",
+          q: str = "", archived: int = 0):
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    values = chat_overview_values(request, me, side, kind, bundle, q, archived)
+    values.update(chat_navigation(request))
+    values.update(chat_pane(request, me) if not archived else {"pane_on": False})
+    return page(request, "chats.html", **values)
+
+
+
 @app.get("/chat/{conv_id}")
-def chat(request: Request, conv_id: int):
+def chat(request: Request, conv_id: int, back: str = ""):
     me = me_or_none(request)
     if me is None:
         return go("/start")
@@ -2005,21 +2360,56 @@ def chat(request: Request, conv_id: int):
             else conv["archived_starter"])
     return page(request, "chat.html", conv=conv, other=db.get_user(other_id),
                 messages=db.messages_of(conv_id), archived=bool(away),
-                active="chats", me=me)
+                active="chats", me=me, back=ours(back) or "/chats")
+
+
+@app.get("/chat/{conv_id}/messages")
+def chat_messages(request: Request, conv_id: int):
+    me = me_or_none(request)
+    conv = db.get_conversation(conv_id) if me else None
+    if not me or not db.can_see_conversation(conv, me["id"]):
+        return JSONResponse({"error": "Access refused"}, status_code=403)
+    messages = db.messages_of(conv_id)
+    html = templates.env.get_template("partials/messages.html").render(messages=messages, me=me)
+    return JSONResponse({"messages": [dict(m) for m in messages], "html": html,
+                         "has_unread": any(m["sender_id"] != me["id"] and not m["read_at"] for m in messages)})
+
+
+@app.post("/chat/{conv_id}/read")
+def chat_read(request: Request, conv_id: int, through: str = Form("")):
+    me = me_or_none(request)
+    conv = db.get_conversation(conv_id) if me else None
+    if not me or not db.can_see_conversation(conv, me["id"]):
+        return JSONResponse({"error": "Access refused"}, status_code=403)
+    through_id = safe_id(through)
+    if not through_id:
+        return JSONResponse({"error": "Invalid message"}, status_code=400)
+    db.mark_read(conv_id, me["id"], through_id)
+    return JSONResponse({"ok": True})
 
 
 @app.post("/chat/{conv_id}")
 def chat_send(request: Request, background: BackgroundTasks, conv_id: int,
-              body: str = Form("")):
+              body: str = Form(""), back: str = Form("")):
     me = me_or_none(request)
     if me is None:
         return go("/start")
     conv = db.get_conversation(conv_id)
     if not db.can_see_conversation(conv, me["id"]):
         return page(request, "missing.html", active="chats")
+    if not body.strip() or len(body.strip()) > 500:
+        away = conv["archived_owner"] if conv["owner_id"] == me["id"] else conv["archived_starter"]
+        other_id = conv["starter_id"] if conv["owner_id"] == me["id"] else conv["owner_id"]
+        return page(request, "chat.html", conv=conv, other=db.get_user(other_id),
+                    messages=db.messages_of(conv_id), archived=bool(away), active="chats", me=me,
+                    back=ours(back) or "/chats", draft=body,
+                    message_error="Write a message of 1–500 characters. Your text has been kept.")
     if db.send_message(conv_id, me["id"], body):
         background.add_task(push.new_message, conv, me["id"], body.strip())
-    return go(f"/chat/{conv_id}")
+    keep = ours(back)
+    if keep and request.query_params.get("beside") == "1":
+        return go(keep)
+    return go(f"/chat/{conv_id}?back={quote(keep, safe='/')}" if keep else f"/chat/{conv_id}")
 
 
 @app.post("/chat/{conv_id}/archive")
@@ -2039,9 +2429,9 @@ def chat_archive(request: Request, conv_id: int):
     if not db.can_see_conversation(conv, me["id"]):
         return page(request, "missing.html", active="chats")
     if conv["owner_id"] == me["id"]:
-        return go("/chats?side=sell")
+        return go(ours(request.query_params.get("back", "")) or "/chats?side=sell")
     db.archive_chat(conv_id, me["id"], on=True)
-    return go("/chats?side=buy")
+    return go(ours(request.query_params.get("back", "")) or "/chats?side=buy")
 
 
 @app.post("/chat/{conv_id}/unarchive")
@@ -2053,9 +2443,9 @@ def chat_unarchive(request: Request, conv_id: int):
     if not db.can_see_conversation(conv, me["id"]):
         return page(request, "missing.html", active="chats")
     if conv["owner_id"] == me["id"]:
-        return go("/chats?side=sell")
+        return go(ours(request.query_params.get("back", "")) or "/chats?side=sell")
     db.archive_chat(conv_id, me["id"], on=False)
-    return go("/chats?side=buy")
+    return go(ours(request.query_params.get("back", "")) or "/chats?side=buy")
 
 
 @app.post("/listing/{listing_id}/archive")
@@ -2065,7 +2455,7 @@ def entry_archive(request: Request, listing_id: int):
     if me is None:
         return go("/start")
     db.archive_entry(listing_id, me["id"], on=True)
-    return go("/chats?side=sell")
+    return go(ours(request.query_params.get("back", "")) or "/chats?side=sell")
 
 
 @app.post("/listing/{listing_id}/unarchive")
@@ -2074,7 +2464,7 @@ def entry_unarchive(request: Request, listing_id: int):
     if me is None:
         return go("/start")
     db.archive_entry(listing_id, me["id"], on=False)
-    return go("/chats?side=sell")
+    return go(ours(request.query_params.get("back", "")) or "/chats?side=sell")
 
 
 # ------------------------------------------------------------------ profile
@@ -2162,10 +2552,14 @@ async def profile_edit(request: Request,
     # quietly keeping the old one.
     if photo is not None and photo.filename and not is_picture(photo):
         return edit_page(request, me,
-                         "That file is not a picture. Use a jpg, png or heic.",
+                         "Upload a valid JPEG, PNG or WebP image.",
                          form_name=name, current=programme)
 
-    db.update_profile(me["id"], name, chosen, cems, await save_image(photo))
+    try:
+        saved = await save_image(photo)
+    except HTTPException as error:
+        return edit_page(request, me, str(error.detail), form_name=name, current=programme)
+    db.update_profile(me["id"], name, chosen, cems, saved)
     return go("/profile")
 
 
@@ -2178,6 +2572,20 @@ def profile_theme(request: Request, theme: str = Form("")):
         return go("/start")
     db.set_theme(me["id"], theme.strip())
     return go("/profile")
+
+
+@app.post("/tour/seen")
+def tour_seen(request: Request):
+    """The welcome tour is over, either finished or skipped.
+
+    The page sends this itself and has nothing to go to afterwards, so the
+    answer is a bare ok. Signed out there is no account to write it on, and
+    the page has no use for the difference, so the answer is the same.
+    """
+    me = me_or_none(request)
+    if me is not None:
+        db.mark_tour_seen(me["id"])
+    return JSONResponse({"ok": True})
 
 
 @app.get("/profile/password")
@@ -2211,6 +2619,7 @@ def password_change(request: Request, current: str = Form(""),
         return fail(wrong)
 
     db.set_password(me["id"], passwords.hash_password(password))
+    sign_in(request, me["id"])
     return go("/profile")
 
 
@@ -2237,7 +2646,7 @@ async def push_device(request: Request):
         p256dh, auth = keys["p256dh"], keys["auth"]
     except (ValueError, KeyError, TypeError):
         return JSONResponse({"ok": False}, status_code=400)
-    if not (isinstance(endpoint, str) and endpoint.startswith("https://")
+    if not (push.valid_endpoint(endpoint)
             and len(endpoint) < 1000 and isinstance(p256dh, str) and len(p256dh) < 200
             and isinstance(auth, str) and len(auth) < 100):
         return JSONResponse({"ok": False}, status_code=400)
@@ -2278,6 +2687,7 @@ def notifications_form(request: Request, done: str = ""):
     return page(request, "notifications.html", me=me, prefs=db.prefs_of(me["id"]),
                 areas=push.AREAS, devices=len(db.devices_of(me["id"])), done=done,
                 events=db.events_watched(me["id"]), searches=db.searches_watched(me["id"]),
+                courses_watched=db.courses_watched(me["id"]),
                 tab_names={t["kind"]: t["label"] for t in TABS})
 
 
@@ -2319,6 +2729,33 @@ def notify_event_remove(request: Request, watch_id: int = Form(0)):
     return go("/profile/notifications?done=removed")
 
 
+@app.post("/notify/course")
+def notify_course(request: Request, listing_id: int = Form(0), on: str = Form("1")):
+    """The bell on a group: tell me about every group for this same course."""
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    row = db.get_listing(listing_id)
+    if row is None or row["type"] != "group" or not row["course_id"]:
+        return go("/groups")
+    if on == "1":
+        db.watch_course(me["id"], row["course_id"])
+    else:
+        db.unwatch_course(me["id"], course_id=row["course_id"])
+    return go(f"/listing/{listing_id}?done="
+              + ("watching-course" if on == "1" else "unwatched-course"))
+
+
+@app.post("/notify/course/remove")
+def notify_course_remove(request: Request, watch_id: int = Form(0)):
+    """Stop watching one course, from the list in the settings."""
+    me = me_or_none(request)
+    if me is None:
+        return go("/start")
+    db.unwatch_course(me["id"], watch_id=watch_id)
+    return go("/profile/notifications?done=removed-course")
+
+
 @app.post("/notify/watch")
 def notify_watch(request: Request, kind: str = Form(""), back: str = Form("")):
     """The bell on a tab: save the search on screen, or forget it again."""
@@ -2328,7 +2765,7 @@ def notify_watch(request: Request, kind: str = Form(""), back: str = Form("")):
     if kind not in SEARCH_KEYS:
         return go("/profile/notifications")
     # Only ever back to a page of our own.
-    back = back if back.startswith("/") and not back.startswith("//") else BY_KIND[kind]["path"]
+    back = ours(back) or BY_KIND[kind]["path"]
     params = search_of(kind, back.partition("?")[2])
     if db.is_watching_search(me["id"], kind, params):
         db.unwatch_search(me["id"], kind, params)
@@ -2360,3 +2797,57 @@ def profile(request: Request):
                 my_courses=db.courses_of(me["id"]),
                 saved=db.saved_listings(me["id"]),
                 chat_count=len(db.conversations_of(me["id"])), me=me)
+
+
+@app.middleware("http")
+async def security_checks(request, call_next):
+    from urllib.parse import urlsplit
+    from posixpath import normpath
+    clean_path = "/" + normpath(request.scope["path"].replace("\\", "/")).lstrip("/").lower()
+    if clean_path.startswith("/static/uploads/") and me_or_none(request) is None:
+        return HTMLResponse("Sign in required", status_code=403)
+    if any(part.isdigit() and safe_id(part) is None for part in request.url.path.split("/")):
+        return HTMLResponse("Invalid address", status_code=404)
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        if request.url.path in ("/join", "/forgot", "/verify", "/verify/resend", "/forgot/reset"):
+            from hashlib import sha256
+            address = request.client.host if request.client else "unknown"
+            key = sha256(f"{request.url.path}:{address}".encode()).hexdigest()
+            if not db.take_security_attempt(key, limit=2000):
+                return HTMLResponse("Too many attempts. Please wait ten minutes.", status_code=429)
+        origin = request.headers.get("origin") or request.headers.get("referer")
+        source = urlsplit(origin) if origin else None
+        if not source or source.scheme != request.url.scheme or source.netloc != request.url.netloc:
+            return HTMLResponse("Request origin refused", status_code=403)
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "same-origin"
+    response.headers["Content-Security-Policy"] = "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    # Every page carries live state and must never come out of the browser's
+    # store. The stylesheet and the scripts are the opposite: they already
+    # have the file's own timestamp in their address, so a new one is a new
+    # address, and telling the browser to forget them means fetching the
+    # same unchanged file on every single page.
+    #
+    # A student's photo sits between the two. It belongs to signed-in eyes
+    # only, so no shared cache along the way may hold a copy, which is what
+    # private says. The reader's own browser may keep it: the file never
+    # changes under its name, and no-store would mean fetching every
+    # thumbnail again on every list, which on a phone over mobile data is
+    # the difference between a list that appears and one that loads.
+    if clean_path.startswith("/static/uploads/"):
+        response.headers["Cache-Control"] = "private, max-age=86400"
+    elif not request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store"
+    if not LOCAL_DEMO:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
+    return response
+
+
+# Thirty days, not eight hours. A marketplace between students is not a
+# bank: being thrown out every morning costs more in people giving up than
+# a long session costs in risk, and the cookie is signed, Secure and
+# HttpOnly either way.
+app.add_middleware(SessionMiddleware, secret_key=SECRET,
+                   max_age=60 * 60 * 24 * 30,
+                   https_only=not LOCAL_DEMO, same_site="lax")

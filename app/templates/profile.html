@@ -38,18 +38,6 @@
     {% set up = mine | selectattr("status", "equalto", "open") | list %}
     {% set shut = mine | rejectattr("status", "equalto", "open") | list %}
 
-    {% if PUSH_ON() %}
-    <span class="section">Notifications</span>
-    <div class="rows">
-      <a class="row" href="/profile/notifications">
-        <div class="row-body">
-          <span class="row-name" style="color: var(--accent)">Notifications</span>
-          <span class="row-meta">Messages, saved searches and events you watch</span>
-        </div>
-      </a>
-    </div>
-    {% endif %}
-
     <span class="section">My entries</span>
 
     {% macro mine_row(l, mark) %}
@@ -131,6 +119,21 @@
       </div>
     {% endif %}
 
+    {% if PUSH_ON() %}
+    <span class="section">Notifications</span>
+    <div class="rows">
+      <a class="row" href="/profile/notifications">
+        {#- The bell on the left, the same one the tabs carry, so the row
+            and the button that fills it are plainly the same thing. -#}
+        <span class="row-sign">{{ icon.bell(21, 1.7) }}</span>
+        <div class="row-body">
+          <span class="row-name" style="color: var(--accent)">Notifications</span>
+          <span class="row-meta">Chat messages, saved searches and events you saved</span>
+        </div>
+      </a>
+    </div>
+    {% endif %}
+
     <span class="section">My courses</span>
 
     <div class="rows">
@@ -170,11 +173,16 @@
       {% endfor %}
     </form>
 
-    <form method="post" action="/logout" style="display: flex; justify-content: center">
-      <button class="signout" type="submit">{{ icon.leave() }} Sign out</button>
-    </form>
+    {#- The two things you can do to the account itself, on one line in the
+        middle. They used to be a full width link above a pill below, which
+        made the tour look like a sentence and the two look unrelated. -#}
+    <div class="foot-do">
+      <a class="pill-do" href="/housing?tour=1">Take the tour again</a>
+      <form method="post" action="/logout">
+        <button class="signout" type="submit">{{ icon.leave() }} Sign out</button>
+      </form>
+    </div>
 
   </div>
-  {% include "partials/tabbar.html" %}
 </div>
 {% endblock %}

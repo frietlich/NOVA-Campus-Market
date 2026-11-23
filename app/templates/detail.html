@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% import "partials/icons.html" as icon %}
 {% import "partials/avatar.html" as av %}
+{% import "partials/queue.html" as q %}
 {% import "partials/art.html" as art %}
 {% block title %} · {{ listing.title }}{% endblock %}
 
@@ -18,9 +19,153 @@
   </form>
 {% endmacro %}
 
+{# The bell for this one event: tell me when somebody else puts up a ticket
+   for the same day, time and place, whatever they call it. It sits beside
+   the heart because both are the same kind of thing, a quiet note to
+   yourself about this entry, and neither should take the floor from the
+   one button that says what to do next. What the bell means is said by the
+   message that comes up when you tap it. #}
+{% macro watch_button(listing, watching_event) %}
+  {% if listing.type == 'ticket' and listing.event_date and PUSH_ON() %}
+    <form method="post" action="/notify/event" {{ 'data-push-ask' if not watching_event }}>
+      <input type="hidden" name="listing_id" value="{{ listing.id }}">
+      <input type="hidden" name="on" value="{{ '0' if watching_event else '1' }}">
+      <button class="save save--head watch--head {{ 'watch--on' if watching_event }}" type="submit"
+              aria-pressed="{{ 'true' if watching_event else 'false' }}"
+              aria-label="{{ 'Stop hearing about this event' if watching_event
+                             else 'Tell me about more tickets for this event' }}">
+        {{ icon.bell(21, 1.8) }}
+      </button>
+    </form>
+  {% endif %}
+{% endmacro %}
+
+{# The same bell on a group, keyed on the course instead of on the event.
+   Somebody who needs a team for Investments hears about every group that
+   goes up for it, whatever the owner calls the entry. #}
+{% macro watch_course_button(listing, watching_course) %}
+  {% if listing.type == 'group' and listing.course_id and PUSH_ON() %}
+    <form method="post" action="/notify/course" {{ 'data-push-ask' if not watching_course }}>
+      <input type="hidden" name="listing_id" value="{{ listing.id }}">
+      <input type="hidden" name="on" value="{{ '0' if watching_course else '1' }}">
+      <button class="save save--head watch--head {{ 'watch--on' if watching_course }}" type="submit"
+              aria-pressed="{{ 'true' if watching_course else 'false' }}"
+              aria-label="{{ 'Stop hearing about this course' if watching_course
+                             else 'Tell me about more groups for this course' }}">
+        {{ icon.bell(21, 1.8) }}
+      </button>
+    </form>
+  {% endif %}
+{% endmacro %}
+
 {% block body %}
 <div class="app detail" data-kind="{{ listing.type }}">
 
+  {#- The button, kept here once and printed inside the summary. On a
+      phone it still floats at the foot of the screen, so where it sits in
+      the page changes nothing there; on a wide screen it lands in the card
+      on the right, under the price, where the decision is made. -#}
+  {% set action_bar %}
+  <div class="actionbar">
+    {% if listing.owner_id == me.id %}
+      {% if listing.status == 'open' %}
+        <div class="actionbar-stack">
+          <a class="btn" href="/listing/{{ listing.id }}/edit?back={{ back | urlencode }}">Edit this entry</a>
+          <form method="post" action="/listing/{{ listing.id }}/close">
+            <button class="btn btn--quiet" type="submit">Close this entry</button>
+          </form>
+        </div>
+      {% else %}
+        {#- An entry whose day has been cannot go back up as it is. It
+            would leave the tab on the spot and close itself again in the
+            morning, so the page says the one thing that does help. -#}
+        {% set over = (listing.type == 'ticket' and listing.event_date
+                       and listing.event_date < today_iso())
+                   or (listing.type == 'group' and listing.hand_in
+                       and listing.hand_in < today_iso()) %}
+        <div class="actionbar-stack">
+          {% if over %}
+            <a class="btn" href="/listing/{{ listing.id }}/edit?back={{ back | urlencode }}">Change the date</a>
+            <p class="note" style="margin: 0">
+              {{ 'The last day to join has passed.' if listing.type == 'group'
+                 else 'This event has passed.' }}
+            </p>
+          {% else %}
+            <form method="post" action="/listing/{{ listing.id }}/reopen">
+              <button class="btn" type="submit">Put it back up</button>
+            </form>
+            <a class="btn btn--quiet" href="/listing/{{ listing.id }}/edit?back={{ back | urlencode }}">Edit this entry</a>
+          {% endif %}
+        </div>
+      {% endif %}
+    {% elif listing.status == 'closed' %}
+      {#- The same two words as the badge in a saved list and the line over
+          an entry's chats. Closed has one name in this app. -#}
+      <button class="btn btn--quiet" type="button" disabled>Entry closed</button>
+    {% else %}
+      {#- On a wide screen the chat belongs in the column on the right, beside
+          the entry you are reading, not on a page of its own. The box below
+          is filled in by the script when that column is actually on screen,
+          so a phone keeps going to the chat page as before. -#}
+      <form method="post" action="/listing/{{ listing.id }}/chat">
+        <input type="hidden" name="beside" value="" data-beside>
+        <button class="btn" type="submit">{% if my_place %}Open your chat{% else %}Message {{ listing.owner_name.split(' ')[0] }}{% endif %}</button>
+      </form>
+    {% endif %}
+  </div>
+  {% endset %}
+
+  {#- Who put it up, a second time, for the card on the right on a wide
+      screen. The phone never shows this copy; it keeps the one at the end. -#}
+  {% set side_owner %}
+    <div class="side-owner">
+      <a class="owner-who" href="/student/{{ listing.owner_id }}">
+        {{ av.avatar(listing.owner_name, listing.owner_photo, "md") }}
+        <div class="owner-body">
+          <span class="owner-name">{{ listing.owner_name }}</span>
+          <span class="owner-course">{{ listing.owner_programme | programme(listing.owner_cems) }}</span>
+        </div>
+      </a>
+      <span class="verified">{{ icon.check() }} Verified</span>
+      <p class="side-posted">Posted {{ listing.created_at | ago }} · {{ listing.views }} views</p>
+    </div>
+  {% endset %}
+
+
+  {#- Whatever the top of the entry is, a photo strip, a ticket stub or a
+      pinned notice, it is one block. On a wide screen it becomes the left
+      column and stays put while the facts beside it scroll. -#}
+  {#- On a wide screen the page opens like a listing site: the name and
+      the few facts you scan for across the top, then the pictures, then
+      the details beside a box with the price and the button. A phone
+      never shows this head; its name stays under the picture. -#}
+  <header class="detail-head">
+    <h1>{{ listing.title }}</h1>
+    <div class="detail-meta">
+      {% if listing.type == 'housing' %}
+        <span>{{ 'Place' if listing.category == 'other' else HOUSING.KIND_LABELS.get(listing.category, 'Place') }}
+          {%- if listing.place and listing.place != 'other' %} in {{ HOUSING.AREA_LABELS.get(listing.place, listing.place) }}{% endif %}</span>
+        {% if listing.minutes_campus %}<span>About {{ listing.minutes_campus }} min to campus</span>{% endif %}
+        {% if listing.months_min %}<span>Minimum {{ listing.months_min }} months</span>{% endif %}
+      {% elif listing.type == 'ticket' %}
+        {% if listing.event_date %}<span>{{ listing.event_date | pretty_date }}</span>{% endif %}
+        {% if listing.event_time %}<span>{{ listing.event_time }}</span>{% endif %}
+        {% if listing.place %}<span>{{ listing.place }}</span>{% endif %}
+        {% if listing.category | category %}<span>{{ listing.category | category }}</span>{% endif %}
+      {% elif listing.type == 'item' %}
+        {% if listing.category | category %}<span>{{ listing.category | category }}</span>{% endif %}
+        {% if listing.condition %}<span>{{ listing.condition | condition }}</span>{% endif %}
+      {% elif listing.type == 'group' %}
+        {% if listing.course_name %}<span>{{ listing.course_name }}</span>{% endif %}
+        {% if listing.quantity %}<span>{{ listing.quantity }} {{ 'spot' if listing.quantity == 1 else 'spots' }} left</span>{% endif %}
+        {% if listing.hand_in %}<span>{{ listing.hand_in | days_left }} to join</span>{% endif %}
+      {% endif %}
+      {% if listing.status == 'closed' %}<span class="detail-closed">Closed</span>{% endif %}
+    </div>
+    <p class="detail-stats">Posted {{ listing.created_at | ago }} · {{ listing.views }} views</p>
+  </header>
+
+  <div class="detail-top">
   {% if listing.type == 'ticket' %}
 
     {# A ticket has no photo, so the block carries the three things you look
@@ -29,7 +174,12 @@
     <div class="ticket-head">
       <div class="ticket-top">
         <a class="ticket-back" href="{{ back }}" aria-label="Back">{{ icon.back() }}</a>
-        {% if listing.owner_id != me.id %}{{ save_button(listing, saved, 'head') }}{% endif %}
+        {% if listing.owner_id != me.id %}
+          <div class="ticket-acts">
+            {{ watch_button(listing, watching_event) }}
+            {{ save_button(listing, saved, 'head') }}
+          </div>
+        {% endif %}
       </div>
       <div class="stub">
         <div class="stub-day">
@@ -84,7 +234,12 @@
     <div class="board">
       <div class="ticket-top">
         <a class="ticket-back" href="{{ back }}" aria-label="Back">{{ icon.back() }}</a>
-        {% if listing.owner_id != me.id %}{{ save_button(listing, saved, 'head') }}{% endif %}
+        {% if listing.owner_id != me.id %}
+          <div class="ticket-acts">
+            {{ watch_course_button(listing, watching_course) }}
+            {{ save_button(listing, saved, 'head') }}
+          </div>
+        {% endif %}
       </div>
 
       <div class="notice">
@@ -117,19 +272,47 @@
   {% else %}
     <div class="hero">
       {% if photos %}
-        <img src="/static/uploads/{{ photos[0].filename }}" alt="">
+        {# All the photos side by side. Swipe on a phone, the arrows or the
+           keyboard on a laptop; the counter and the dots follow along. #}
+        <div class="gallery" data-gallery data-n="{{ photos | length }}" tabindex="0"
+             aria-label="Photos{% if photos | length > 1 %}, swipe for more{% endif %}">
+          {% for p in photos %}
+            {#- Tapping one opens it full screen. A button, not an image with a
+                click on it, so the keyboard and a screen reader get there too. -#}
+            <button class="gallery-shot" type="button" data-shot="{{ loop.index0 }}"
+                    aria-label="Open photo {{ loop.index }} of {{ photos | length }} full screen">
+              <img src="/static/uploads/{{ p.filename }}" alt="Photo {{ loop.index }} of {{ photos | length }}"
+                   {% if not loop.first %}loading="lazy"{% endif %} draggable="false">
+              {% if loop.index == 5 and photos | length > 5 %}<span class="gallery-more">+{{ photos | length - 5 }}</span>{% endif %}
+            </button>
+          {% endfor %}
+        </div>
       {% else %}
         {{ art.cover(listing.type, listing.id) }}
       {% endif %}
       <a class="back" href="{{ back }}" aria-label="Back">{{ icon.back() }}</a>
       {% if listing.owner_id != me.id %}{{ save_button(listing, saved, 'hero') }}{% endif %}
       {% if photos | length > 1 %}
-        <span class="count">1 / {{ photos | length }}</span>
+        <div class="gallery-dots" aria-hidden="true">
+          {% for p in photos %}<span{% if loop.first %} class="on"{% endif %}></span>{% endfor %}
+        </div>
+        <button class="gallery-nav gallery-nav--prev" type="button" aria-label="Previous photo" hidden>{{ icon.back(18) }}</button>
+        <button class="gallery-nav gallery-nav--next" type="button" aria-label="Next photo">{{ icon.back(18) }}</button>
       {% endif %}
     </div>
   {% endif %}
 
-  <div class="detail-body">
+  </div>
+
+  {#- The bar at the foot floats over the page, so the page has to end above
+      it. On your own entry the bar carries two buttons stacked and is that
+      much taller, which is also the one case where the page runs long,
+      because the queue of everyone who asked is on it. -#}
+  <div class="detail-body{% if listing.owner_id == me.id %} detail-body--mine{% endif %}">
+    {#- Two halves, invisible on a phone. On a wide screen the summary
+        (name, price, key facts) is a card on the right beside the photo,
+        and the details run on under the photo on the left. -#}
+    <div class="detail-sum">
 
     <h1>{{ listing.title }}</h1>
     {% if listing.type == 'housing' %}
@@ -159,10 +342,10 @@
     {% if listing.type != 'housing' %}
     <div class="pills">
       {% if listing.type == 'ticket' %}
-        {% if listing.category %}<span class="pill pill--on">{{ listing.category | category }}</span>{% endif %}
+        {% if listing.category | category %}<span class="pill pill--on">{{ listing.category | category }}</span>{% endif %}
         {% if not listing.quantity %}<span class="pill">Only one</span>{% endif %}
       {% elif listing.type == 'item' %}
-        {% if listing.category %}<span class="pill pill--on">{{ listing.category | category }}</span>{% endif %}
+        {% if listing.category | category %}<span class="pill pill--on">{{ listing.category | category }}</span>{% endif %}
         {% if listing.condition %}<span class="pill">{{ listing.condition | condition }}</span>{% endif %}
       {% elif listing.type == 'group' %}
         {% if listing.course_name %}<span class="pill pill--on">{{ listing.course_name }}</span>{% endif %}
@@ -173,10 +356,18 @@
     </div>
     {% endif %}
 
+    {% if listing.type != 'housing' %}
+    {{ action_bar }}{{ side_owner }}
+    </div>
+    <div class="detail-more">
+    {% endif %}
+    {% if listing.description %}<span class="block-head more-head">About this {{ {'ticket':'ticket','item':'item','group':'group'}[listing.type] }}</span>{% endif %}
+
     {% if listing.type == 'housing' %}
 
       {# What it really costs, worked out. Rent plus bills is the number you
          compare with, and nobody can do that from a grey line of text. #}
+      <p class="side-price">{{ (listing.price + (0 if listing.bills_included else (listing.bills_estimate or 0))) | money }}<span> /month</span></p>
       <div class="costs">
         <div class="cost"><span>Rent</span><b>{{ listing.price | money }}</b></div>
         {% if listing.bills_included %}
@@ -199,6 +390,10 @@
         {% endif %}
       </div>
 
+      {#- The facts are kept once and shown twice: in the summary on a
+          phone, and as tiles in the story on a wide screen, where the box
+          on the right is for the price and the button. -#}
+      {% set facts_html %}
       <div class="facts">
         {% if listing.available_from %}
           <div class="fact">{{ icon.pin(17) }}<span>Move in from</span><b>{{ listing.available_from | pretty_date }}</b></div>
@@ -213,7 +408,16 @@
           <div class="fact">{{ icon.people(17) }}<span>You would live with</span><b>{{ listing.flatmates }} {{ 'student' if listing.flatmates == 1 else 'students' }}</b></div>
         {% endif %}
       </div>
+      {% endset %}
+      {{ facts_html }}
 
+    {{ action_bar }}{{ side_owner }}
+    </div>
+    <div class="detail-more">
+      {% if 'class="fact"' in facts_html %}
+        <span class="block-head more-head">At a glance</span>
+        <div class="more-facts">{{ facts_html }}</div>
+      {% endif %}
       {% set has = HOUSING.feature_list(listing.features) %}
       {% if has %}
         <span class="block-head">The flat has</span>
@@ -222,17 +426,37 @@
         </div>
       {% endif %}
 
-      {% if listing.address %}
-        <a class="where" href="https://maps.google.com/?q={{ listing.address | urlencode }}"
-           target="_blank" rel="noopener">
-          <span class="where-pin">{{ icon.pin(19) }}</span>
-          <span class="where-text">
-            <b>{{ listing.address }}</b>
-            <span>{{ 'Where it is' if listing.place in (None, '', 'other')
-                      else HOUSING.AREA_LABELS.get(listing.place, 'Where it is') }}</span>
-          </span>
-          <span class="where-go">Open in maps</span>
-        </a>
+      {#- Where it is and where else it stands, as the rows this app uses
+          everywhere else: a sign, a line that says the thing, a smaller one
+          that says what tapping does, and an arrow. The address used to
+          share its width with the words "Open in maps" and broke in the
+          middle because of it, which is no way to print an address. -#}
+      {% set other = HOUSING.platform_of(listing.external_url) %}
+      {% if listing.address or other %}
+        <div class="rows rows--out">
+          {% if listing.address %}
+            <a class="row" href="https://maps.google.com/?q={{ listing.address | urlencode }}"
+               target="_blank" rel="noopener">
+              <span class="row-sign">{{ icon.pin(21, 1.7) }}</span>
+              <div class="row-body">
+                <span class="row-name">{{ listing.address }}</span>
+                <span class="row-meta">Open in maps</span>
+              </div>
+              <span class="row-go">{{ icon.chev(17) }}</span>
+            </a>
+          {% endif %}
+          {% if other %}
+            <a class="row" href="{{ other.url }}" target="_blank"
+               rel="noopener noreferrer nofollow">
+              <span class="row-sign">{{ icon.globe(21, 1.7) }}</span>
+              <div class="row-body">
+                <span class="row-name">See it on {{ other.name }}</span>
+                <span class="row-meta">{{ other.domain }}</span>
+              </div>
+              <span class="row-go row-go--flat">{{ icon.external(18) }}<span class="sr">opens in a new tab</span></span>
+            </a>
+          {% endif %}
+        </div>
       {% endif %}
 
       {% if listing.description %}
@@ -242,44 +466,55 @@
 
     {% elif listing.description %}<p class="text">{{ listing.description }}</p>{% endif %}
 
-    {% if listing.type == 'ticket' and listing.address %}
-      {# No map of our own. The phone already has one, so we hand the address
-         over to it. #}
-      <a class="where" href="https://maps.google.com/?q={{ listing.address | urlencode }}"
-         target="_blank" rel="noopener">
-        <span class="where-pin">{{ icon.pin(19) }}</span>
-        <span class="where-text">
-          <b>{{ listing.place or 'Where it is' }}</b>
-          <span>{{ listing.address }}</span>
-        </span>
-        <span class="where-go">Open in maps</span>
-      </a>
+    {% if listing.type == 'ticket' %}
+      {# Where it is, and where the ticket came from. No map of our own: the
+         phone already has one, so we hand the address over to it. Same pair
+         of rows as on a room, because it is the same pair of questions. #}
+      {% set other = TICKETS.platform_of(listing.external_url) %}
+      {% if listing.address or other %}
+        <div class="rows rows--out">
+          {% if listing.address %}
+            <a class="row" href="https://maps.google.com/?q={{ listing.address | urlencode }}"
+               target="_blank" rel="noopener">
+              <span class="row-sign">{{ icon.pin(21, 1.7) }}</span>
+              <div class="row-body">
+                <span class="row-name">{{ listing.place or 'Open in maps' }}</span>
+                <span class="row-meta">{{ listing.address }}</span>
+              </div>
+              <span class="row-go">{{ icon.chev(17) }}</span>
+            </a>
+          {% endif %}
+          {% if other %}
+            <a class="row" href="{{ other.url }}" target="_blank"
+               rel="noopener noreferrer nofollow">
+              <span class="row-sign">{{ icon.globe(21, 1.7) }}</span>
+              <div class="row-body">
+                <span class="row-name">See it on {{ other.name }}</span>
+                <span class="row-meta">{{ other.domain }}</span>
+              </div>
+              <span class="row-go row-go--flat">{{ icon.external(18) }}<span class="sr">opens in a new tab</span></span>
+            </a>
+          {% endif %}
+        </div>
+      {% endif %}
     {% endif %}
 
-    {% if listing.type == 'ticket' and listing.event_date and listing.owner_id != me.id and PUSH_ON() %}
-      {# The bell for this one event: tell me when somebody else puts up a
-         ticket for the same day, time and place, whatever they call it. #}
-      <form method="post" action="/notify/event" {{ 'data-push-ask' if not watching_event }}>
-        <input type="hidden" name="listing_id" value="{{ listing.id }}">
-        <input type="hidden" name="on" value="{{ '0' if watching_event else '1' }}">
-        <button class="watch {{ 'watch--on' if watching_event }}" type="submit"
-                aria-pressed="{{ 'true' if watching_event else 'false' }}">
-          <span class="watch-icon">{{ icon.bell(19, 1.8) }}</span>
-          <span class="watch-text">
-            {% if watching_event %}
-              <b>You are watching this event</b>
-              <span>Tap to stop. All your events are in Profile, Notifications.</span>
-            {% else %}
-              <b>Notify me about more tickets</b>
-              <span>For this event, whatever the next seller calls it.</span>
-            {% endif %}
-          </span>
-        </button>
-      </form>
+    {#- Where you stand, on somebody else's open entry. Not on your own,
+        and not on a group, where several people can get a spot. -#}
+    {% if listing.type != 'group' and listing.owner_id != me.id
+          and listing.status == 'open' %}
+      {{ q.queue(queue | length, my_place) }}
     {% endif %}
 
     <div class="rule"></div>
 
+    <p class="posted">Posted {{ listing.created_at | ago }} · {{ listing.views }} students viewed
+      this<span id="saves"{{ ' hidden' if not saves }}> · <span data-count>{{ saves }}</span>
+      saved</span></p>
+
+    {#- Whoever put this up comes last, on every tab. Everything above is
+        the thing itself and where you stand with it; who is selling is what
+        you check once you are interested, not what you read first. -#}
     <div class="owner">
       {#- Picture and name together are the way to whoever put this up, the
           same as in a chat. Verified stays outside, it is a fact about the
@@ -293,55 +528,9 @@
       </a>
       <span class="verified">{{ icon.check() }} Verified</span>
     </div>
-
-    <p class="posted">Posted {{ listing.created_at | ago }} · {{ listing.views }} students viewed
-      this<span id="saves"{{ ' hidden' if not saves }}> · <span data-count>{{ saves }}</span>
-      saved</span></p>
-
+    </div>
   </div>
 
-  <div class="actionbar">
-    {% if listing.owner_id == me.id %}
-      {% if listing.status == 'open' %}
-        <div class="actionbar-stack">
-          <a class="btn" href="/listing/{{ listing.id }}/edit?back={{ back | urlencode }}">Edit this entry</a>
-          <form method="post" action="/listing/{{ listing.id }}/close">
-            <button class="btn btn--quiet" type="submit">Close this entry</button>
-          </form>
-        </div>
-      {% else %}
-        {#- An entry whose day has been cannot go back up as it is. It
-            would leave the tab on the spot and close itself again in the
-            morning, so the page says the one thing that does help. -#}
-        {% set over = (listing.type == 'ticket' and listing.event_date
-                       and listing.event_date < today_iso())
-                   or (listing.type == 'group' and listing.hand_in
-                       and listing.hand_in < today_iso()) %}
-        <div class="actionbar-stack">
-          {% if over %}
-            <a class="btn" href="/listing/{{ listing.id }}/edit?back={{ back | urlencode }}">Change the date</a>
-            <p class="note" style="margin: 0">
-              {{ 'The last day to join has passed.' if listing.type == 'group'
-                 else 'This event has passed.' }}
-            </p>
-          {% else %}
-            <form method="post" action="/listing/{{ listing.id }}/reopen">
-              <button class="btn" type="submit">Put it back up</button>
-            </form>
-            <a class="btn btn--quiet" href="/listing/{{ listing.id }}/edit?back={{ back | urlencode }}">Edit this entry</a>
-          {% endif %}
-        </div>
-      {% endif %}
-    {% elif listing.status == 'closed' %}
-      {#- The same two words as the badge in a saved list and the line over
-          an entry's chats. Closed has one name in this app. -#}
-      <button class="btn btn--quiet" type="button" disabled>Entry closed</button>
-    {% else %}
-      <form method="post" action="/listing/{{ listing.id }}/chat">
-        <button class="btn" type="submit">Message {{ listing.owner_name.split(' ')[0] }}</button>
-      </form>
-    {% endif %}
-  </div>
 
 </div>
 {% endblock %}

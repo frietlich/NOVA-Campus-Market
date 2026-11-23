@@ -17,9 +17,24 @@
       <span class="side"></span>
     </div>
 
+    {#- What you are putting up. A new entry can still change its mind, so
+        all four are offered and the one you are on is lit; the sidebar's
+        New entry lands here from any screen. An entry being edited keeps
+        its kind for good, so it only says which one it is. -#}
+    {% if edit_id %}
     <span class="pill" style="align-self: flex-start; margin-top: 6px; display: inline-flex; align-items: center; gap: 7px; font-size: 13px; padding: 7px 12px">
       {{ icon.of_kind(tab.kind, 15, 1.8) }} {{ tab.label }}
     </span>
+    {% else %}
+    <div class="kind-pick" role="group" aria-label="What are you putting up?">
+      {% for t in TABS %}
+        <a class="kind-opt{{ ' kind-opt--on' if t.kind == tab.kind }}" data-kind="{{ t.kind }}"
+           href="/new?kind={{ t.kind }}"{% if t.kind == tab.kind %} aria-current="page"{% endif %}>
+          {{ icon.of_kind(t.kind, 18, 1.8) }}<span>{{ t.label }}</span>
+        </a>
+      {% endfor %}
+    </div>
+    {% endif %}
 
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
 
@@ -55,6 +70,45 @@
       </p>
     {% endif %}
 
+    {% if tab.kind == 'housing' %}
+    {# Already up on a housing site? Paste the link: the entry gets a button
+       to the advert, and the sites that allow it fill the form in. For the
+       ones that do not (Idealista, Imovirtual) the screenshots right below
+       do it instead.
+
+       Built like the link box on a ticket, a label, one row, a note. It is
+       the same thing on a different tab, so it should not look like a
+       different thing. The chain in front of the box is the one addition:
+       it says at a glance that a web address goes in here. #}
+    <label class="label" for="external_url">Link to the advert</label>
+    <div class="autofill">
+      <div class="linkfield" data-platforms='{{ HOUSING.PLATFORMS | tojson }}'
+           data-blocking='{{ HOUSING.BLOCKS_APPS | list | tojson }}'
+           data-what="housing site"
+           data-names="{{ HOUSING.PLATFORM_NAMES | join(', ') }}">
+        <div class="autofill-row">
+          <div class="prefixed">
+            <span class="linkfield-icon">{{ icon.link(18) }}</span>
+            <input id="external_url" name="external_url" type="text" inputmode="url"
+                   autocomplete="off" autocapitalize="off" spellcheck="false"
+                   maxlength="500" placeholder="idealista.pt/… or uniplaces.com/…"
+                   value="{{ v.external_url }}"
+                   aria-label="Link to the same place on a housing site">
+          </div>
+          <button class="btn btn--quiet autofill-go" type="button" id="autofill-go" disabled>Fill in</button>
+        </div>
+        {#- Short, like the ticket one. That Idealista cannot be read is said
+            when somebody actually pastes an Idealista link, which is the
+            moment it means anything. -#}
+        <p class="note linkfield-status" id="link-status" aria-live="polite">
+          Optional. Works with {{ HOUSING.PLATFORM_NAMES | join(', ') }}.
+          You check everything before publishing.
+        </p>
+      </div>
+      <p class="note autofill-status" id="autofill-result" role="status" hidden></p>
+    </div>
+    {% endif %}
+
     {# Fill the form in from somewhere else instead of typing it twice.
        Tickets: the link to the event, or screenshots. Housing: screenshots,
        for the sites like Idealista that cannot be read by link. Nothing here
@@ -62,12 +116,36 @@
     {% if tab.kind == 'ticket' or (tab.kind == 'housing' and SCREENSHOTS_ON()) %}
     <div class="autofill-box" id="autofill" data-kind="{{ tab.kind }}" data-max="{{ SCREENSHOTS_MAX }}">
       {% if tab.kind == 'ticket' %}
+      {#- The same field as on a room, and it does the same two things: it
+          fills the form in, and it stays on the entry as a button to the
+          event. Checked against the ticket sites while you type. -#}
       <label class="label" for="autofill_url">Link to the event</label>
-      <div class="autofill-row">
-        <input class="input" id="autofill_url" type="text" inputmode="url"
-               autocomplete="off" autocapitalize="off" spellcheck="false"
-               maxlength="500" placeholder="luma.com/… or dice.fm/event/…">
-        <button class="btn btn--quiet autofill-go" type="button" id="autofill-go">Fill in</button>
+      <div class="linkfield" data-platforms='{{ TICKETS.PLATFORMS | tojson }}'
+           data-blocking='{{ TICKETS.BLOCKS_APPS | list | tojson }}'
+           data-what="ticket site"
+           data-names="{{ TICKETS.PLATFORM_NAMES | join(', ') }}">
+        <div class="autofill-row">
+          <div class="prefixed">
+            <span class="linkfield-icon">{{ icon.link(18) }}</span>
+            <input id="autofill_url" name="external_url" type="text" inputmode="url"
+                   autocomplete="off" autocapitalize="off" spellcheck="false"
+                   maxlength="500" placeholder="luma.com/… or dice.fm/event/…"
+                   value="{{ v.external_url }}"
+                   aria-label="Link to the same event on a ticket site">
+          </div>
+          <button class="btn btn--quiet autofill-go" type="button" id="autofill-go">Fill in</button>
+        </div>
+        {#- Under the field it belongs to, the way a room does it, and not
+            at the foot of the whole box where it was answering for the
+            link and the screenshots at once. While you type it is replaced
+            by the name of the site it recognised. -#}
+        {#- The list is worked out from the code, not written here, so it
+            cannot fall behind the sites again. -#}
+        <p class="note linkfield-status" id="link-status" aria-live="polite">
+          Optional. A link goes on your entry as a button. Filling in works
+          with {{ TICKETS.READABLE_NAMES[:-1] | join(', ') }} and
+          {{ TICKETS.READABLE_NAMES[-1] }}.
+        </p>
       </div>
       {% endif %}
       {% if SCREENSHOTS_ON() %}
@@ -78,15 +156,19 @@
       <input class="sr" id="autofill_shot" type="file" multiple
              accept="image/png,image/jpeg,image/webp">
       {% endif %}
+      {#- The second note, under the screenshot button, and the line that
+          whatever was filled in reports back to. It is always drawn, even
+          with screenshots switched off, because filling in from a ticket
+          link writes its answer here. -#}
       <p class="note autofill-status" id="autofill-status" aria-live="polite">
         {% if tab.kind == 'ticket' %}
-          Optional. Links work with Luma, DICE, Xceed, BOL and Eventbrite.
-          {% if SCREENSHOTS_ON() %}Screenshots work with any site, also Shotgun and RA.{% endif %}
+          {% if SCREENSHOTS_ON() %}Screenshots work with any site, also Shotgun
+          and Resident Advisor, and are read by Claude without being stored.{% endif %}
         {% else %}
-          Optional. Already on Idealista, Imovirtual or Uniplaces? Take up to
-          {{ SCREENSHOTS_MAX }} screenshots of the advert and pick them all at once.
+          Already on Idealista, Imovirtual or Uniplaces? Take up to
+          {{ SCREENSHOTS_MAX }} screenshots of the advert and pick them all at
+          once. They are read by Claude and not stored.
         {% endif %}
-        {% if SCREENSHOTS_ON() %}Screenshots are read by Claude and not stored.{% endif %}
         You check everything before publishing.
       </p>
     </div>
@@ -128,8 +210,8 @@
       <label class="label" for="address">Address</label>
       <input class="input" id="address" name="address" type="text" required maxlength="{{ ADDRESS_MAX }}"
              placeholder="Cais da Viscondessa, 1200-109 Lisboa" value="{{ v.address }}" autocomplete="off">
-      <p class="note" style="text-align: left; margin: 6px 2px 0">
-        The one on the ticket.
+      <p class="note" data-address-note style="text-align: left; margin: 6px 2px 0">
+        The one on the ticket. A maps link works too.
       </p>
 
       <div class="pair">
@@ -248,9 +330,10 @@
 
         <label class="label" for="address">Address</label>
         <input class="input" id="address" name="address" type="text" required maxlength="{{ ADDRESS_MAX }}"
-               placeholder="Rua Bartolomeu Dias 14" value="{{ v.address }}" autocomplete="off">
-        <p class="note" style="text-align: left; margin: 6px 2px 0">
-          It opens in maps from the entry.
+               placeholder="Rua Bartolomeu Dias 14, 2775-123 Carcavelos"
+               value="{{ v.address }}" autocomplete="off">
+        <p class="note" data-address-note style="text-align: left; margin: 6px 2px 0">
+          It opens in maps from the entry. A maps link works too.
         </p>
 
         <span class="label">What the flat has</span>

@@ -12,8 +12,20 @@ read. It is the same on every site, so one reader covers all of them, and a
 site that changes its design does not break it.
 
 Only links to the sites below are ever fetched, every redirect is checked
-again, and nothing but the page itself is read. Some sites (Shotgun, Resident
-Advisor) refuse all apps. Then we say so and the seller types it in.
+again, and nothing but the page itself is read.
+
+Where the address comes from is worth knowing, because the sites disagree.
+Most write a proper street into their structured block. Luma writes the
+name of the venue there instead, and Xceed leaves out the post code, so
+whatever coordinates the page carries are turned into an address the same
+way a pasted maps link is, and the street the page gave is kept where it
+agrees. Checked by hand on 2026-11-22: Luma, DICE, Xceed, BOL, Eventbrite
+and Shotgun all come back with a full address.
+
+The rest cannot be read at all, and not for anything we do. Fever,
+Resident Advisor and Fourvenues refuse apps outright, Ticketline refuses
+the connection, and Blueticket sends every visitor into a waiting room on
+another site. Then we say so and the seller types it in.
 """
 
 import html
@@ -23,6 +35,8 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from urllib.parse import urljoin, urlsplit, urlunsplit
+
+from . import maps
 
 try:
     from zoneinfo import ZoneInfo
@@ -55,6 +69,24 @@ PLATFORMS = [
 ]
 PLATFORM_NAMES = sorted({name for _, name in PLATFORMS})
 
+# Of those, the ones we can recognise but never read. Fever, Resident
+# Advisor and Fourvenues refuse apps outright, Ticketline refuses the
+# connection, and Blueticket sends every visitor into a waiting room on
+# another site. Their links are still worth keeping: the entry gets a
+# button to the event either way. Only the filling in cannot work, and the
+# form says so before anybody presses it.
+BLOCKS_APPS = {"feverup.com", "ra.co", "fourvenues.com",
+               "ticketline.sapo.pt", "blueticket.meo.pt"}
+
+# The ones left over: every site we both recognise and can read. Worked out
+# from the two lists above rather than typed out, because it is written on
+# the form and a hand-written copy of a list goes stale. It already had:
+# Shotgun was readable for a day before anybody noticed the form still did
+# not mention it.
+READABLE_NAMES = sorted({name for domain, name in PLATFORMS
+                         if not any(d in BLOCKS_APPS
+                                    for d, n in PLATFORMS if n == name)})
+
 LINK_LIMIT = 500
 PAGE_LIMIT = 4_000_000
 TIMEOUT = 8
@@ -72,6 +104,30 @@ def platform_for_host(host):
     for domain, name in PLATFORMS:
         if host == domain or host.endswith("." + domain):
             return name
+    return None
+
+
+def blocks_apps(url):
+    """True when this is a site we know and know we cannot read."""
+    found = platform_of(url)
+    return bool(found) and found["domain"] in BLOCKS_APPS
+
+
+def platform_of(url):
+    """The site a stored link is on, as a dict, or None.
+
+    The twin of housing.platform_of, down to the keys, because the entry
+    page draws the two the same way and should not have to know which kind
+    of entry it is looking at.
+    """
+    from urllib.parse import urlsplit
+
+    if not url:
+        return None
+    host = (urlsplit(url).hostname or "").lower().rstrip(".")
+    for domain, name in PLATFORMS:
+        if host == domain or host.endswith("." + domain):
+            return {"name": name, "domain": domain, "url": url}
     return None
 
 
@@ -215,6 +271,23 @@ def _when(start):
     return moment.date().isoformat(), moment.strftime("%H:%M")
 
 
+def _point(location):
+    """(lat, lng) out of a schema.org Place, or None."""
+    if not isinstance(location, dict):
+        return None
+    for holder in (location.get("geo"), location):
+        if not isinstance(holder, dict):
+            continue
+        try:
+            lat = float(holder["latitude"])
+            lng = float(holder["longitude"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if -90 <= lat <= 90 and -180 <= lng <= 180:
+            return lat, lng
+    return None
+
+
 def _address(location):
     """One line of address out of a schema.org Place."""
     if not isinstance(location, dict):
@@ -224,19 +297,25 @@ def _address(location):
         return _text(addr, 120)
     if not isinstance(addr, dict):
         return ""
-    parts = []
-    for key in ("streetAddress", "postalCode", "addressLocality"):
-        piece = _text(addr.get(key), 80)
-        # Some sites put the whole address into streetAddress already.
-        if piece and not any(piece.lower() in p.lower() for p in parts):
-            parts.append(piece)
+    street = _text(addr.get("streetAddress"), 80)
+    code = _text(addr.get("postalCode"), 80)
+    town = _text(addr.get("addressLocality"), 80)
+    # Some sites put the whole address into streetAddress already, and then
+    # the code and the town are in there twice.
+    if code and code.lower() in street.lower():
+        code = ""
+    if town and town.lower() in street.lower():
+        town = ""
+    # The post code and the town are one thing, "1600-583 Lisboa", not two.
+    # Split by a comma they read as a list of places.
+    parts = [street, " ".join(bit for bit in (code, town) if bit)]
     # "1950-142 Lisbon, Lisbon, Portugal" once is enough.
     pieces = []
-    for piece in ", ".join(parts).split(","):
+    for piece in ", ".join(bit for bit in parts if bit).split(","):
         piece = piece.strip()
         if piece and not any(piece.lower() in p.lower() for p in pieces):
             pieces.append(piece)
-    return ", ".join(pieces)[:120]
+    return maps.plain_address(", ".join(pieces))
 
 
 def _price(offers):
@@ -357,7 +436,25 @@ def parse_event_page(page, site=None):
             venue = re.sub(r",\s*(lisbon|lisboa|porto|cascais|oeiras)$", "", venue, flags=re.I)
             if venue:
                 found["place"] = venue
+            # Where the place is, when the page says. Luma gives the
+            # coordinates of every venue and writes the venue's name into
+            # the street field, so the one usable thing in there is the
+            # pair of numbers. It is handed up rather than looked up here,
+            # because reading a page and calling a service are two jobs
+            # and this one does not touch the network.
+            point = _point(location)
+            if point:
+                found["_point"] = point
             address = _address(location)
+            # A line with no number anywhere in it is a name, not an
+            # address. Some pages put the venue, or the event itself, where
+            # the street belongs, and a wrong address that fills itself in
+            # is worse than an empty box: the box stops asking to be looked
+            # at, and the one thing a ticket has to get right is where to
+            # turn up. A street number or a post code is what tells the two
+            # apart, and in Lisbon an address carries one or the other.
+            if address and not any(ch.isdigit() for ch in address):
+                address = ""
             if address and address.lower() != (location.get("name") or "").lower():
                 found["address"] = address
         elif isinstance(location, str):
@@ -403,5 +500,19 @@ def autofill(url):
     if status != 200:
         return {"ok": False, "reason": "unreachable", "site": site}
     fields = parse_event_page(page, site)
+
+    # The page knew where the place is but not what to call the street.
+    # Luma does this with every venue: the street field holds the name of
+    # the bar. The coordinates are good, so they are turned into a real
+    # address the same way a maps link is.
+    point = fields.pop("_point", None)
+    said = fields.get("address") or ""
+    if point and not maps.POST_CODE.search(said):
+        found = maps.address_at(*point)
+        if found:
+            # What the page said about the street, where it said anything,
+            # with the part it left out filled in. See maps.combine.
+            fields["address"] = maps.combine(said, found)
+
     return {"ok": bool(fields), "site": site, "fields": fields,
             "reason": "" if fields else "empty"}

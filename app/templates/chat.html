@@ -6,7 +6,13 @@
 <div class="app chat-page">
 
   <div class="chat-head">
-    <a class="icon-btn" data-back href="/chats" aria-label="Back to the chats">{{ icon.back() }}</a>
+    {#- Back to wherever this chat was opened from. Written from an entry, the
+        arrow goes to that entry, and its own arrow then goes on to the tab,
+        so the way out is the way in, one step at a time. Only when the chat
+        came from the chats tab does the arrow hand over to the history, which
+        keeps the list where it was scrolled to. -#}
+    <a class="icon-btn"{% if back == '/chats' %} data-back{% endif %} href="{{ back }}"
+       aria-label="{{ 'Back to the chats' if back == '/chats' else 'Back to the entry' }}">{{ icon.back() }}</a>
     {# Picture and name both lead to whoever you are talking to. #}
     <a href="/student/{{ other.id }}" aria-label="{{ other.name }}'s profile">
       {{ av.avatar(other.name, other.photo, "sm") }}
@@ -36,33 +42,15 @@
     {% endif %}
   </div>
 
-  <div class="thread" id="thread">
-    {% if messages %}
-      <span class="day">{{ messages[0].created_at | when }}</span>
-      {% for m in messages %}
-        {%- if m.kind == 'closed' %}
-          {#- The app talking, not a student, so it sits in the middle and
-              takes neither side's shape. #}
-          <span class="note-pill">{{ m.body }}</span>
-        {%- else %}
-          <div class="bubble {{ 'bubble--me' if m.sender_id == me.id else 'bubble--them' }}">{{ m.body }}</div>
-        {%- endif %}
-      {% endfor %}
-      {% if messages[-1].sender_id == me.id and messages[-1].read_at %}
-        <span class="stamp">Read {{ messages[-1].read_at | when }}</span>
-      {% endif %}
-    {% else %}
-      <div class="empty">
-        <b>Say something</b>
-        <p>Start this chat with a first message.</p>
-      </div>
-    {% endif %}
-
+  <div class="thread" id="thread" data-live-chat="{{ conv.id }}">
+    {% include "partials/messages.html" %}
   </div>
 
+  {% if message_error %}<p class="error" role="alert">{{ message_error }}</p>{% endif %}
   <form class="composer" method="post" action="/chat/{{ conv.id }}">
+    {% if back != '/chats' %}<input type="hidden" name="back" value="{{ back }}">{% endif %}
     <label class="sr" for="body">Message</label>
-    <input id="body" name="body" type="text" placeholder="Message" autocomplete="off">
+    <input id="body" name="body" type="text" required maxlength="500" title="Up to 500 characters" value="{{ draft or '' }}" placeholder="Message" autocomplete="off">
     <button class="send" type="submit" aria-label="Send message">{{ icon.send() }}</button>
   </form>
 

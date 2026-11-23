@@ -1,0 +1,17 @@
+BRANCH RESPONSIBILITIES
+
+fix/audit-security-chat / PR #12
+Security and general reliability only. Its diff against main has no desktop
+CSS, shared desktop shell or side chat. 187 tests and 62 subtests passed.
+
+desktop-layout
+The shared branch Frido created, now holding the complete desktop work and live
+chat interface. It builds on PR #12 so the combined application includes the
+security fixes. Five desktop regressions live in test_desktop_regressions.py;
+security regressions remain in test_audit_regressions.py.
+
+Review order: approve/merge PR #12 into main first, then review/merge desktop.
+That removes the shared security changes from the desktop PR's comparison.
+No history was rewritten, no force push is used, and main is not changed by
+this move. The previously tested version is also preserved locally as
+backup/audit-before-desktop-split and a detached combined-preview worktree.

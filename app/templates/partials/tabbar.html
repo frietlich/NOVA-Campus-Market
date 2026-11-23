@@ -1,5 +1,10 @@
 {% import "partials/icons.html" as icon %}
-<nav class="tabbar" aria-label="Main">
+{% import "partials/avatar.html" as av %}
+{#- One nav, two shapes. At the foot of a phone it only belongs on the five
+    screens that are tabs, so it says so in its class and the stylesheet
+    hides it everywhere else. On a wide screen it is the rail on the left and
+    it belongs on every screen, the entry and the forms included. -#}
+<nav class="tabbar{{ ' tabbar--foot' if foot_bar }}" aria-label="Main">
   {# The capsule the active tab sits in. The server puts it on the right tab
      straight away, so it is in place before any script runs, and app.js then
      measures the real tab and slides it when you arrive from another one. #}
@@ -12,9 +17,22 @@
       {{ t.label }}
     </a>
   {% endfor %}
-  <a class="tab" href="/chats"{% if active == 'chats' %} aria-current="page"{% endif %}>
+  <a class="tab tab--chats" href="/chats"{% if active == 'chats' %} aria-current="page"{% endif %}>
     {{ icon.chat(24) }}
     {% if unread %}<span class="pip" aria-hidden="true"></span>{% endif %}
     Chats
+  </a>
+
+  {#- The rail has room the foot of a phone never had, so the two things you
+      otherwise reach for in a corner of the header sit here instead, where
+      they are the same on every screen. Hidden while the nav is a foot. -#}
+  <span class="rail-rule" aria-hidden="true"></span>
+  <a class="tab tab--rail" href="/new{{ '?kind=' ~ active if active in ('housing', 'ticket', 'item', 'group') }}">
+    {{ icon.plus(24) }}
+    New entry
+  </a>
+  <a class="tab tab--rail{{ ' tab--me' if active == 'profile' }}" href="/profile">
+    {{ av.avatar(me.name, me.photo, "xs") }}
+    <span class="truncate">{{ me.name }}</span>
   </a>
 </nav>
