@@ -4041,9 +4041,13 @@ html.onb-open, html.onb-open body { overflow: hidden; }
    browser swaps the pages without a blank frame in between and keeps the
    rail where it is. There is no fade: the content changes at once, as
    before. A browser that does not know this simply ignores it. */
-@view-transition { navigation: auto; }
-::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+/* Only from 900 pixels, where the rail with your photo is. On a phone the
+   swap took a picture of the page with the bar at the foot in it, and a
+   picture cannot carry the frosted glass: the bar went see-through for a
+   moment and its capsule jumped between the picture and the real page. */
 @media (min-width: 900px) {
+  @view-transition { navigation: auto; }
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
   .tabbar { view-transition-name: rail; }
   ::view-transition-old(rail), ::view-transition-new(rail) { animation: none; }
 }
