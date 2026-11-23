@@ -2129,7 +2129,8 @@ def chats(request: Request, side: str = "", kind: str = "", bundle: str = "",
 
     # Which side you were on is remembered, so opening a chat and coming
     # back does not quietly put you on the other one.
-    if side not in ("sell", "buy"):
+    asked_for = side in ("sell", "buy")
+    if not asked_for:
         side = request.session.get("chats_side", "buy")
     side = "sell" if side == "sell" else "buy"
     here = mine if side == "sell" else theirs
@@ -2139,8 +2140,11 @@ def chats(request: Request, side: str = "", kind: str = "", bundle: str = "",
     # A side whose chats are all archived is not empty though, it has the way
     # in to them at its foot, and sliding off it would hide them for good.
     # The archive itself is left alone, because you asked for one side of it.
+    # Only when nobody asked for this side. Both sides are on screen now, so
+    # an empty one is a thing you can walk into on purpose, and being bounced
+    # straight back out of it would make the switch look broken.
     bare = not here and not (away_mine if side == "sell" else away_theirs)
-    if not archived and bare and (theirs if side == "sell" else mine):
+    if not asked_for and not archived and bare and (theirs if side == "sell" else mine):
         side = "buy" if side == "sell" else "sell"
         here = mine if side == "sell" else theirs
     request.session["chats_side"] = side
