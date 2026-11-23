@@ -1690,8 +1690,12 @@
 // whose button is not on the page (no bell when notifications are off, no
 // entries in an empty tab) is simply left out.
 //
-// Shown once per browser. "Take the tour again" on the profile, or ?tour=1 in
-// the address, plays it again. Skippable everywhere, Esc closes it.
+// Shown once per account, the first time a new student reaches one of the
+// main screens. The server says which in data-tour on the body, because a
+// second laptop does not make somebody new to the app and the browser's own
+// store cannot tell one account from the next. "Take the tour again" on the
+// profile, or ?tour=1 in the address, plays it again whenever you like.
+// Skippable everywhere, Esc closes it.
 (function tour() {
   const WALK = "cm-tour-walk";
   const store = {
@@ -1699,6 +1703,17 @@
     set(k, v, s = localStorage) { try { s.setItem(k, v); } catch (e) {} },
     drop(k, s = localStorage) { try { s.removeItem(k); } catch (e) {} },
   };
+
+  // Finished or skipped, it is the same answer: this student has had it.
+  // Written on the account, so it holds on every machine they sign in on.
+  // The body is marked straight away as well, so nothing later on this page
+  // tries to start it a second time while the request is still going.
+  function markSeen() {
+    if (document.body.dataset.tour === "done") return;
+    document.body.dataset.tour = "done";
+    try { fetch("/tour/seen", { method: "POST" }).catch(() => {}); } catch (e) {}
+  }
+
   const walking = store.get(WALK, sessionStorage);
   const asked = new URLSearchParams(location.search).get("tour") === "1";
   const bar = document.querySelector(".tabbar");
@@ -1708,7 +1723,7 @@
   const MAIN = ["/housing", "/tickets", "/market", "/groups", "/chats", "/profile"];
   if (walking === null) {
     if (!bar || !MAIN.includes(location.pathname.replace(/\/+$/, ""))) return;
-    if (store.get("cm-tour-done") === "1" && !asked) return;
+    if (document.body.dataset.tour !== "new" && !asked) return;
   }
 
   // Bea. Drawn here, in the colours of the app, no photo and no logo.
@@ -1912,7 +1927,7 @@
     document.documentElement.classList.add("onb-open");
   }
   function done() {
-    store.set("cm-tour-done", "1");
+    markSeen();
     store.drop(WALK, sessionStorage);
     root.remove();
     document.documentElement.classList.remove("onb-open");
@@ -1926,32 +1941,64 @@
 
   // ---- part 1
   let c = 0, mode = "cards", s = 0, dir = 1;
-  function cards() {
-    open();
-    mode = "cards";
-    const last = c === CARDS.length - 1;
-    root.className = "onb";
+  // The sheet is built once and afterwards only told which card it is on.
+  //
+  // It used to be written out again on every Next, which cost two things.
+  // The track carries the slide (transform on --i), and a transition needs
+  // the same element to still be there to slide from, so a fresh one simply
+  // appeared at the new place: the cards jumped instead of moving. And the
+  // sheet's own rise animation, 14 pixels up out of nothing, started over
+  // with each new sheet, which is the flicker on every tap.
+  function buildCards() {
     root.innerHTML = `
       <div class="onb-sheet">
         <button type="button" class="onb-skip">Skip</button>
-        <div class="onb-track" style="--i:${c}">
-          ${CARDS.map((k, n) => `<section class="onb-card ${k.cls}" ${n === c ? "" : 'aria-hidden="true"'}>${k.html}</section>`).join("")}
+        <div class="onb-track">
+          ${CARDS.map((k) => `<section class="onb-card ${k.cls}">${k.html}</section>`).join("")}
         </div>
         <div class="onb-foot">
-          <span class="onb-dots">${CARDS.map((_, n) => `<i class="${n === c ? "on" : ""}"></i>`).join("")}</span>
-          ${c > 0 ? '<button type="button" class="onb-back">Back</button>' : ""}
-          <button type="button" class="onb-next">${last ? "Show me around · 2 min" : "Next"}</button>
+          <span class="onb-dots">${CARDS.map(() => "<i></i>").join("")}</span>
+          <button type="button" class="onb-back">Back</button>
+          <button type="button" class="onb-next">Next</button>
         </div>
-        ${last ? '<button type="button" class="onb-later">No thanks, I\'ll explore myself</button>' : ""}
+        <button type="button" class="onb-later">No thanks, I'll explore myself</button>
       </div>`;
     root.querySelector(".onb-skip").onclick = done;
-    root.querySelector(".onb-next").onclick = () => (last ? walk(0, 1) : (c++, cards()));
-    const back = root.querySelector(".onb-back");
-    if (back) back.onclick = () => { c--; cards(); };
-    const later = root.querySelector(".onb-later");
-    if (later) later.onclick = done;
-    root.querySelector(".onb-next").focus();
+    root.querySelector(".onb-later").onclick = done;
+    root.querySelector(".onb-back").onclick = () => { if (c > 0) { c--; cards(); } };
+    root.querySelector(".onb-next").onclick = () => {
+      if (c === CARDS.length - 1) return walk(0, 1);
+      c++;
+      cards();
+    };
     swipe(root.querySelector(".onb-track"));
+  }
+
+  function cards() {
+    open();
+    mode = "cards";
+    root.className = "onb";
+    // Gone after the walk took the page over, so it is put back; that is the
+    // one time the sheet is meant to rise into view again.
+    if (!root.querySelector(".onb-sheet")) buildCards();
+    const last = c === CARDS.length - 1;
+    root.querySelector(".onb-track").style.setProperty("--i", c);
+    root.querySelectorAll(".onb-card").forEach((card, n) => {
+      if (n === c) card.removeAttribute("aria-hidden");
+      else card.setAttribute("aria-hidden", "true");
+    });
+    root.querySelectorAll(".onb-dots i").forEach((dot, n) => dot.classList.toggle("on", n === c));
+    // Held in place rather than taken away, so the row under the cards
+    // stands still: Back arriving on the second card used to shove Next
+    // sideways, and the quiet way out arriving on the last one lifted the
+    // whole row. Both were part of the jump.
+    root.querySelector(".onb-back").classList.toggle("onb-ghost", c === 0);
+    root.querySelector(".onb-later").classList.toggle("onb-ghost", !last);
+    const next = root.querySelector(".onb-next");
+    next.textContent = last ? "Show me around · 2 min" : "Next";
+    // Only when it is not already the button in hand, so tapping Next does
+    // not move the focus ring off and back on under the finger.
+    if (document.activeElement !== next) next.focus();
   }
 
   function swipe(el) {
@@ -2089,7 +2136,7 @@
     open();
     mode = "end";
     store.drop(WALK, sessionStorage);
-    store.set("cm-tour-done", "1");
+    markSeen();
     root.className = "onb onb--end";
     root.innerHTML = `
       <div class="onb-sheet">
@@ -2132,7 +2179,7 @@
       pill.innerHTML = `${BEA_FACE}<button type="button" class="onb-resume-go">Continue the tour</button><button type="button" class="onb-resume-x" aria-label="End the tour">✕</button>`;
       document.body.append(pill);
       pill.querySelector(".onb-resume-go").onclick = () => { pill.remove(); travel(n, 1); };
-      pill.querySelector(".onb-resume-x").onclick = () => { pill.remove(); store.drop(WALK, sessionStorage); store.set("cm-tour-done", "1"); };
+      pill.querySelector(".onb-resume-x").onclick = () => { pill.remove(); store.drop(WALK, sessionStorage); markSeen(); };
       return;
     }
     store.drop(WALK, sessionStorage);

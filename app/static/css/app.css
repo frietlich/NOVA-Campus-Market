@@ -1041,10 +1041,14 @@ img { display: block; max-width: 100%; }
    spaced pixels, which read as a label on a filing box rather than as the
    name of what is underneath. Same size and weight as the questions in
    the housing panel, because they do the same job. */
+/* The same size and weight as the heading over a list of entries
+   ("Free from December"), because a heading on the profile does the same
+   job and used to be two steps quieter than one two taps away. */
 .section {
   display: block;
   margin: 22px 0 8px 2px;
-  font-size: 15px; font-weight: 600;
+  font-size: 17px; font-weight: 700;
+  letter-spacing: -0.2px;
   color: var(--ink);
 }
 
@@ -1585,6 +1589,32 @@ img { display: block; max-width: 100%; }
 
 /* The way out, at the foot of your own profile. A pill rather than a bare
    line, so it reads as something you press and not as a stray sentence. */
+/* The foot of the profile. Two pills of the same shape, side by side and
+   centred, wrapping under each other only if the words ever grow. */
+.foot-do {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin-top: 26px;
+}
+.foot-do .signout { margin: 0; }
+
+/* The quiet one next to the way out. Same height, same corners, no red. */
+.pill-do {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 18px;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  font: inherit; font-size: 14px; font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+  cursor: pointer;
+}
+.pill-do:active { transform: scale(0.98); }
+
 .signout {
   margin: 16px auto 0;
   display: inline-flex; align-items: center; gap: 8px;
@@ -2924,7 +2954,10 @@ html.lightbox-open, html.lightbox-open body { overflow: hidden; }
     overflow: visible;
     scroll-snap-type: none;
   }
-  .strip .scard { width: auto; min-width: 0; }
+  /* Smaller than the list below on purpose. This row is a glance at what
+     arrived, the list underneath is the one you read, so the tiles here
+     stay under the width of a card down there. */
+  .strip .scard { width: auto; min-width: 0; max-width: 150px; }
   .strip .scard-pic { width: 100%; height: auto; aspect-ratio: 1; }
 
   /* Tickets: one or two tickets a day made a long thin strip with half the
@@ -3318,7 +3351,13 @@ html.onb-open, html.onb-open body { overflow: hidden; }
   width: 100%; max-width: var(--app);
   display: flex; flex-direction: column;
   padding: calc(var(--top) + 8px) 0 calc(var(--foot) + 12px);
+  /* clip, not hidden. hidden still makes this a box that can be scrolled,
+     and the cards standing side by side are wider than it is, so the
+     browser would shove the whole sheet sideways to bring something into
+     view and the foot went with it. clip means there is nothing to scroll.
+     hidden stays as the first line for anything that does not know clip. */
   overflow: hidden;
+  overflow: clip;
   background:
     radial-gradient(120% 60% at 0% 0%, color-mix(in srgb, var(--c-housing) 22%, transparent), transparent 60%),
     radial-gradient(120% 60% at 100% 10%, color-mix(in srgb, var(--c-item) 18%, transparent), transparent 60%),
@@ -3418,6 +3457,10 @@ html.onb-open, html.onb-open body { overflow: hidden; }
 .onb-back { background: transparent; color: var(--muted); }
 .onb-next { background: var(--c-housing); color: #FFFFFF; box-shadow: 0 6px 16px color-mix(in srgb, var(--c-housing) 35%, transparent); }
 .onb-later { align-self: center; height: 36px; margin-top: 6px; background: none; color: var(--muted); font-weight: 600; font-size: 13px; }
+/* There, but not shown, and not reachable by keyboard either. It keeps the
+   foot of the welcome sheet the same height and the same shape on all four
+   cards, so nothing shifts under your thumb as you tap through. */
+.onb-ghost { visibility: hidden; }
 
 /* --- part 2: pointing at the real buttons */
 .onb-dim { position: fixed; inset: 0; background: rgba(8, 8, 12, 0.72); }
@@ -3584,6 +3627,9 @@ html.onb-open, html.onb-open body { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .onb-why-list li, .onb-tip, .onb-go, .onb-confetti, .onb-resume { animation: none; }
   .onb-confetti { display: none; }
+  /* The cards slide now that the track survives from one to the next, so
+     anybody who has asked for less movement gets the change without it. */
+  .onb-track { transition: none; }
 }
 
 /* On a wide screen the story is a card floating over the app, not a strip
@@ -3821,7 +3867,10 @@ html.onb-open, html.onb-open body { overflow: hidden; }
   .tab--chats, .desktop-duplicate,
   .shell-main .head > a[href="/profile"], .dock .chat-profile { display: none; }
   .tabbar { top: 24px; }
-  .shell-main .screen { gap: 18px; }
+  /* The same 12px the phone uses between the parts of a screen. At 18 the
+     head, the search and the switch under it drifted apart, and Chats,
+     which stacks the most, drifted the most. */
+  .shell-main .screen { gap: 12px; }
   .shell-main .head { min-height: 44px; }
   .shell-main .head h1 { font-size: 30px; }
   .shell-main .search { max-width: none; }
@@ -3854,10 +3903,12 @@ html.onb-open, html.onb-open body { overflow: hidden; }
   .app[data-kind="ticket"] .card-body,
   .app[data-kind="group"] .card-body { gap: 5px; }
   .app[data-kind="item"] .strip {
-    grid-template-columns: repeat(auto-fill, minmax(min(170px, 100%), 1fr)); gap: 18px;
+    grid-template-columns: repeat(auto-fill, minmax(min(130px, 100%), 1fr)); gap: 16px;
   }
-  .app[data-kind="item"] .strip .scard { width: 100%; max-width: 220px; }
-  .scard-title, .scard-price { font-size: 14px; }
+  .app[data-kind="item"] .strip .scard { width: 100%; max-width: 160px; }
+  /* The writing stays at the size it has on a phone. Growing it with the
+     room would undo the point of the smaller tile. */
+  .scard-title, .scard-price { font-size: 13px; }
 
   .dock, .shell--chat-hidden .dock {
     display: flex; top: 24px; height: calc(100dvh - 48px); min-width: 0;

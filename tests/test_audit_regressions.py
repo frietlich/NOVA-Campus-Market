@@ -95,7 +95,9 @@ def test_ticket_error_retains_external_link_and_invalid_time_is_rejected(world):
 def test_password_change_keeps_current_browser_and_revokes_other_browser(world):
     users, clients = world
     other = TestClient(main.app)
-    other.post("/dev", data={"user_id": users[0]}, headers=ORIGIN)
+    other.post("/login", headers=ORIGIN,
+               data={"email": db.get_user(users[0])["email"],
+                     "password": "TestPassword1!"})
     response = clients[0].post("/profile/password", headers=ORIGIN,
         data={"current": "TestPassword1!", "password": "NewPassword2!", "password2": "NewPassword2!"},
         follow_redirects=False)

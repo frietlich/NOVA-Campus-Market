@@ -173,12 +173,15 @@
       {% endfor %}
     </form>
 
-    <a class="link" href="/housing?tour=1"
-       style="width: 100%; justify-content: center; margin-top: 18px">Take the tour again</a>
-
-    <form method="post" action="/logout" style="display: flex; justify-content: center">
-      <button class="signout" type="submit">{{ icon.leave() }} Sign out</button>
-    </form>
+    {#- The two things you can do to the account itself, on one line in the
+        middle. They used to be a full width link above a pill below, which
+        made the tour look like a sentence and the two look unrelated. -#}
+    <div class="foot-do">
+      <a class="pill-do" href="/housing?tour=1">Take the tour again</a>
+      <form method="post" action="/logout">
+        <button class="signout" type="submit">{{ icon.leave() }} Sign out</button>
+      </form>
+    </div>
 
   </div>
 </div>

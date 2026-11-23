@@ -68,6 +68,15 @@ LATER_COLUMNS = {
         ("code_tries", "INTEGER NOT NULL DEFAULT 0"),
         # light, dark, or empty for whatever the phone is set to
         ("theme", "TEXT NOT NULL DEFAULT ''"),
+        # Whether this student has been through the welcome tour. It sits on
+        # the account and not in the browser, because changing laptop does
+        # not make somebody new to the app.
+        #
+        # The default is 1 on purpose: every account that already existed
+        # when this column arrived has been using the app for a while and
+        # must not be shown a welcome. create_user writes a 0, so only an
+        # account made from here on gets the tour.
+        ("tour_seen", "INTEGER NOT NULL DEFAULT 1"),
     ],
     "listings": [
         ("condition", "TEXT"),
@@ -191,9 +200,11 @@ def all_users():
 def create_user(email, name, programme="", password=None, cems=False):
     """password is already hashed by passwords.py. Nothing else goes in here."""
     conn = connect()
+    # tour_seen is written as 0 rather than left to the column default,
+    # which is 1 for the accounts that came before the tour existed.
     cur = conn.execute(
         "INSERT INTO users (email, name, programme, cems, password, verified,"
-        " created_at) VALUES (?, ?, ?, ?, ?, 0, ?)",
+        " created_at, tour_seen) VALUES (?, ?, ?, ?, ?, 0, ?, 0)",
         (email.strip().lower(), name, programme, 1 if cems else 0, password, now()),
     )
     conn.commit()
@@ -233,6 +244,20 @@ def update_profile(user_id, name, programme, cems=False, photo=None):
         )
     conn.commit()
     conn.close()
+
+
+def mark_tour_seen(user_id):
+    """Remember that this student has been through the welcome tour.
+
+    Once this is set the tour never starts by itself again, on any machine.
+    "Take the tour again" on the profile still plays it, because that asks
+    for it by hand rather than being sprung on anybody.
+    """
+    conn = connect()
+    conn.execute("UPDATE users SET tour_seen = 1 WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    return True
 
 
 def set_theme(user_id, theme):

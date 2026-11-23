@@ -33,9 +33,14 @@ def world(tmp_path, monkeypatch):
         conn.execute("UPDATE users SET verified=1")
     conn.close()
     clients = [TestClient(app) for _ in users]
+    # Through the front door, the one a student uses. The development login
+    # that used to stand in here is gone, and signing in properly means the
+    # tests below also keep the real door honest.
     for client, member in zip(clients, users):
-        response = client.post("/dev", data={"user_id":member}, headers=ORIGIN, follow_redirects=False)
-        assert response.status_code == 303
+        response = client.post("/login", headers=ORIGIN, follow_redirects=False,
+                               data={"email": db.get_user(member)["email"],
+                                     "password": "TestPassword1!"})
+        assert response.status_code == 303, response.text
     return users, clients
 
 def test_verified_nova_gate(world):
@@ -135,12 +140,17 @@ def test_security_headers(world):
     assert response.headers["x-content-type-options"]=="nosniff"
     assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
 
-def test_production_disables_demo_and_secures_cookie(world):
+def test_the_development_login_is_gone_for_everybody(world):
+    # It used to be a page listing every account, open whenever
+    # CAMPUS_SECURITY_DEMO was set, which on a server is one wrong
+    # environment variable away from handing out every student's chats.
+    # There is no longer a setting that brings it back.
     import app.main as module
-    with patch.object(module,"LOCAL_DEMO",False):
-        client=TestClient(app)
-        assert client.get("/dev").status_code==404
-        assert client.post("/dev",data={"user_id":world[0][0]},headers=ORIGIN).status_code==404
+    client=TestClient(app)
+    assert client.get("/dev").status_code==404
+    assert client.post("/dev",data={"user_id":world[0][0]},headers=ORIGIN).status_code==404
+    assert module.LOCAL_DEMO is True   # even with demo mode on
+    assert not any(getattr(r,"path","")=="/dev" for r in app.routes)
 
 def test_registration_sends_code_and_requires_verification(world, monkeypatch):
     from app import main, mailer, programmes

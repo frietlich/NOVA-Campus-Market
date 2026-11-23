@@ -32,6 +32,7 @@ map sites are all replaced by stand-ins.
 | `test_push.py` | Who gets a push for what, saved searches, watched events, and the on/off switches. |
 | `test_maps.py` | Map links and addresses. |
 | `test_course_catalogue.py` | The course list per programme. |
+| `test_tour.py` | The welcome tour comes once per account and not once per browser: a new account has it coming, one that has had it never gets it again on any screen, finishing or skipping writes it on the account, and one student's answer does not speak for another. |
 | `test_seed_lock.py` | The demo data never overwrites a real database. |
 
 ## Rules for new tests

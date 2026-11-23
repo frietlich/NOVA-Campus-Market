@@ -31,7 +31,10 @@
 <link rel="icon" href="{{ asset('img/icon-192.png') }}" sizes="192x192">
 <link rel="stylesheet" href="{{ asset('css/app.css') }}">
 </head>
-<body data-auth-page="{{ auth_page }}">
+{#- data-tour says whether this account still has the welcome coming. The
+    answer is the account's, not the browser's, so a new laptop does not
+    make somebody new to the app. -#}
+<body data-auth-page="{{ auth_page }}" data-tour="{{ 'done' if tour_seen else 'new' }}">
 {#- The shell. On a phone it is nothing at all, the page is the page. From
     900 pixels it becomes a grid: the tabs leave the foot and stand as a rail
     on the left, and from 1280 the chats take a column of their own on the

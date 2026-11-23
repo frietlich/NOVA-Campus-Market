@@ -29,8 +29,9 @@ def world(tmp_path, monkeypatch):
     clients = []
     for member in users:
         client = TestClient(app)
-        assert client.post("/dev", data={"user_id": member}, headers=ORIGIN,
-                           follow_redirects=False).status_code == 303
+        assert client.post("/login", headers=ORIGIN, follow_redirects=False,
+                           data={"email": db.get_user(member)["email"],
+                                 "password": "TestPassword1!"}).status_code == 303
         clients.append(client)
     listing = db.create_listing(users[0], "item", "A desk", price=20)
     conv = db.open_conversation(listing, users[1])

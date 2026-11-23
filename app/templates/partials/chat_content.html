@@ -126,8 +126,9 @@
       </div>
     {% endif %}
 
-    <div style="height: 12px"></div>
-
+    {#- No spacer here. The screen already puts 12px between its children,
+        and an empty box in the middle of them made this one gap three
+        times the size of every other on the page. -#}
     {% if blocks or chats %}
       <div class="ch-list">
         {% for b in blocks %}

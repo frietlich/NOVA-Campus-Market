@@ -837,7 +837,7 @@ FOOT_BAR = PLACES + ("missing.html",)
 # time, so you can read an entry and answer about it without leaving either.
 # The column is not drawn on the two screens that are already the chats, nor
 # while signed out, and never on a phone, where the stylesheet hides it.
-DOCK_OFF = ("chats.html", "chat.html", "dev.html")
+DOCK_OFF = ("chats.html", "chat.html")
 DOCK_CHATS = 12
 
 
@@ -917,6 +917,9 @@ def page(request, template, **values):
     # Signed out there is nobody to ask, so the page follows the phone.
     values.setdefault("theme", (me["theme"] or "") if me else "")
     values.setdefault("unread", db.unread_total(me["id"]) if me else 0)
+    # The welcome tour starts by itself once per account, not once per
+    # browser. Signed out there is nobody to welcome, so it stays shut.
+    values.setdefault("tour_seen", bool(me["tour_seen"]) if me else True)
     values.setdefault("active", "")
     values.setdefault("foot_bar", template in FOOT_BAR)
     for key, value in dock_for(request, me, template).items():
@@ -1323,27 +1326,12 @@ def reset(request: Request, d1: str = Form(""), d2: str = Form(""), d3: str = Fo
     return go("/housing")
 
 
-# ---------------------------------------------------------------------- dev
-
-@app.get("/dev")
-def dev_form(request: Request):
-    """Development login. Delete this page once the real one works."""
-    if not LOCAL_DEMO:
-        return HTMLResponse("Not found", status_code=404)
-    return page(request, "dev.html", users=[user for user in db.all_users()
-                if user["verified"] and db.is_nova_email(user["email"])])
-
-
-@app.post("/dev")
-def dev_login(request: Request, user_id: int = Form(...)):
-    if not LOCAL_DEMO:
-        return HTMLResponse("Not found", status_code=404)
-    user = db.get_user(user_id)
-    if not user or not user["verified"] or not db.is_nova_email(user["email"]):
-        return HTMLResponse("Access refused", status_code=403)
-    request.session.clear()
-    sign_in(request, user_id)
-    return go("/housing")
+# There used to be a development login at /dev here: a page that listed
+# every account and signed you in as whichever one you picked, with no
+# password. It was the right tool while the real door was being built and
+# the wrong thing to leave in an app students put their chats in, because
+# nothing stood in front of it. It is gone. Sign in with an address and a
+# password like everybody else, and a code by e-mail confirms a new account.
 
 
 # --------------------------------------------------------------- the four tabs
@@ -2584,6 +2572,20 @@ def profile_theme(request: Request, theme: str = Form("")):
         return go("/start")
     db.set_theme(me["id"], theme.strip())
     return go("/profile")
+
+
+@app.post("/tour/seen")
+def tour_seen(request: Request):
+    """The welcome tour is over, either finished or skipped.
+
+    The page sends this itself and has nothing to go to afterwards, so the
+    answer is a bare ok. Signed out there is no account to write it on, and
+    the page has no use for the difference, so the answer is the same.
+    """
+    me = me_or_none(request)
+    if me is not None:
+        db.mark_tour_seen(me["id"])
+    return JSONResponse({"ok": True})
 
 
 @app.get("/profile/password")

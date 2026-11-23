@@ -45,12 +45,13 @@ on a public server. With SMTP configured, codes are sent by email instead.
 All team members need to update their local .env; no credentials go into Git.
 See docs/security-review.md for installation, tests and deployment checks.
 
-In explicit local demo mode, the quick one is at `/dev`. Pick any fake student and you are that person. Use
-this while building. It goes away once we are happy with the real one.
+There used to be a development login at `/dev` that let you be any student
+without a password. It is gone. Sign in the way everybody else does, with an
+address and a password.
 
-The student you are by default is Marco C., `58412@novasbe.pt`. Every demo
-student has the password `Nova2026!`, which is why `app/seed.py` says so out
-loud. They are invented people, so it is not a secret.
+Every demo student has the password `Nova2026!`, which is why `app/seed.py`
+says so out loud. They are invented people, so it is not a secret. The one to
+start with is Marco C., `58412@novasbe.pt`.
 
 ## Passwords
 
@@ -258,7 +259,6 @@ left.
     /verify                 the 6-digit code
     /login                  e-mail and password
     /forgot                 a new password, by code
-    /dev                    development login
     /housing /tickets /market /groups
     /groups?scope=all       every course, not only yours
     /courses                pick the courses you are taking

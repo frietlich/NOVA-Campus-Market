@@ -231,11 +231,14 @@ class PageTests(unittest.TestCase):
         from app import main
         self.client = TestClient(main.app, headers={"origin": "http://testserver"})
         self.client.__enter__()
-        self.user = db.create_user("44444@novasbe.pt", "Page P.")
+        from app import passwords
+        self.user = db.create_user("44444@novasbe.pt", "Page P.", "finance",
+                                   passwords.hash_password("TestPassword1!"))
         with db.connect() as conn:
             conn.execute("UPDATE users SET verified = 1 WHERE id = ?", (self.user,))
         conn.close()
-        self.client.post("/dev", data={"user_id": self.user})
+        self.client.post("/login", data={"email": "44444@novasbe.pt",
+                                         "password": "TestPassword1!"})
 
     def tearDown(self):
         self.client.__exit__(None, None, None)
