@@ -114,7 +114,9 @@
     {% endif %}
 
     {% if bundles %}
-      <div class="chips" style="margin-top: 8px">
+      {#- Same distance as everything else on the screen. The eight extra
+          pixels here were the only ones of their kind. -#}
+      <div class="chips">
         {% for b in bundles %}
           <a href="/chats?side={{ side }}&bundle={{ b.key | urlencode }}" data-kind="{{ b.kind }}"
              class="chip chip--kind {{ 'chip--on' if bundle == b.key }}">
@@ -124,8 +126,6 @@
         {% endfor %}
       </div>
     {% endif %}
-
-    <div style="height: 12px"></div>
 
     {% if blocks or chats %}
       <div class="ch-list">
