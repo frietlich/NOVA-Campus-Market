@@ -2905,6 +2905,20 @@ html.lightbox-open, html.lightbox-open body { overflow: hidden; }
   .head h1 { font-size: 30px; }
   .search { max-width: 560px; }
 
+  /* Desktop has room for rows of tiles; keep every new entry visible
+     instead of leaving the last tile clipped in a phone swipe strip. */
+  .strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+    gap: 16px;
+    margin: 0;
+    padding: 0 0 4px;
+    overflow: visible;
+    scroll-snap-type: none;
+  }
+  .strip .scard { width: auto; min-width: 0; }
+  .strip .scard-pic { width: 100%; height: auto; aspect-ratio: 1; }
+
   /* Tickets: one or two tickets a day made a long thin strip with half the
      screen empty. On a wide screen the days stand side by side and the week
      reads like a calendar, left to right, then the next row. */
