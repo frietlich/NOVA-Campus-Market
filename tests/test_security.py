@@ -119,6 +119,123 @@ def test_one_month_one_entry_one_chat_are_singular(world):
     profile=clients[0].get("/profile").text
     assert "<span>entry</span>" in profile and "<span>chat</span>" in profile
 
+HOUSING = {"kind": "housing", "title": "Room", "price": "500", "category": "room",
+           "place": "lisboa", "available_from": "2027-01-01", "months_min": "3",
+           "minutes_campus": "20", "flatmates": "2", "deposit": "500",
+           "address": "Rua Augusta 1, 1100-048 Lisboa", "description": "Nice"}
+
+def test_bills_on_top_must_be_estimated_and_included_needs_nothing(world):
+    users, clients=world
+    before=len(db.listings_of_user(users[0]))
+    response=clients[0].post("/new", headers=ORIGIN,
+                             data=dict(HOUSING, bills_included="0", bills_estimate=""))
+    assert "Say about how much the bills are" in response.text
+    assert len(db.listings_of_user(users[0]))==before
+    response=clients[0].post("/new", headers=ORIGIN, follow_redirects=False,
+                             data=dict(HOUSING, bills_included="1", bills_estimate=""))
+    assert response.status_code==303
+
+def test_an_entry_carries_at_most_seven_photos(world):
+    users, clients=world
+    def jpeg():
+        buf=io.BytesIO(); Image.new("RGB", (20, 20)).save(buf, "JPEG"); return buf.getvalue()
+    photos=lambda n: [("photos", (f"p{i}.jpg", jpeg(), "image/jpeg")) for i in range(n)]
+    data=dict(HOUSING, bills_included="1")
+    before=len(db.listings_of_user(users[0]))
+    response=clients[0].post("/new", headers=ORIGIN, data=data, files=photos(8))
+    assert "at most 7 photos" in response.text
+    assert len(db.listings_of_user(users[0]))==before
+    response=clients[0].post("/new", headers=ORIGIN, data=data, files=photos(7),
+                             follow_redirects=False)
+    assert response.status_code==303
+    listing=int(response.headers["location"].split("/listing/")[1].split("?")[0])
+    assert len(db.photos_of(listing))==7
+    # Editing adds to what is there, so a full entry takes no more.
+    response=clients[0].post("/new", headers=ORIGIN, files=photos(1),
+                             data=dict(data, edit_id=str(listing)))
+    assert "already has 7 photos" in response.text
+    assert len(db.photos_of(listing))==7
+
+def test_the_same_form_sent_twice_makes_one_entry(world):
+    users, clients=world
+    before=len(db.listings_of_user(users[0]))
+    data={"kind":"item","title":"Desk","price":"10","category":"books",
+          "condition":"used","description":"A desk","form_token":"tok-" + "a"*20}
+    first=clients[0].post("/new", headers=ORIGIN, data=data, follow_redirects=False)
+    second=clients[0].post("/new", headers=ORIGIN, data=data, follow_redirects=False)
+    assert first.status_code==second.status_code==303
+    assert len(db.listings_of_user(users[0]))==before+1
+    made=first.headers["location"].split("?")[0]
+    assert second.headers["location"]==made
+
+def test_a_lost_signup_race_neither_fails_nor_locks_the_database(world, monkeypatch):
+    from app import main
+    users, clients=world
+    real=db.create_user
+    def raced(email, *args, **kwargs):
+        # Somebody else's request wins the address a moment earlier.
+        real(email, *args, **kwargs)
+        return real(email, *args, **kwargs)
+    monkeypatch.setattr(db, "create_user", raced)
+    monkeypatch.setattr(main.mailer, "is_set_up", lambda: False)
+    client=TestClient(app)
+    response=client.post("/join", headers=ORIGIN, follow_redirects=False,
+        data={"name":"Race R.","programme":"Master in Finance","email":"77777@novasbe.pt",
+              "password":"Racecond1!","password2":"Racecond1!"})
+    assert response.status_code in (200, 303)
+    # The failed insert used to keep the write lock and every write after it waited.
+    assert db.create_listing(owner_id=users[0], kind="item", title="Still writable", price=1)
+
+def test_a_closed_entry_takes_no_new_chat_but_keeps_an_old_one(world):
+    users, clients=world
+    listing=db.create_listing(owner_id=users[0], kind="item", title="Lamp", price=5)
+    old=db.open_conversation(listing, users[1])
+    db.close_listing(listing, users[0])
+    response=clients[2].post(f"/listing/{listing}/chat", headers=ORIGIN, follow_redirects=False)
+    assert db.find_conversation(listing, users[2]) is None
+    assert response.headers["location"]==f"/listing/{listing}"
+    response=clients[1].post(f"/listing/{listing}/chat", headers=ORIGIN, follow_redirects=False)
+    assert f"/chat/{old}" in response.headers["location"]
+
+@pytest.mark.parametrize("address", ["/no-such-page", "/chats?archived=abc", "/listing/99999999999999999999"])
+def test_a_dead_address_shows_the_not_here_page(world, address):
+    users, clients=world
+    response=clients[0].get(address, headers={"accept":"text/html"})
+    assert response.status_code==404
+    assert "Not here" in response.text and '"detail"' not in response.text
+
+def test_a_profile_error_keeps_the_master_picked_next_to_cems(world):
+    from app import programmes
+    users, clients=world
+    master=programmes.MASTER[0]
+    response=clients[0].post("/profile/edit", headers=ORIGIN,
+                             data={"name":"", "programme":programmes.CEMS, "cems_programme":master})
+    picker=response.text.split('id="cems_programme"')[1].split("</select>")[0]
+    assert f'<option value="{master}" selected' in picker
+
+def test_photos_can_be_removed_while_editing_and_only_your_own(world):
+    users, clients=world
+    def jpeg():
+        buf=io.BytesIO(); Image.new("RGB", (20, 20)).save(buf, "JPEG"); return buf.getvalue()
+    data=dict(HOUSING, bills_included="1")
+    response=clients[0].post("/new", headers=ORIGIN, data=data, follow_redirects=False,
+                             files=[("photos", (f"p{i}.jpg", jpeg(), "image/jpeg")) for i in range(3)])
+    listing=int(response.headers["location"].split("/listing/")[1].split("?")[0])
+    ids=[str(p["id"]) for p in db.photos_of(listing)]
+    assert all(f'value="{i}"' in clients[0].get(f"/listing/{listing}/edit").text for i in ids)
+    clients[0].post("/new", headers=ORIGIN, data=dict(data, edit_id=str(listing), remove_photo=ids[:1]))
+    assert [str(p["id"]) for p in db.photos_of(listing)]==ids[1:]
+    clients[1].post("/new", headers=ORIGIN, data=dict(data, edit_id=str(listing), remove_photo=ids[1:]))
+    assert len(db.photos_of(listing))==2
+
+def test_unknown_bills_are_not_shown_as_the_monthly_total(world):
+    users, clients=world
+    listing=db.create_listing(owner_id=users[0], kind="housing", title="Room", price=500)
+    with db.connect() as conn:
+        conn.execute("UPDATE listings SET bills_included=0, bills_estimate=NULL WHERE id=?", (listing,))
+    conn.close()
+    assert "+ bills" in clients[1].get(f"/listing/{listing}").text
+
 def test_image_content_and_size(world):
     users, clients=world
     before=len(db.listings_of_user(users[0]))

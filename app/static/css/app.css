@@ -1100,11 +1100,14 @@ img { display: block; max-width: 100%; }
 /* Around Tickets' days; on a phone it is as if it were not there. */
 .days { display: contents; }
 
+/* It used to stick to the top of the window while you scrolled. Nothing
+   else on the page does that, and with no bar above it to sit under it
+   ended up glued to the very edge of the screen, with the card sliding
+   half visible behind it. On a wide screen it was worse: the rail starts
+   24px down, so the heading floated higher than everything beside it and
+   read as knocked out of place. It scrolls with its own list now. The box
+   keeps the measurements it had, so nothing else moves. */
 .day-head {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  background: var(--bg);
   margin: 10px 0 8px;
   padding: 8px 0 8px 2px;
   font-size: 17px;
@@ -4043,4 +4046,71 @@ html.onb-open, html.onb-open body { overflow: hidden; }
 @media (min-width: 900px) {
   .tabbar { view-transition-name: rail; }
   ::view-transition-old(rail), ::view-transition-new(rail) { animation: none; }
+}
+
+/* Safari on the iPhone draws a date or time field in its own native shape,
+   with a width of its own that ignores the column it sits in, so "Free
+   from" ran into "Minimum stay" beside it (and the ticket date into the
+   time). Without the native shape the field takes the column's width like
+   every other box, and the date inside it sits on the left like the text in
+   the others. Tapping it still opens the phone's own date picker. */
+/* Taking the native shape away also takes away the centring that came with
+   it, so the date sat against the top edge of its box while the plain
+   number in the box beside it sat in the middle. A flex box puts it back:
+   the field is the box, the date inside it is the one thing in it, and it
+   is centred across the full 48px like every other value on the form. */
+.input[type="date"], .input[type="time"] {
+  -webkit-appearance: none; appearance: none;
+  min-width: 0; max-width: 100%;
+  display: flex;
+  align-items: center;
+  /* The date on the left, the little calendar on the right where it was
+     before, instead of the two packed together in the middle. */
+  justify-content: space-between;
+  text-align: left;
+}
+/* Firefox draws the date as ordinary inline text rather than the editor
+   WebKit uses, and an inline line box in a 48px field needs telling too. */
+@supports (-moz-appearance: none) {
+  .input[type="date"], .input[type="time"] { display: block; line-height: 46px; }
+}
+.input[type="date"]::-webkit-date-and-time-value,
+.input[type="time"]::-webkit-date-and-time-value { text-align: left; }
+
+/* A pair whose labels may not be the same length. "Minimum stay in months"
+   takes two lines on a phone and "Free from" one, and the two boxes then sat
+   at different heights. Lined up at the foot, the boxes stay level and the
+   shorter label simply sits a line lower. */
+.pair--level > div { justify-content: flex-end; }
+
+/* A box with a € in front is a frame around a bare input, so the red ring a
+   refused field gets went on nothing visible: rent, bills and deposit stayed
+   grey when left empty. The frame now turns red like every other box. */
+.prefixed:has(input:user-invalid) {
+  border-color: var(--bad);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 16%, transparent);
+}
+
+/* A photo the entry already has, and one just picked from the phone. Both
+   carry the same ×, and pressing it takes the photo out of the row there
+   and then, with the ones after it closing the gap. It used to grey the
+   picture and write "Removed" under it instead, which left a row of
+   half-dead tiles to read through. Only the × is the control, so brushing
+   the picture itself cannot lose it. */
+.pic--have, .pic--new { position: relative; }
+.pic-x {
+  position: absolute; top: 5px; right: 5px;
+  width: 24px; height: 24px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  border: none; padding: 0;
+  background: rgba(0, 0, 0, 0.62); color: #FFFFFF;
+  font: inherit; font-size: 16px; line-height: 1; font-weight: 600;
+  cursor: pointer;
+}
+/* Without JavaScript the × only ticks a box and the tile stays where it
+   is, so it fades to show which way it is going. With the script the tile
+   is gone before this can be seen. */
+.pic--have:has(input:checked) { opacity: 0.3; }
+.pic-x:focus-visible, .pic-x:has(input:focus-visible) {
+  outline: 2px solid var(--accent); outline-offset: 2px;
 }

@@ -43,7 +43,7 @@
               gone. -#}
           <a class="row" href="/listing/{{ l.id }}?back=/student/{{ them.id }}">
             <div class="mini" data-kind="{{ l.type }}">
-              {% if l.photo %}<img src="/static/uploads/{{ l.photo }}" alt="">{% else %}{{ icon.of_kind(l.type, 19, 1.7) }}{% endif %}
+              {% if l.photo %}<img src="/static/uploads/{{ l.photo }}" alt="" decoding="sync">{% else %}{{ icon.of_kind(l.type, 19, 1.7) }}{% endif %}
             </div>
             <div class="row-body">
               <span class="row-name truncate">{{ l.title }}</span>

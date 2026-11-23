@@ -309,7 +309,11 @@
         {% elif q %}
           <b>Nothing found</b>
           <p>No open entry in {{ tab.label }} matches that.</p>
-        {% elif cat or price or cond %}
+        {#- hs.on is Housing's own count of what is set. Without it Housing
+            fell through to "Nothing here yet", so a rent ceiling nobody
+            happens to meet told the student there were no rooms at all,
+            standing on a tab that has thirteen. -#}
+        {% elif cat or price or cond or (hs and hs.on) %}
           <b>Nothing like that</b>
           <p>No open entry in {{ tab.label }} matches what you picked.</p>
           <a class="link" href="{{ tab.path }}">Clear the filters</a>

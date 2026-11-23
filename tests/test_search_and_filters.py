@@ -153,3 +153,52 @@ def test_a_typed_date_finds_the_ticket_on_that_day(world):  # noqa: F811
     db.create_listing(users[0], "ticket", "Other party", price=10, category="party",
                       event_date=f"{year}-12-06", place="Lux")
     assert shown(clients[1], "/tickets?q=5+Dec") == ["Winter party"]
+
+
+# ------------------------------------------------------------------ housing
+
+@pytest.fixture
+def rooms(world):  # noqa: F811
+    """Three rooms with rents far enough apart to filter between."""
+    users, clients = world
+    for title, rent in [("Cheap room", 300), ("Middle room", 600), ("Pricey room", 900)]:
+        db.create_listing(users[0], "housing", title, price=rent,
+                          category="room", address="Rua A, 2775-000 Carcavelos")
+    return clients[1]
+
+
+def test_a_rent_filter_with_no_match_does_not_claim_the_tab_is_empty(rooms):
+    # It used to say "Nothing here yet. Be the first to put something up",
+    # which is a lie told on top of three rooms, and it sent the student
+    # away instead of pointing at the filter they had just set.
+    page = rooms.get("/housing?rmax=50")
+    assert page.status_code == 200
+    assert shown(rooms, "/housing?rmax=50") == []
+    assert "Nothing here yet" not in page.text
+    assert "Be the first" not in page.text
+    assert "Nothing like that" in page.text
+    assert "Clear the filters" in page.text
+
+
+def test_a_rent_floor_above_the_ceiling_is_answered_honestly(rooms):
+    # 900 to 100 cannot match anything. The numbers are left as they were
+    # typed rather than quietly swapped, because an app that rearranges what
+    # you wrote is harder to trust than one that says nothing fits.
+    page = rooms.get("/housing?rmin=900&rmax=100")
+    assert shown(rooms, "/housing?rmin=900&rmax=100") == []
+    assert "Nothing like that" in page.text
+    assert "Clear the filters" in page.text
+    assert 'value="900"' in page.text and 'value="100"' in page.text
+
+
+def test_an_empty_housing_tab_still_says_so(world):  # noqa: F811
+    # The other half of it: with nothing up and no filter set, "Nothing here
+    # yet" is the true answer and has to stay.
+    _, clients = world
+    page = clients[1].get("/housing")
+    assert "Nothing here yet" in page.text
+    assert "Clear the filters" not in page.text
+
+
+def test_a_filter_that_does_match_is_untouched(rooms):
+    assert shown(rooms, "/housing?rmax=700") == ["Cheap room", "Middle room"]

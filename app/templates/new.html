@@ -9,6 +9,9 @@
        kind from the entry itself, so this cannot move it to another tab. #}
     {% if edit_id %}<input type="hidden" name="edit_id" value="{{ edit_id }}">{% endif %}
     {% if back %}<input type="hidden" name="back" value="{{ back }}">{% endif %}
+    {#- One per drawing of the form, so a second click on Publish is known
+        for what it is. -#}
+    <input type="hidden" name="form_token" value="{{ form_token() }}">
 
     <div class="sheet-head">
       <span class="side"><a class="link link--plain"
@@ -41,16 +44,49 @@
     {# A ticket is a line of text and a group entry is a question, so
        neither of them has anything to photograph. #}
     {% if tab.kind not in ('ticket', 'group') %}
+    {%- set left = photos_left if photos_left is defined else PHOTOS_MAX -%}
+    {%- set have = existing_photos if existing_photos is defined else [] -%}
+    {%- set dropping = removing if removing is defined else [] -%}
     <span class="label">Photos</span>
-    <div class="pics">
+    {#- Add is the last tile, so a photo you pick lands to the left of it and
+        the row fills up towards it, the way a row of things normally grows.
+        It used to stand first and the new pictures appeared behind it. -#}
+    <div class="pics" data-cap="{{ PHOTOS_MAX }}">
+      {#- The photos the entry already has. The × takes one away there and
+          then; the file itself goes when the form is saved, so leaving the
+          page without saving brings it back. -#}
+      {%- for p in have %}
+      <div class="pic pic--have">
+        <img src="/static/uploads/{{ p.filename }}" alt="">
+        <label class="pic-x" title="Remove this photo">
+          <input class="sr" type="checkbox" name="remove_photo" value="{{ p.id }}"
+                 data-remove {{ 'checked' if (p.id | string) in dropping }}>
+          {{ icon.close(13, 2.2) }}
+          <span class="sr">Remove this photo</span>
+        </label>
+      </div>
+      {%- endfor %}
+      {%- if not have %}
+      <div class="pic" data-slot>{{ icon.picture(20, 1.6) }}</div>
+      <div class="pic" data-slot>{{ icon.picture(20, 1.6) }}</div>
+      {%- endif %}
       <label class="pic-add" for="photos">
         {{ icon.plus(20, 1.8) }}
         Add
       </label>
       <input class="sr" id="photos" name="photos" type="file" accept="image/*" multiple>
-      <div class="pic" data-slot>{{ icon.picture(20, 1.6) }}</div>
-      <div class="pic" data-slot>{{ icon.picture(20, 1.6) }}</div>
+      {#- The same × the photos above carry, for the script to copy onto a
+          photo you have only just picked. One drawing, used in both places,
+          so the two can never drift apart. -#}
+      <template id="pic-x-art">{{ icon.close(13, 2.2) }}<span class="sr">Remove this photo</span></template>
     </div>
+    <p class="note" id="photos-note" style="text-align: left; margin: 8px 2px 0">
+      {%- if edit_id and have -%}
+        Up to {{ PHOTOS_MAX }} in all. Press × on a photo to take it off.
+      {%- else -%}
+        Up to {{ left }} photos.
+      {%- endif -%}
+    </p>
     {% endif %}
 
     {% if tab.kind == 'group' %}
@@ -303,13 +339,13 @@
           </div>
         </div>
 
-        <div class="pair">
+        <div class="pair pair--level">
           <div>
             <label class="label" for="available_from">Free from</label>
             <input class="input" id="available_from" name="available_from" type="date" required value="{{ v.available_from }}" autocomplete="off">
           </div>
           <div>
-            <label class="label" for="months_min">Minimum stay</label>
+            <label class="label" for="months_min">Minimum stay in months</label>
             <input class="input" id="months_min" name="months_min" type="text" inputmode="numeric" required
                    pattern="[0-9]{1,2}" maxlength="2" placeholder="5" value="{{ v.months_min }}" autocomplete="off">
           </div>

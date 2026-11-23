@@ -35,21 +35,120 @@
 })();
 
 // The new entry sheet shows what you picked, so you see it before you publish.
+//
+// One tile per picture, up to the most an entry can carry. Picking more
+// keeps the first ones and says so, rather than letting the server refuse
+// the whole form after the upload.
 (function preview() {
   const field = document.getElementById("photos");
   if (!field) return;
-  const slots = Array.from(document.querySelectorAll("[data-slot]"));
-  field.addEventListener("change", () => {
-    const files = Array.from(field.files || []);
-    slots.forEach((slot, i) => {
-      slot.innerHTML = "";
-      if (!files[i]) return;
+  const pics = field.closest(".pics");
+  const addTile = pics.querySelector(".pic-add");
+  const note = document.getElementById("photos-note");
+  const CAP = Number(pics.dataset.cap) || 7;
+  const blank = Array.from(pics.querySelectorAll("[data-slot]"));
+  const empty = blank.length ? blank[0].innerHTML : "";
+  const haves = Array.from(pics.querySelectorAll(".pic--have"));
+  const art = document.getElementById("pic-x-art");
+
+  // Everything picked so far in this sitting. A file field only ever holds
+  // the last pick, so pressing Add a second time used to throw the first
+  // pick away and leave you with one photo however often you tried. The
+  // picks are collected here and written back into the field, which is
+  // what the form actually sends.
+  let chosen = [];
+
+  const stays = () => haves.filter((t) => !t.querySelector("[data-remove]").checked).length;
+  const room = () => Math.max(CAP - stays() - chosen.length, 0);
+  // Two picks of the same picture are the same picture, not two of them.
+  const alike = (a, b) => a.name === b.name && a.size === b.size
+                       && a.lastModified === b.lastModified;
+
+  function writeBack() {
+    try {
+      const box = new DataTransfer();
+      chosen.forEach((f) => box.items.add(f));
+      field.files = box.files;
+    } catch (e) { /* An old browser keeps its own last pick. */ }
+  }
+
+  function say(full) {
+    if (!note) return;
+    const left = room();
+    if (full) {
+      note.textContent = `That is ${CAP} photos, the most an entry can have.`;
+    } else if (!left) {
+      note.textContent = `${CAP} photos, the most an entry can have. Take one off to add another.`;
+    } else if (!chosen.length && !stays()) {
+      note.textContent = `Up to ${CAP} photos.`;
+    } else {
+      note.textContent = `Up to ${left} more ${left === 1 ? "photo" : "photos"}.`;
+    }
+  }
+
+  function draw(full) {
+    pics.querySelectorAll("[data-slot]").forEach((slot) => slot.remove());
+    chosen.forEach((file) => {
+      const slot = document.createElement("div");
+      slot.className = "pic pic--new";
+      slot.dataset.slot = "";
       const img = document.createElement("img");
-      img.src = URL.createObjectURL(files[i]);
+      img.src = URL.createObjectURL(file);
       img.alt = "";
       slot.appendChild(img);
+      const x = document.createElement("button");
+      x.type = "button";
+      x.className = "pic-x";
+      x.title = "Remove this photo";
+      if (art) x.appendChild(art.content.cloneNode(true));
+      x.addEventListener("click", () => {
+        URL.revokeObjectURL(img.src);
+        chosen = chosen.filter((f) => f !== file);
+        writeBack();
+        draw(false);
+      });
+      slot.appendChild(x);
+      pics.insertBefore(slot, addTile);
+    });
+    // Nothing to show at all, so the empty tiles stand in for it again.
+    if (!chosen.length && !stays()) {
+      blank.forEach(() => {
+        const slot = document.createElement("div");
+        slot.className = "pic";
+        slot.dataset.slot = "";
+        slot.innerHTML = empty;
+        pics.insertBefore(slot, addTile);
+      });
+    }
+    // No room left, no point offering the tile that asks for more.
+    addTile.hidden = room() === 0;
+    say(full);
+  }
+
+  field.addEventListener("change", () => {
+    let full = false;
+    Array.from(field.files || []).forEach((file) => {
+      if (chosen.some((c) => alike(c, file))) return;
+      if (room() === 0) { full = true; return; }
+      chosen.push(file);
+    });
+    writeBack();
+    draw(full);
+  });
+
+  // A photo the entry already has goes from the row the moment its × is
+  // pressed, and the ones after it close the gap. The tick rides along in
+  // the form, so the file itself goes when the change is saved.
+  haves.forEach((tile) => {
+    const box = tile.querySelector("[data-remove]");
+    if (box.checked) tile.hidden = true;
+    box.addEventListener("change", () => {
+      tile.hidden = box.checked;
+      draw(false);
     });
   });
+
+  draw(false);
 })();
 
 // A dropdown whose first entry is only a hint. A browser draws the chosen
@@ -392,9 +491,14 @@
   const box = document.getElementById("bills_box");
   if (!picker || !field || !box) return;
 
+  // On top, the box has to be filled in. Included, it shows 0 instead of
+  // the example figure, which read as if bills of 55 were still owed.
+  const example = field.placeholder;
   function sync() {
     const included = picker.value === "1";
     field.disabled = included;
+    field.required = !included;
+    field.placeholder = included ? "0" : example;
     box.classList.toggle("prefixed--off", included);
     if (included) field.value = "";
   }
@@ -630,15 +734,24 @@
 
   // Which tab you came from. A reload, a listing or the first visit all
   // count as no journey, and then the capsule simply sits still.
+  //
+  // The new-entry form is not a tab, even though the rail has a "New entry"
+  // link to it. Coming back from it (Cancel) the capsule is simply there.
+  // And a tab that is not drawn is never a starting point: on a phone the
+  // rail links are hidden, measure as a box at 0,0, and the capsule flew in
+  // from the corner of the screen after every Cancel.
   let from = -1;
   if (document.referrer) {
     try {
       const came = new URL(document.referrer).pathname;
-      from = tabs.findIndex((t) => new URL(t.href).pathname === came);
+      if (came !== "/new") {
+        from = tabs.findIndex((t) => new URL(t.href).pathname === came);
+      }
     } catch (err) {
       from = -1;
     }
   }
+  if (from >= 0 && !tabs[from].getBoundingClientRect().width) from = -1;
 
   const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   let arrived = false;
@@ -2188,4 +2301,24 @@
     store.drop(WALK, sessionStorage);
   }
   cards();
+})();
+
+// Publish goes dead after the first click, so a second click or a tap that
+// lands twice does not send the form again. The server has its own guard
+// (one entry per form), this only saves the second request. It is switched
+// off a moment later rather than at once, because a button that is already
+// disabled when the form goes out would be left out of what is sent.
+(function publishOnce() {
+  const form = document.querySelector('form[action="/new"]');
+  if (!form) return;
+  form.addEventListener("submit", (event) => {
+    if (event.defaultPrevented) return;
+    const button = event.submitter || form.querySelector('button[type="submit"]');
+    if (!button) return;
+    setTimeout(() => { button.disabled = true; }, 0);
+  });
+  // Coming back to the page with the back button shows it as it was left.
+  window.addEventListener("pageshow", () => {
+    form.querySelectorAll('button[type="submit"]').forEach((b) => { b.disabled = false; });
+  });
 })();

@@ -4,8 +4,11 @@ Every page lives here. The database is only reached through db.py.
 Start it with   uvicorn app.main:app --reload   from the project folder.
 """
 
+import asyncio
 import json
 import os
+import secrets
+import sqlite3
 import re
 import unicodedata
 import uuid
@@ -18,7 +21,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
+from fastapi.exception_handlers import http_exception_handler
 
 from . import (categories, db, housing, mailer, maps, passwords, programmes, push,
                screenshots, ticket_import)
@@ -73,7 +78,13 @@ BY_BAND = {band[0]: band for band in PRICE_BANDS}
 FRESH_DAYS = 7
 FRESH_MAX = 10
 
-app = FastAPI(title="Campus Market")
+# No /docs, no /redoc, no /openapi.json. FastAPI builds those three from the
+# routes and serves them to anybody who asks, signed in or not: every
+# address, every form field, every parameter and its type, laid out as a map
+# of the whole app. Useful while building an API other people call, and this
+# is not one. Nothing in here reads them either.
+app = FastAPI(title="Campus Market",
+              docs_url=None, redoc_url=None, openapi_url=None)
 
 app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
 
@@ -391,6 +402,9 @@ def today_iso():
 # 1e9 from ever reaching float(), which used to take the whole page down.
 # One or two decimals, a comma or a dot, nothing else, no sign.
 PRICE_MAX = 10000
+# How many photos one entry can carry. Seven shows a room from every side
+# without turning the gallery into a slideshow.
+PHOTOS_MAX = 7
 PRICE_SHAPE = re.compile(r"\d{1,6}([.,]\d{1,2})?")
 
 
@@ -420,6 +434,9 @@ def clean_price(text):
 templates.env.globals["TITLE_MAX"] = TITLE_MAX
 templates.env.globals["DESC_MAX"] = DESC_MAX
 templates.env.globals["PRICE_MAX"] = PRICE_MAX
+templates.env.globals["PHOTOS_MAX"] = PHOTOS_MAX
+# A fresh token for every new-entry form that is drawn, see claim_form_token.
+templates.env.globals["form_token"] = lambda: secrets.token_urlsafe(16)
 templates.env.globals["PLACE_MAX"] = PLACE_MAX
 templates.env.globals["ADDRESS_MAX"] = ADDRESS_MAX
 templates.env.globals["TICKET_MAX"] = TICKET_MAX
@@ -809,7 +826,34 @@ async def bad_address(request: Request, error: RequestValidationError):
     im_pfad = all(e.get("loc", ("",))[0] == "path" for e in error.errors())
     if request.method == "GET" and im_pfad:
         return page(request, "missing.html", active="")
+    # A GET whose address carries a value that does not fit, ?archived=abc,
+    # is an address nobody can use either. It gets the same page, not JSON.
+    in_address = all(e.get("loc", ("",))[0] in ("path", "query") for e in error.errors())
+    if request.method == "GET" and in_address:
+        return not_here(request)
     return JSONResponse({"detail": error.errors()}, status_code=422)
+
+
+def not_here(request, status=404):
+    """The Not here page for an address that leads nowhere, with its status."""
+    response = page(request, "missing.html", active="",
+                    gone_text="There is no page at this address.")
+    response.status_code = status
+    return response
+
+
+@app.exception_handler(StarletteHTTPException)
+async def no_such_page(request: Request, error: StarletteHTTPException):
+    """An address with no page behind it shows Not here, not {"detail": ...}.
+
+    Only for a GET from a browser. Anything else, and every other status,
+    keeps the framework's own answer, so a script asking the app something
+    still gets a reply it can read.
+    """
+    if (error.status_code == 404 and request.method == "GET"
+            and "text/html" in request.headers.get("accept", "")):
+        return not_here(request)
+    return await http_exception_handler(request, error)
 
 
 # Where a back arrow may point. Said the right way round on purpose: there
@@ -1156,8 +1200,22 @@ async def join(request: Request,
 
     hashed = passwords.hash_password(password)
     if existing is None:
-        user_id = db.create_user(email, name.strip(), chosen, hashed, cems)
-    else:
+        # Checked above, but two sign-ups with the same address can both get
+        # past that check at once. The address is unique in the table, so
+        # the second one fails here, and it is then treated exactly as if it
+        # had come a second later: an account still waiting for its code.
+        try:
+            user_id = db.create_user(email, name.strip(), chosen, hashed, cems)
+        except sqlite3.IntegrityError:
+            existing = db.get_user_by_email(email)
+            if existing is None or existing["verified"]:
+                if saved:
+                    try:
+                        os.remove(os.path.join(UPLOADS, saved))
+                    except OSError:
+                        pass
+                return fail("That address already has an account. Log in instead.")
+    if existing is not None:
         # Somebody started before and never put the code in. Take the new
         # details and send a fresh code.
         user_id = existing["id"]
@@ -1557,7 +1615,15 @@ def listing_chat(request: Request, listing_id: int, beside: str = Form("")):
     row = db.get_listing(listing_id)
     if row is None or row["owner_id"] == me["id"]:
         return go(f"/listing/{listing_id}")
-    conv_id = db.open_conversation(listing_id, me["id"])
+    # A closed entry takes no new conversations. The button is gone from its
+    # page, but a page opened before it closed still has one. Somebody who
+    # was already talking about it keeps their chat.
+    if row["status"] != "open":
+        conv_id = db.find_conversation(listing_id, me["id"])
+        if conv_id is None:
+            return go(f"/listing/{listing_id}")
+    else:
+        conv_id = db.open_conversation(listing_id, me["id"])
     # Wide enough for the chat column, and the chat opens in it: the entry
     # stays on screen and you write about it while looking at it. Otherwise
     # the chat page, with the way back pointing at the entry you wrote from,
@@ -1607,6 +1673,8 @@ def edit_form(request: Request, listing_id: int, error: str = "", back: str = ""
     kind = listing["type"]
     return page(request, "new.html", tab=BY_KIND[kind], error=error, me=me,
                 active=kind, v=form_values(listing), edit_id=listing_id,
+                photos_left=max(PHOTOS_MAX - len(db.photos_of(listing_id)), 0),
+                existing_photos=db.photos_of(listing_id), removing=[],
                 back=ours(back) or BY_KIND[kind]["path"],
                 my_courses=db.courses_of(me["id"]) if kind == "group" else [])
 
@@ -1747,6 +1815,8 @@ async def new_listing(request: Request,
                       description: str = Form(""),
                       photos: List[UploadFile] = File(default=[]),
                       edit_id: str = Form(""),
+                      form_token: str = Form(""),
+                      remove_photo: List[str] = Form(default=[]),
                       back: str = Form("")):
     me = me_or_none(request)
     if me is None:
@@ -1787,7 +1857,11 @@ async def new_listing(request: Request,
     def oops(message):
         return page(request, "new.html", tab=BY_KIND[kind], me=me, active=kind,
                     my_courses=mine, v=typed, error=message, back=ours(back),
-                    edit_id=changing["id"] if changing else None)
+                    edit_id=changing["id"] if changing else None,
+                    photos_left=(max(PHOTOS_MAX - len(db.photos_of(changing["id"])), 0)
+                                 if changing else PHOTOS_MAX),
+                    existing_photos=db.photos_of(changing["id"]) if changing else [],
+                    removing=list(remove_photo))
 
     for number in (quantity, course_id, group_size, months_min, minutes_campus, flatmates):
         if number.strip() and (not number.isascii() or not number.isdigit() or len(number) > 9):
@@ -1846,7 +1920,11 @@ async def new_listing(request: Request,
             bills, wrong = clean_price(bills_estimate)
             if wrong:
                 return oops(wrong)
-            if bills is not None and bills > BILLS_MAX:
+            # On top means somebody pays them, and how much is half of what
+            # the place costs, so it has to be said.
+            if bills is None:
+                return oops("Say about how much the bills are a month, or pick Included.")
+            if bills > BILLS_MAX:
                 return oops(f"Bills of at most {BILLS_MAX:,} euros, please.")
 
         down, wrong = clean_price(deposit)
@@ -1939,8 +2017,15 @@ async def new_listing(request: Request,
     # Validate photos before changing the database. Remove earlier files if a later photo fails.
     image_names = []
     uploads = [photo for photo in (photos or []) if photo and photo.filename] if kind != "ticket" else []
-    if len(uploads) > 10:
-        return oops("Upload at most ten photos.")
+    have = db.photos_of(changing["id"]) if changing is not None else []
+    going = {p["id"] for p in have if str(p["id"]) in set(remove_photo)}
+    already = len(have) - len(going)
+    if already + len(uploads) > PHOTOS_MAX:
+        left = max(PHOTOS_MAX - already, 0)
+        if already and not left:
+            return oops(f"This entry already has {PHOTOS_MAX} photos, the most it can have.")
+        return oops(f"An entry can have at most {PHOTOS_MAX} photos."
+                    + (f" This one has room for {left} more." if already else ""))
     try:
         for upload in uploads:
             image_names.append(await save_image(upload))
@@ -1990,13 +2075,43 @@ async def new_listing(request: Request,
         external_url=link,
     )
 
+    # A double click on Publish sends the same form twice. Only the first
+    # request with this form's token writes anything; a later one throws its
+    # own photos away and lands on what the first one made. The browser shows
+    # the answer to the last click, so that answer has to be the right page.
+    token = form_token.strip()[:64]
+    if token and not db.claim_form_token(token):
+        for name in image_names:
+            try:
+                os.remove(os.path.join(UPLOADS, name))
+            except OSError:
+                pass
+        made = changing["id"] if changing is not None else None
+        for _ in range(50):
+            made = made or db.form_token_listing(token)
+            if made:
+                break
+            await asyncio.sleep(0.1)
+        return go(f"/listing/{made}" if made else "/profile")
+
     if changing is not None:
         db.update_listing(changing["id"], me["id"], **fields)
         listing_id = changing["id"]
     else:
         listing_id = db.create_listing(owner_id=me["id"], kind=kind, **fields)
+    if token:
+        db.finish_form_token(token, listing_id)
 
-    position = len(db.photos_of(listing_id)) if changing is not None else 0
+    # The photos ticked for removal go first, files and all, and the new
+    # ones are put after the ones that stay.
+    if changing is not None and going:
+        for name in db.remove_photos(listing_id, going):
+            try:
+                os.remove(os.path.join(UPLOADS, name))
+            except OSError:
+                pass
+    staying = db.photos_of(listing_id) if changing is not None else []
+    position = max((p["position"] for p in staying), default=-1) + 1
     for position, name in enumerate(image_names, start=position):
         db.add_photo(listing_id, name, position)
 
@@ -2476,11 +2591,15 @@ def entry_unarchive(request: Request, listing_id: int):
 
 # ------------------------------------------------------------------ profile
 
-def edit_page(request, me, error="", form_name=None, current=None):
+def edit_page(request, me, error="", form_name=None, current=None, master=None):
+    # master is the one picked next to CEMS. Sent back with a complaint, the
+    # form keeps what was just picked instead of falling back to the saved one.
     return page(request, "edit_profile.html", me=me, error=error,
                 form_name=form_name,
                 current=current if current is not None else (
                     programmes.CEMS if me["cems"] else me["programme"]),
+                master=master if master is not None else (
+                    me["programme"] if me["cems"] else ""),
                 masters=programmes.MASTER)
 
 
@@ -2535,11 +2654,11 @@ async def profile_edit(request: Request,
 
     if not name.strip():
         return edit_page(request, me, "Your name cannot be empty.",
-                         form_name=name, current=programme)
+                         form_name=name, current=programme, master=cems_programme)
     if len(name.strip()) > db.NAME_MAX:
         return edit_page(request, me,
                          f"A name can be at most {db.NAME_MAX} characters.",
-                         form_name=name, current=programme)
+                         form_name=name, current=programme, master=cems_programme)
 
     # CEMS is never the programme itself. It is a yes next to a real master,
     # so the form has to say which master it sits on top of.
@@ -2549,23 +2668,23 @@ async def profile_edit(request: Request,
     if cems and not chosen:
         return edit_page(request, me,
                          "CEMS MIM only comes with a master. Please pick yours.",
-                         form_name=name, current=programme)
+                         form_name=name, current=programme, master=cems_programme)
 
     if not programmes.is_valid(chosen) or (cems and chosen not in programmes.MASTER):
         return edit_page(request, me, "Please pick a programme from the list.",
-                         form_name=name, current=programme)
+                         form_name=name, current=programme, master=cems_programme)
 
     # A file was picked but it is not a picture we can show. Say so instead of
     # quietly keeping the old one.
     if photo is not None and photo.filename and not is_picture(photo):
         return edit_page(request, me,
                          "Upload a valid JPEG, PNG or WebP image.",
-                         form_name=name, current=programme)
+                         form_name=name, current=programme, master=cems_programme)
 
     try:
         saved = await save_image(photo)
     except HTTPException as error:
-        return edit_page(request, me, str(error.detail), form_name=name, current=programme)
+        return edit_page(request, me, str(error.detail), form_name=name, current=programme, master=cems_programme)
     db.update_profile(me["id"], name, chosen, cems, saved)
     return go("/profile")
 
@@ -2814,6 +2933,9 @@ async def security_checks(request, call_next):
     if clean_path.startswith("/static/uploads/") and me_or_none(request) is None:
         return HTMLResponse("Sign in required", status_code=403)
     if any(part.isdigit() and safe_id(part) is None for part in request.url.path.split("/")):
+        # A number too big to be any id. Same page as any other dead address.
+        if request.method == "GET" and "text/html" in request.headers.get("accept", ""):
+            return not_here(request)
         return HTMLResponse("Invalid address", status_code=404)
     if request.method in ("POST", "PUT", "PATCH", "DELETE"):
         if request.url.path in ("/join", "/forgot", "/verify", "/verify/resend", "/forgot/reset"):

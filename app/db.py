@@ -109,7 +109,10 @@ LATER_COLUMNS = {
 
 def connect():
     """Open the database. Rows come back so you can say row["title"]."""
-    conn = sqlite3.connect(DB_PATH)
+    # Fifteen seconds of waiting for another writer instead of the default
+    # five. Several sign-ups or posts at the same moment queue up behind one
+    # another; with five some of them gave up with "database is locked".
+    conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -200,17 +203,22 @@ def all_users():
 def create_user(email, name, programme="", password=None, cems=False):
     """password is already hashed by passwords.py. Nothing else goes in here."""
     conn = connect()
-    # tour_seen is written as 0 rather than left to the column default,
-    # which is 1 for the accounts that came before the tour existed.
-    cur = conn.execute(
-        "INSERT INTO users (email, name, programme, cems, password, verified,"
-        " created_at, tour_seen) VALUES (?, ?, ?, ?, ?, 0, ?, 0)",
-        (email.strip().lower(), name, programme, 1 if cems else 0, password, now()),
-    )
-    conn.commit()
-    new_id = cur.lastrowid
-    conn.close()
-    return new_id
+    # The address is unique, so a second sign-up with it fails right here.
+    # The connection is closed whatever happens: left open after the failed
+    # insert it kept the write lock, and every write after it, from anyone,
+    # waited and then gave up with "database is locked".
+    try:
+        with conn:
+            # tour_seen is written as 0 rather than left to the column
+            # default, which is 1 for the accounts from before the tour.
+            cur = conn.execute(
+                "INSERT INTO users (email, name, programme, cems, password, verified,"
+                " created_at, tour_seen) VALUES (?, ?, ?, ?, ?, 0, ?, 0)",
+                (email.strip().lower(), name, programme, 1 if cems else 0, password, now()),
+            )
+        return cur.lastrowid
+    finally:
+        conn.close()
 
 
 def update_profile(user_id, name, programme, cems=False, photo=None):
@@ -965,6 +973,44 @@ def enrol(user_id, course_id):
     conn.close()
 
 
+# --------------------------------------------------------------- form tokens
+
+def claim_form_token(token):
+    """True for the first request that brings this token, False for any later one.
+
+    The primary key does the deciding, so two requests arriving at the same
+    moment cannot both win. Tokens older than a day are cleared on the way.
+    """
+    conn = connect()
+    try:
+        with conn:
+            conn.execute("DELETE FROM form_tokens WHERE created_at < ?",
+                         ((datetime.now(timezone.utc) - timedelta(days=1)).isoformat(),))
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO form_tokens (token, created_at) VALUES (?, ?)",
+                (token, now()))
+        return cur.rowcount == 1
+    finally:
+        conn.close()
+
+
+def finish_form_token(token, listing_id):
+    conn = connect()
+    with conn:
+        conn.execute("UPDATE form_tokens SET listing_id = ? WHERE token = ?",
+                     (listing_id, token))
+    conn.close()
+
+
+def form_token_listing(token):
+    """The entry the first request with this token made, or None so far."""
+    conn = connect()
+    row = conn.execute("SELECT listing_id FROM form_tokens WHERE token = ?",
+                       (token,)).fetchone()
+    conn.close()
+    return row["listing_id"] if row else None
+
+
 # -------------------------------------------------------------------- photos
 
 def add_photo(listing_id, filename, position=0):
@@ -975,6 +1021,27 @@ def add_photo(listing_id, filename, position=0):
     )
     conn.commit()
     conn.close()
+
+
+def remove_photos(listing_id, photo_ids):
+    """Take these photos off this entry. Gives back the file names removed.
+
+    Only photos that belong to the entry go, so an id from somebody else's
+    entry sent along with the form does nothing.
+    """
+    ids = [int(i) for i in photo_ids]
+    if not ids:
+        return []
+    conn = connect()
+    marks = ",".join("?" for _ in ids)
+    with conn:
+        rows = conn.execute(
+            f"SELECT filename FROM photos WHERE listing_id = ? AND id IN ({marks})",
+            (listing_id, *ids)).fetchall()
+        conn.execute(f"DELETE FROM photos WHERE listing_id = ? AND id IN ({marks})",
+                     (listing_id, *ids))
+    conn.close()
+    return [r["filename"] for r in rows]
 
 
 def photos_of(listing_id):
@@ -1019,6 +1086,16 @@ def place_in_queue(queue, user_id):
         if row["starter_id"] == user_id:
             return n
     return None
+
+
+def find_conversation(listing_id, starter_id):
+    """The conversation this student already has about this listing, or None."""
+    conn = connect()
+    row = conn.execute(
+        "SELECT id FROM conversations WHERE listing_id = ? AND starter_id = ?",
+        (listing_id, starter_id)).fetchone()
+    conn.close()
+    return row["id"] if row else None
 
 
 def open_conversation(listing_id, starter_id):

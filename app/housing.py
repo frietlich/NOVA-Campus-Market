@@ -325,8 +325,8 @@ def parse_listing_text(text):
     found = {}
 
     # Rent: "1,500 €/month", "€600 /month", "750 €/mês", "Preço 450 €"
-    m = (_re.search(r"(\d{1,3}(?:[.,]\d{3})*|\d+)(?:[.,]\d{2})?\s*€\s*/\s*(month|mês|mes|m[eê]s)", t)
-         or _re.search(r"€\s*(\d{1,3}(?:[.,]\d{3})*|\d+)\s*/\s*(month|mês|mes)", t)
+    m = (_re.search(r"(\d{1,3}(?:[.,]\d{3})*|\d+)(?:[.,]\d{2})?\s*€\s*/\s*(month|mês|mes|m[eê]s|monat)", t)
+         or _re.search(r"€\s*(\d{1,3}(?:[.,]\d{3})*|\d+)\s*/\s*(month|mês|mes|monat)", t)
          or _re.search(r"(?:rent|renda|pre[cç]o)\D{0,12}(\d{1,3}(?:[.,]\d{3})*|\d{3,4})\s*€", t))
     if m:
         value = _money(m.group(1))
@@ -417,6 +417,40 @@ def _clean_title(title):
     return title.strip()[:90]
 
 
+def _offer_price(page):
+    """The rent the page itself states for search engines, or None.
+
+    Most housing sites write the advert a second time as schema.org data
+    (JSON-LD), with the price in offers.price. That number is the advert's
+    own. The visible text is not safe: Uniplaces lists other flats under the
+    advert, each with "1.000 €/month", while its own price stands without
+    "/month", so reading the text took the price of a recommendation.
+    """
+    import json as _json
+    for block in _re.findall(r'<script[^>]+application/ld\+json[^>]*>(.*?)</script>',
+                             page, _re.S | _re.I):
+        try:
+            data = _json.loads(block)
+        except ValueError:
+            continue
+        for item in (data if isinstance(data, list) else [data]):
+            if not isinstance(item, dict) or item.get("@type") in ("Organization", "BreadcrumbList", "WebSite"):
+                continue
+            offers = item.get("offers")
+            offer = offers[0] if isinstance(offers, list) and offers else offers
+            if not isinstance(offer, dict):
+                continue
+            if str(offer.get("priceCurrency", "EUR")).upper() != "EUR":
+                continue
+            try:
+                value = float(str(offer.get("price")).replace(",", "."))
+            except (TypeError, ValueError):
+                continue
+            if 50 <= value <= 20000:
+                return int(value) if value == int(value) else value
+    return None
+
+
 def parse_listing_page(page):
     """Read a whole advert page (its HTML) into form fields."""
     title = _meta(page, "og:title") or (
@@ -426,6 +460,9 @@ def parse_listing_page(page):
     body = _re.sub(r"<[^>]+>", "\n", body)
     body = _re.sub(r"\n\s*\n+", "\n", _html.unescape(body))
     found = parse_listing_text(" \n".join([title, about, body]))
+    own = _offer_price(page)
+    if own is not None:
+        found["price"] = own
     if title:
         found["title"] = _clean_title(_html.unescape(title))
     if about:

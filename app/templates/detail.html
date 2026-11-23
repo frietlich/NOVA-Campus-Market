@@ -367,7 +367,10 @@
 
       {# What it really costs, worked out. Rent plus bills is the number you
          compare with, and nobody can do that from a grey line of text. #}
-      <p class="side-price">{{ (listing.price + (0 if listing.bills_included else (listing.bills_estimate or 0))) | money }}<span> /month</span></p>
+      {#- Bills on top with no figure: the sum would be the rent alone and
+          read as everything there is to pay, so it says plus bills. -#}
+      {%- set bills_unknown = not listing.bills_included and listing.bills_estimate is none -%}
+      <p class="side-price">{{ (listing.price + (0 if listing.bills_included else (listing.bills_estimate or 0))) | money }}<span> /month{{ ' + bills' if bills_unknown }}</span></p>
       <div class="costs">
         <div class="cost"><span>Rent</span><b>{{ listing.price | money }}</b></div>
         {% if listing.bills_included %}
@@ -380,7 +383,7 @@
         <div class="cost-rule"></div>
         <div class="cost cost--sum">
           <span>Per month</span>
-          <span>{{ (listing.price + (0 if listing.bills_included else (listing.bills_estimate or 0))) | money }}</span>
+          <span>{{ (listing.price + (0 if listing.bills_included else (listing.bills_estimate or 0))) | money }}{{ ' + bills' if bills_unknown }}</span>
         </div>
         {% if listing.deposit %}
           <div class="cost cost--note">

@@ -68,6 +68,15 @@ CREATE TABLE IF NOT EXISTS listings (
     created_at  TEXT    NOT NULL
 );
 
+-- One row per sent new-entry form. A form carries a random token, and the
+-- first request with it claims the row, so a double click on Publish makes
+-- one entry, not two. listing_id is filled in once the entry exists.
+CREATE TABLE IF NOT EXISTS form_tokens (
+    token      TEXT    PRIMARY KEY,
+    listing_id INTEGER,
+    created_at TEXT    NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS photos (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     listing_id INTEGER NOT NULL REFERENCES listings(id),

@@ -5,6 +5,9 @@
 {#- owner is off on a student's own page, where their name stands at the
     top already and does not need repeating under every entry. -#}
 {% macro card(l, extra=0, owner=True) %}
+{#- Every picture here is decoding="sync": the list is drawn with its photos
+    in it. A click in the chat column reloads the page, and the photos used
+    to come in a moment after the rest, so every card blinked. -#}
 {# Tickets and things for sale always say what they cost, and Free is a price
    like any other. A group spot has no price at all, so it says nothing. #}
 <a class="card" href="/listing/{{ l.id }}" data-kind="{{ l.type }}">
@@ -24,7 +27,7 @@
     </div>
   {% else %}
     <div class="thumb">
-      {% if l.photo %}<img src="/static/uploads/{{ l.photo }}" alt="">
+      {% if l.photo %}<img src="/static/uploads/{{ l.photo }}" alt="" decoding="sync">
       {% else %}{{ art.cover(l.type, l.id) }}{% endif %}
     </div>
   {% endif %}
@@ -108,7 +111,7 @@
    because it has to be readable at a third of the width. #}
 <a class="scard" href="/listing/{{ l.id }}" data-kind="{{ l.type }}">
   <div class="scard-pic">
-    {% if l.photo %}<img src="/static/uploads/{{ l.photo }}" alt="">
+    {% if l.photo %}<img src="/static/uploads/{{ l.photo }}" alt="" decoding="sync">
     {% else %}{{ art.cover(l.type, l.id) }}{% endif %}
   </div>
   <span class="scard-title truncate">{{ l.title }}</span>

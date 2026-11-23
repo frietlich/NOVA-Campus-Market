@@ -33,6 +33,37 @@ class HousingLinkTests(unittest.TestCase):
         self.assertIsNone(housing.platform_of(None))
 
 
+class HousingPriceTests(unittest.TestCase):
+    """The rent read off an advert page is the advert's own.
+
+    Uniplaces lists other flats under the advert, each with its price and
+    "/month", while the advert's own price stands without it. Reading the
+    text took the price of a recommendation. The page also states its own
+    price as schema.org data, and that is what counts.
+    """
+
+    PAGE = (
+        '<html><head><title>1-bedroom flat</title>'
+        '<script type="application/ld+json">{"@type":"Organization","name":"Uniplaces"}</script>'
+        '<script type="application/ld+json">{"@type":"Product","name":"1-bedroom flat",'
+        '"offers":{"@type":"Offer","price":1200,"priceCurrency":"EUR"}}</script>'
+        '</head><body><p>€1,200</p>'
+        '<h2>More from this landlord</h2><p>Studio, from 1 Nov 2027, 1.000 € / month</p>'
+        '</body></html>')
+
+    def test_the_advert_s_own_price_wins_over_a_recommendation(self):
+        self.assertEqual(housing.parse_listing_page(self.PAGE)["price"], 1200)
+
+    def test_without_page_data_the_text_still_gives_a_price(self):
+        page = "<html><body><p>Room in Lisbon, 450 €/mês</p></body></html>"
+        self.assertEqual(housing.parse_listing_page(page)["price"], 450)
+
+    def test_a_price_in_another_currency_is_left_out(self):
+        page = ('<script type="application/ld+json">{"@type":"Product",'
+                '"offers":{"price":900,"priceCurrency":"GBP"}}</script>')
+        self.assertNotIn("price", housing.parse_listing_page(page))
+
+
 class TicketLinkTests(unittest.TestCase):
     """A ticket carries the same kind of link, checked against its own list."""
 
