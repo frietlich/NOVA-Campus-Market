@@ -1759,6 +1759,24 @@
     const next = head.nextElementSibling;
     return next ? [head, next] : [head];
   };
+  // The first of several places that is actually on screen. The + in the
+  // head is hidden on a laptop, where New entry in the sidebar does its job.
+  const shown = (...sels) => () => {
+    for (const sel of sels) {
+      const e = [...document.querySelectorAll(sel)].find((x) => x.getClientRects().length);
+      if (e) return e;
+    }
+    return null;
+  };
+  // The inbox: the column on the right on a laptop, the Chats tab on a phone.
+  const inbox = (sel, all) => () => {
+    const dock = document.querySelector(".dock");
+    const root = dock && dock.getClientRects().length ? dock : document.querySelector(".screen");
+    if (!root) return null;
+    const found = [...root.querySelectorAll(sel)].filter((e) => e.getClientRects().length);
+    if (!found.length) return null;
+    return all ? found : found[0];
+  };
   const CHAPTERS = {
     housing: { label: "Housing", icon: "housing", page: "/housing" },
     ticket: { label: "Tickets", icon: "ticket", page: "/tickets" },
@@ -1769,26 +1787,28 @@
   };
   const STEPS = [
     { ch: "housing", el: ".tabbar", title: "Your home base",
-      text: "Housing, Tickets, Market, Groups and your Chats. Each tab has its own colour, so you always know where you are." },
+      text: "Housing, Tickets, Market, Groups and your Chats. Each tab has its own colour, so you always know where you are.",
+      wide: { text: "Housing, Tickets, Market and Groups, each in its own colour. New entry and your profile sit right below. Your chats live on the right." } },
     { ch: "housing", el: ".search", title: "Search anything",
       text: "A street, an area like Carcavelos, or just “balcony”. Search works the same way in every tab." },
     { ch: "housing", el: ".hbar", title: "Filters that matter",
       text: "Rent, area, bills included, minutes to campus, move-in date. Then sort by rent or by who's free first." },
     { ch: "housing", el: ".bell", title: "Let the rooms come to you",
-      text: "Set your filters, then tap the bell. When a new room fits your search, your phone tells you." },
-    { ch: "housing", el: () => document.querySelector(".head-actions .plus:not(.bell)") || document.querySelector(".tab--rail"), title: "Renting out your room?",
-      text: "Tap +. Paste the Uniplaces or Idealista link, or a few screenshots of the ad, and the form fills itself in." },
+      text: "Set your filters, then tap the bell. When a new room fits your search, your phone tells you.",
+      wide: { text: "Set your filters, then click the bell. When a new room fits your search, you get a notification." } },
+    { ch: "housing", el: shown(".head-actions .plus:not(.bell)", ".tab--rail"), title: "Renting out your room?",
+      text: "Tap +. Paste the Uniplaces or Idealista link, or a few screenshots of the ad, and the form fills itself in.",
+      wide: { text: "Click New entry. Paste the Uniplaces or Idealista link, or a few screenshots of the ad, and the form fills itself in." } },
     { ch: "housing", el: ".card", title: "The full picture",
       text: "Open a room: photos, rent plus bills worked out, a button to the original ad, and how many students reached out before you." },
-    { ch: "housing", el: ".dock", title: "Your chats, right beside you",
-      text: "On a big screen your chats stay open here. Read a room on the left and talk to the person letting it on the right." },
 
     { ch: "ticket", el: ".chips", title: "Tickets for what you're into",
       text: "Parties, concerts, sports and more. Tickets are sorted by day, so tonight is on top." },
     { ch: "ticket", el: ".card", title: "Sold out? Not here.",
       text: "Open a ticket and tap its bell: you hear when someone puts up another one for the same event." },
-    { ch: "ticket", el: () => document.querySelector(".head-actions .plus:not(.bell)") || document.querySelector(".tab--rail"), title: "Can't make it?",
-      text: "Sell your ticket in seconds: paste the Luma, DICE or Eventbrite link, or a screenshot, and it's filled in." },
+    { ch: "ticket", el: shown(".head-actions .plus:not(.bell)", ".tab--rail"), title: "Can't make it?",
+      text: "Sell your ticket in seconds: paste the Luma, DICE or Eventbrite link, or a screenshot, and it's filled in.",
+      wide: { text: "Click New entry and sell your ticket in seconds: paste the Luma, DICE or Eventbrite link, or a screenshot, and it's filled in." } },
 
     { ch: "item", el: ".filters", title: "Second-hand, first class",
       text: "Bikes, desks, books, a winter coat. Filter by category, price and condition." },
@@ -1800,12 +1820,19 @@
     { ch: "group", el: () => document.querySelector(".card") || document.querySelector(".empty"), title: "Missing a teammate?",
       text: "A group with a free spot posts it here. Message them and the spot is yours. The bell on a group tells you about new ones in that course." },
 
-    { ch: "chats", el: '.segment', title: "Buying and selling, apart",
+    // Chats, top to bottom: the search, the two sides, the kinds, the list.
+    // On a phone that is the Chats tab. On a laptop there is no Chats page:
+    // the same inbox is the column on the right of every page, so the walk
+    // stays where it is and points there.
+    { ch: "chats", el: inbox(".search"), title: "Find any chat",
+      text: "Type a name, an entry or a word from a message, and the right chat is on top." },
+    { ch: "chats", el: inbox(".segment"), title: "Buying and selling, apart",
       text: "“You asked” is what you want. “Your entries” is who wrote about your things. They never get mixed up." },
-    { ch: "chats", el: () => document.querySelector(".ch-list") || document.querySelector(".empty"), title: "One chat per entry",
-      text: "Every chat is about one entry, so you always know who asked about what. Deal done? Archive it." },
-    { ch: "chats", el: ".ch-pane", title: "Talk without leaving the list",
-      text: "On a big screen, click a chat and it opens right here, next to your list. Type and send without losing your place." },
+    { ch: "chats", el: inbox(".chips .chip", true), title: "One kind at a time",
+      text: "Show only your Housing, Market or Groups chats, or All of them." },
+    { ch: "chats", el: () => inbox(".ch-list")() || inbox(".empty")(), title: "One chat per entry",
+      text: "Every chat is about one entry, so you always know who asked about what. Deal done? Archive it.",
+      wide: { text: "Every chat is about one entry, so you always know who asked about what. Click one and it opens right here, so you can read a room and talk to its owner at the same time." } },
 
     { ch: "me", el: ".panel", title: "This is you",
       text: "The tick means a verified Nova student. Everyone you talk to here has one too." },
@@ -1816,6 +1843,10 @@
   ];
   const ORDER = Object.keys(CHAPTERS);
   const here = location.pathname.replace(/\/+$/, "") || "/";
+  if (window.matchMedia("(min-width: 900px)").matches) {
+    STEPS.forEach((st) => { if (st.wide) Object.assign(st, st.wide); });
+    CHAPTERS.chats.page = CHAPTERS.group.page;
+  }
   const onPage = (n) => CHAPTERS[STEPS[n].ch].page === here;
   const find = (n) => {
     const el = STEPS[n].el;
@@ -1930,7 +1961,17 @@
       root.innerHTML = `<div class="onb-dim"></div><div class="onb-hole"></div><div class="onb-tip"></div>`;
     }
     const els = find(s);
-    els[0].scrollIntoView({ block: "center", behavior: "instant" });
+    // Scroll only when the thing is not already on screen. The chat column
+    // on a laptop stays put, so moving the page under it only jolts.
+    // Everything that lights up must be clear of the tab bar at the foot of
+    // a phone, not just its first line.
+    const rects = els.map((e) => e.getBoundingClientRect());
+    const topY = Math.min(...rects.map((r) => r.top));
+    const botY = Math.max(...rects.map((r) => r.bottom));
+    const foot = bar && bar.getBoundingClientRect().top > window.innerHeight / 2
+      ? bar.getBoundingClientRect().top : window.innerHeight;
+    const inView = topY >= 0 && botY <= foot - 8;
+    if (!inView && !els[0].closest(".dock")) els[0].scrollIntoView({ block: "center", behavior: "instant" });
     root.dataset.kind = t.ch;
     const tip = root.querySelector(".onb-tip");
     tip.innerHTML = `

@@ -111,8 +111,14 @@ def valid_endpoint(endpoint):
 
 def _webpush(device, payload):
     """One notification to one device. False when the device is gone for good."""
-    from pywebpush import WebPushException, webpush
-    from requests import Session
+    try:
+        from pywebpush import WebPushException, webpush
+        from requests import Session
+    except ImportError:
+        # A laptop without the push package still runs the app; the
+        # message stays in Chats and nothing is sent.
+        print("  push skipped: pywebpush is not installed", flush=True)
+        return True
     if not valid_endpoint(device["endpoint"]):
         return False
 
