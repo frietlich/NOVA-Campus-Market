@@ -86,7 +86,10 @@
     {% endif %}
 
     {% if has_sell and has_buy and not archived %}
-      <div class="segment" style="margin: 12px 0">
+      {#- No margin here either: the screen spaces its children and this
+          pushed the switch twice as far from the search as on any other
+          tab. -#}
+      <div class="segment">
         <a href="/chats?side=buy" aria-current="{{ 'true' if side == 'buy' else 'false' }}">
           You asked{% if unread_buy %} <i class="seg-dot"></i>{% endif %}
         </a>

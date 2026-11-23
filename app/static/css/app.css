@@ -1888,7 +1888,6 @@ img { display: block; max-width: 100%; }
   flex-wrap: wrap;
   gap: 6px;
   flex: none;
-  margin-top: 8px;
   padding-bottom: 2px;
 }
 
@@ -1896,7 +1895,10 @@ img { display: block; max-width: 100%; }
    back to the two lines this was meant to replace, so it slides instead. */
 .filters--one {
   flex-wrap: nowrap;
-  margin: 8px -16px 0;
+  /* The negative sides let the row slide out to the screen edge. The top
+     stays at nothing, so the gap under the search is the same here as on
+     every other tab. */
+  margin: 0 -16px;
   padding: 0 16px 2px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -2258,8 +2260,6 @@ img { display: block; max-width: 100%; }
    invisible and sits just above it, so the whole thing works with no
    JavaScript, and the page comes back with the panel open whenever
    something is already set. */
-
-.hsearch { margin-top: 10px; }
 
 .hbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
